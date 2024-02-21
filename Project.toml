@@ -3,6 +3,13 @@ uuid = "f1f99f3b-4b00-4d2f-a9c2-ce76efdc8f31"
 authors = ["Ben Corbett and contributors"]
 version = "0.1.0"
 
+[deps]
+ITensors = "9136182c-28ba-11e9-034c-db9fb085ebd5"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Memoize = "c03570c3-d221-55d1-a50c-7939bbd78826"
+SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
+TimerOutputs = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
+
 [compat]
 julia = "1.10"
 
