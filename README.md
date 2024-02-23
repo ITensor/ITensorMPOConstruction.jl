@@ -114,3 +114,19 @@ opCacheVec = [
 
 return MPO_new(os, sites; basisOpCacheVec=opCacheVec)
 ```
+
+## Examples: Electronic Structure Hamiltonian
+
+After looking at the previous example one might assume that the relative speed of ITensorMPOConstruction over Renormalizer might be due to the fact that for the Fermi-Hubbard Hamiltonian ITensorMPOConstruction is able to construct a much more compact MPO. In the case of the electronic structure Hamiltonian all algorithms produce MPOs of similar bond dimensions.
+
+![](./docs/plot-generators/es.png)
+
+However ITensorMPOConstruction is still an order of magnitude faster than Renormalizer. The code for this example can be found in [examples/electronic-structure.jl](https://github.com/ITensor/ITensorMPOConstruction.jl/blob/main/examples/electronic-structure.jl). The run time to generate these MPOs are shown below (again on a 2021 MacBook Pro with the M1 Max CPU and 32GB of memory).
+
+| $N$ | ITensors | Renormalizer | ITensorMPOConstruction |
+|-----|----------|--------------|------------------------|
+| 10  | 3.0s     | 2.1s         | 0.37s                  |
+| 20  | 498s     | 61s          | 7.1s                   |
+| 30  | N/A      | 458s         | 46s                    |
+| 40  | N/A      | 2250s        | 183                    |
+| 50  | N/A      | N/A          | 510s                   |
