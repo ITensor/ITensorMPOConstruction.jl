@@ -8,6 +8,13 @@
 
 A fast algorithm for constructing a Matrix Product Operator (MPO) from a sum of local operators. This is a replacement for `MPO(os::OpSum, sites::Vector{<:Index})`. In all cases examined so far this algorithm constructs an MPO with a smaller (or equal) bond dimension faster than the competition.
 
+## Installation
+
+The package is currently not registered. Please install with the commands:
+```julia
+julia> using Pkg; Pkg.add(url="https://github.com/ITensor/ITensorMPOConstruction.jl.git")
+```
+
 ## Constraints
 
 This algorithm shares same constraints as ITensor's default algorithm.
