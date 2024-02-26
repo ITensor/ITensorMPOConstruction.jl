@@ -53,16 +53,17 @@ function for_non_zeros_batch(f::Function, A::SparseMatrixCSC, cols::Vector{Int})
 end
 
 @timeit function at_site!(
+  ValType::Type{<:Number},
   graphs::Dict{QN,MPOGraph{C}},
   n::Int,
   sites::Vector{<:Index},
   tol::Real,
   opCacheVec::OpCacheVec,
-)::Tuple{Dict{QN,MPOGraph{C}},BlockSparseMatrix{C},Index} where {C}
+)::Tuple{Dict{QN,MPOGraph{C}},BlockSparseMatrix{ValType},Index} where {C}
   hasQNs = hasqns(sites)
   nextGraphs = Dict{QN,MPOGraph{C}}()
 
-  matrix = BlockSparseMatrix{C}()
+  matrix = BlockSparseMatrix{ValType}()
 
   qi = Vector{Pair{QN,Int}}()
   outgoingLinkOffset = 0
@@ -194,7 +195,9 @@ end
 
   llinks = Vector{Index}(undef, N + 1)
   for n in 0:N
-    graphs, symbolicMatrix, llinks[n + 1] = at_site!(graphs, n, sites, tol, opCacheVec)
+    graphs, symbolicMatrix, llinks[n + 1] = at_site!(
+      ValType, graphs, n, sites, tol, opCacheVec
+    )
 
     # For the 0th iteration we only care about constructing the graphs for the next site.
     n == 0 && continue
@@ -239,27 +242,46 @@ end
   return H
 end
 
-function svdMPO_new(os::OpIDSum{C}, opCacheVec::OpCacheVec, sites; kwargs...)::MPO where {C}
-  # Function barrier to improve type stability
-  ValType = determine_val_type(os)
-  return svdMPO_new(ValType, os, opCacheVec, sites; kwargs...)
-end
-
 function MPO_new(
+  ValType::Type{<:Number},
   os::OpIDSum,
   sites::Vector{<:Index},
   opCacheVec::OpCacheVec;
-  basisOpCacheVec::Union{Nothing,OpCacheVec}=nothing,
-  kwargs...,
+  basisOpCacheVec=nothing,
+  tol::Real=-1,
 )::MPO
+  opCacheVec = to_OpCacheVec(sites, opCacheVec)
+  basisOpCacheVec = to_OpCacheVec(sites, basisOpCacheVec)
   os, opCacheVec = prepare_opID_sum!(os, sites, opCacheVec, basisOpCacheVec)
-
-  return svdMPO_new(os, opCacheVec, sites; kwargs...)
+  return svdMPO_new(ValType, os, opCacheVec, sites; tol=tol)
 end
 
-function MPO_new(os::OpSum, sites::Vector{<:Index}; kwargs...)::MPO
+function MPO_new(
+  os::OpIDSum, sites::Vector{<:Index}, opCacheVec; basisOpCacheVec=nothing, tol::Real=-1
+)::MPO
+  opCacheVec = to_OpCacheVec(sites, opCacheVec)
+  ValType = determine_val_type(os, opCacheVec)
+  return MPO_new(ValType, os, sites, opCacheVec; basisOpCacheVec=basisOpCacheVec, tol=tol)
+end
+
+function MPO_new(
+  ValType::Type{<:Number},
+  os::OpSum,
+  sites::Vector{<:Index};
+  basisOpCacheVec=nothing,
+  tol::Real=-1,
+)::MPO
   opIDSum, opCacheVec = op_sum_to_opID_sum(os, sites)
-  return MPO_new(opIDSum, sites, opCacheVec; kwargs...)
+  return MPO_new(
+    ValType, opIDSum, sites, opCacheVec; basisOpCacheVec=basisOpCacheVec, tol=tol
+  )
+end
+
+function MPO_new(
+  os::OpSum, sites::Vector{<:Index}; basisOpCacheVec=nothing, tol::Real=-1
+)::MPO
+  opIDSum, opCacheVec = op_sum_to_opID_sum(os, sites)
+  return MPO_new(opIDSum, sites, opCacheVec; basisOpCacheVec=basisOpCacheVec, tol=tol)
 end
 
 function sparsity(mpo::MPO)::Float64
