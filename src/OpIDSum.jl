@@ -14,6 +14,26 @@ end
 
 OpCacheVec = Vector{Vector{OpInfo}}
 
+function to_OpCacheVec(sites::Vector{<:Index}, ops::OpCacheVec)::OpCacheVec
+  length(sites) != length(ops) &&
+    error("Mismatch in the number of sites in `sites` and `ops`.")
+  any(ops[i][1].matrix != I for i in 1:length(sites)) &&
+    error("The first operator on each site must be the identity.")
+  return ops
+end
+
+function to_OpCacheVec(sites::Vector{<:Index}, ops::Vector{Vector{String}})::OpCacheVec
+  length(sites) != length(ops) &&
+    error("Mismatch in the number of sites in `sites` and `ops`.")
+  any(ops[i][1] != "I" for i in 1:length(sites)) &&
+    error("The first operator on each site must be the identity.")
+  return [[OpInfo(ITensors.Op(op, n), sites[n]) for op in ops[n]] for n in 1:length(sites)]
+end
+
+function to_OpCacheVec(sites::Vector{<:Index}, ::Nothing)::Nothing
+  return nothing
+end
+
 struct OpID
   id::Int16
   n::Int16
@@ -71,13 +91,10 @@ function add_to_scalar!(os::OpIDSum{C}, i::Integer, scalar::C)::Nothing where {C
   return nothing
 end
 
-# TODO: Define as `C`. Rename `coefficient_type`.
-function determine_val_type(os::OpIDSum{C}) where {C}
-  for i in eachindex(os)
-    scalar, ops = os[i]
-    (!isreal(scalar)) && return ComplexF64
-  end
-
+function determine_val_type(os::OpIDSum{C}, opCacheVec::OpCacheVec) where {C}
+  !all(isreal(scalar) for scalar in os.scalars) && return ComplexF64
+  !all(isreal(op.matrix) for opsOfSite in opCacheVec for op in opsOfSite) &&
+    return ComplexF64
   return Float64
 end
 
