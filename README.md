@@ -49,7 +49,7 @@ $$
 
 where the periodic boundary conditions enforce that $c_k = c_{k + N}$. For this Hamiltonian all that needs to be done to switch over to using ITensorMPOConstruction is switch `MPO(os, sites)` to `MPO_New(os, sites)`.
 
-https://github.com/ITensor/ITensorMPOConstruction.jl/blob/main/examples/fermi-hubbard.jl#L4-L24
+https://github.com/ITensor/ITensorMPOConstruction.jl/blob/637dd2409f27ede41aa916822ea8acb4cd557a9e/examples/fermi-hubbard.jl#L4-L24
 
 For $N = 1000$ both ITensors and ITensorMPOConstruction can construct an MPO of bond dimension 10 in under two seconds. For a compelling reason to use ITensorMPOConstruction we need to look at a more complicated Hamiltonian.
 
@@ -63,11 +63,11 @@ $$
 
 where $\epsilon(k) = -2 t \cos(\frac{2 \pi k}{N})$ and $c_k = c_{k + N}$. The code to construct the `OpSum` is shown below.
 
-https://github.com/ITensor/ITensorMPOConstruction.jl/blob/main/examples/fermi-hubbard.jl#L26-L49
+https://github.com/ITensor/ITensorMPOConstruction.jl/blob/637dd2409f27ede41aa916822ea8acb4cd557a9e/examples/fermi-hubbard.jl#L26-L49
 
 Unlike the previous example, some more involved changes will be required to use ITensorMPOConstruction. This is because the `OpSum` has multiple operators acting on the same site, violating constraint #3. For example when $k = 0$ in the second loop we have terms of the form $c^\dagger_{p, \uparrow} c^\dagger_{q, \downarrow} c_{q, \downarrow} c_{p, \uparrow}$. You could always create a special case for $k = 0$ and rewrite it as $n_{p, \uparrow} n_{q, \downarrow}$. However if using "Electron" sites then you would also need to consider other cases such as when $p = q$, this would introduce a lot of extraneous complication. Luckily ITensorMPOConstruction provides a method to automatically perform these transformations. If you provide a set of operators for each site to `MPO_new` it will attempt to express the operators acting on each site as a single one of these "basis" operators. The code to do this is shown below.
 
-https://github.com/ITensor/ITensorMPOConstruction.jl/blob/main/examples/fermi-hubbard.jl#L51-L76
+https://github.com/ITensor/ITensorMPOConstruction.jl/blob/637dd2409f27ede41aa916822ea8acb4cd557a9e/examples/fermi-hubbard.jl#L51-L76
 
 ### `OpIDSum`
 
@@ -77,7 +77,7 @@ For $N = 200$ constructing the `OpSum` takes 42s and constructing the MPO from t
 
 For $N = 200$ constructing an `OpIDSum` takes only 0.4s. Shown below is code to construct the Hamiltonian using an `OpIDSum`.
 
-https://github.com/ITensor/ITensorMPOConstruction.jl/blob/main/examples/fermi-hubbard.jl#L79-L130
+https://github.com/ITensor/ITensorMPOConstruction.jl/blob/637dd2409f27ede41aa916822ea8acb4cd557a9e/examples/fermi-hubbard.jl#L79-L130
 
 ## Benchmarks: Fermi-Hubbard Hamiltonian in Momentum Space
 
