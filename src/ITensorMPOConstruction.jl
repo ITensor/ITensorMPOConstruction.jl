@@ -3,6 +3,7 @@ module ITensorMPOConstruction
 #####################################
 # External packages
 #
+using ITensorMPS
 using ITensors
 using LinearAlgebra
 using SparseArrays
