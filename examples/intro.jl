@@ -1,4 +1,5 @@
 using ITensorMPOConstruction
+using ITensorMPS
 using ITensors
 
 function foo(N::Int; useITensorsAlg::Bool=false)::MPO

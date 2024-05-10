@@ -1,4 +1,5 @@
 using ITensorMPOConstruction
+using ITensorMPS
 using ITensors
 
 function electronic_structure(

@@ -1,4 +1,5 @@
 using ITensorMPOConstruction
+using ITensorMPS
 using ITensors
 
 function halden_shastry_mpo_from_OpSum(N::Int, J::Real; useITensorsAlg::Bool=false)::MPO
