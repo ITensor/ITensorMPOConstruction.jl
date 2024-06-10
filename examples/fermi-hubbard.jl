@@ -39,9 +39,9 @@ function Fermi_Hubbard_momentum_space(
     for p in 1:N
       for q in 1:N
         for k in 1:N
-          os .+= U / N,
-          "Cdagup", mod1(p - k, N), "Cdagdn", mod1(q + k, N), "Cdn", q, "Cup",
-          p
+          pmk = mod1(p - k, N)
+          qpk = mod1(q + k, N)
+          os .+= U / N, "Cdagup", pmk, "Cdagdn", qpk, "Cdn", q, "Cup", p
         end
       end
     end
