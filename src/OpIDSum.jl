@@ -144,7 +144,7 @@ end
   end
 end
 
-@timeit function merge_terms!(os::OpIDSum)::Nothing
+@timeit function merge_terms!(os::OpIDSum{C})::Nothing where {C}
   uniqueTermLocations = Dict{
     SubArray{OpID,1,Vector{OpID},Tuple{UnitRange{Int64}},true},Int
   }()
@@ -155,7 +155,7 @@ end
     loc == i && continue
 
     add_to_scalar!(os, loc, scalar)
-    set_scalar!(os, i, 0.0)
+    set_scalar!(os, i, zero(C))
   end
 
   return nothing
