@@ -1,6 +1,6 @@
 using ITensorMPOConstruction
-using ITensorMPS
 using ITensors
+using ITensorMPS
 using Test
 
 function compare_MPOs(A::MPO, B::MPO; tol::Real=1e-7)::Nothing
