@@ -11,9 +11,12 @@ function compare_MPOs(A::MPO, B::MPO; tol::Real=1e-7)::Nothing
 end
 
 function test_from_OpSum(
-  os::OpSum, sites::Vector{<:Index}, basisOpCacheVec::Union{Nothing,OpCacheVec}, tol::Real
+  os::OpSum,
+  sites::Vector{<:Index},
+  basis_op_cache_vec::Union{Nothing,OpCacheVec},
+  tol::Real,
 )::Tuple{MPO,MPO}
-  mpo = MPO_new(os, sites; tol=tol, basisOpCacheVec=basisOpCacheVec)
+  mpo = MPO_new(os, sites; tol=tol, basis_op_cache_vec=basis_op_cache_vec)
 
   if tol < 0
     mpoFromITensor = MPO(os, sites)
@@ -178,12 +181,12 @@ function test_Fermi_Hubbard(N::Int, tol::Real)::Nothing
     "Nup * Ndn",
   ]
 
-  opCacheVec = [
+  op_cache_vec = [
     [OpInfo(ITensors.Op(name, n), sites[n]) for name in operatorNames] for
     n in eachindex(sites)
   ]
 
-  test_from_OpSum(os, sites, opCacheVec, tol)
+  test_from_OpSum(os, sites, op_cache_vec, tol)
   return nothing
 end
 

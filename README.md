@@ -36,7 +36,7 @@ function MPO_new(os::OpSum, sites::Vector{<:Index}; kwargs...)::MPO
 ```
 
 The optional keyword arguments are
-* `basisOpCacheVec`: A list of operators to use as a basis for each site. The operators on each site are expressed as one of these basis operators.
+* `basis_op_cache_vec`: A list of operators to use as a basis for each site. The operators on each site are expressed as one of these basis operators.
 * `tol::Real`: The tolerance used in the sparse QR decomposition (which is done by SPQR). The default value is the SPQR default which is calculated separately for each QR decomposition. If you want a MPO that is accurate up to floating point errors the default tolerance should work well. If instead you  want to compress the MPO the value `tol` will differ from the `cutoff` passed to `ITensor.MPO` since the truncation method is completely different. If you want to replicate the same truncation behavior first construct the MPO with a suitably small (or default) `tol` and then use `ITensors.truncate!`.
 
 ## Examples: Fermi-Hubbard Hamiltonian in Real Space
