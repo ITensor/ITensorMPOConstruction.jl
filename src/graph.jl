@@ -1,7 +1,7 @@
 struct LeftVertex
   link::Int32
   opOnSite::OpID
-  needsJWString::Bool
+  needs_JW_string::Bool
 end
 
 function Base.hash(v::LeftVertex, h::UInt)
@@ -14,7 +14,7 @@ end
 
 struct RightVertex
   ops::Vector{OpID}
-  isFermionic::Bool
+  is_fermionic::Bool
 end
 
 function Base.hash(v::RightVertex, h::UInt)
@@ -26,13 +26,13 @@ function Base.:(==)(v1::RightVertex, v2::RightVertex)::Bool
 end
 
 struct MPOGraph{C}
-  edgeLeftVertex::Vector{Int}
-  edgeRightVertex::Vector{Int}
-  edgeWeight::Vector{C}
-  leftVertexIDs::Dict{LeftVertex,Int}
-  rightVertexIDs::Dict{RightVertex,Int}
-  leftVertexValues::Vector{LeftVertex}
-  rightVertexValues::Vector{RightVertex}
+  edge_left_vertex::Vector{Int}
+  edge_right_vertex::Vector{Int}
+  edge_weight::Vector{C}
+  left_vertex_ids::Dict{LeftVertex,Int}
+  right_vertex_ids::Dict{RightVertex,Int}
+  left_vertex_values::Vector{LeftVertex}
+  right_vertex_values::Vector{RightVertex}
 end
 
 function MPOGraph{C}() where {C}
@@ -56,7 +56,7 @@ Every term in the sum must be unique and sorted by site, have 0 flux, and even f
   g = MPOGraph{C}()
   lv = LeftVertex(0, OpID(0, 0), false)
 
-  push!(g.leftVertexValues, lv)
+  push!(g.left_vertex_values, lv)
 
   for i in eachindex(os)
     scalar, ops = os[i]
@@ -64,44 +64,44 @@ Every term in the sum must be unique and sorted by site, have 0 flux, and even f
     scalar == 0 && continue
 
     rv = RightVertex(reverse(ops), false)
-    push!(g.rightVertexValues, rv)
+    push!(g.right_vertex_values, rv)
 
-    push!(g.edgeLeftVertex, 1)
-    push!(g.edgeRightVertex, length(g.rightVertexValues))
-    push!(g.edgeWeight, scalar)
+    push!(g.edge_left_vertex, 1)
+    push!(g.edge_right_vertex, length(g.right_vertex_values))
+    push!(g.edge_weight, scalar)
   end
 
   return g
 end
 
 function Base.empty!(g::MPOGraph)::Nothing
-  empty!(g.edgeLeftVertex)
-  empty!(g.edgeRightVertex)
-  empty!(g.edgeWeight)
-  empty!(g.leftVertexValues)
-  empty!(g.rightVertexValues)
+  empty!(g.edge_left_vertex)
+  empty!(g.edge_right_vertex)
+  empty!(g.edge_weight)
+  empty!(g.left_vertex_values)
+  empty!(g.right_vertex_values)
 
   return nothing
 end
 
 function left_size(g::MPOGraph)::Int
-  return length(g.leftVertexValues)
+  return length(g.left_vertex_values)
 end
 
 function right_size(g::MPOGraph)::Int
-  return length(g.rightVertexValues)
+  return length(g.right_vertex_values)
 end
 
 function num_edges(g::MPOGraph)::Int
-  return length(g.edgeLeftVertex)
+  return length(g.edge_left_vertex)
 end
 
-function left_value(g::MPOGraph{C}, leftID::Int)::LeftVertex where {C}
-  return g.leftVertexValues[leftID]
+function left_value(g::MPOGraph{C}, left_id::Int)::LeftVertex where {C}
+  return g.left_vertex_values[left_id]
 end
 
-function right_value(g::MPOGraph{C}, rightID::Int)::RightVertex where {C}
-  return g.rightVertexValues[rightID]
+function right_value(g::MPOGraph{C}, right_id::Int)::RightVertex where {C}
+  return g.right_vertex_values[right_id]
 end
 
 function add_edges!(
@@ -109,68 +109,68 @@ function add_edges!(
   rv::RightVertex,
   rank::Int,
   ms::AbstractVector{Int},
-  mOffset::Int,
-  onsiteOp::OpID,
+  m_offset::Int,
+  onsite_op::OpID,
   weights::AbstractVector{C},
 )::Nothing where {C}
-  rightID = get!(g.rightVertexIDs, rv) do
-    push!(g.rightVertexValues, rv)
-    return length(g.rightVertexValues)
+  right_id = get!(g.right_vertex_ids, rv) do
+    push!(g.right_vertex_values, rv)
+    return length(g.right_vertex_values)
   end
 
   for i in 1:length(ms)
     ms[i] > rank && return nothing
 
-    lv = LeftVertex(ms[i] + mOffset, onsiteOp, rv.isFermionic)
+    lv = LeftVertex(ms[i] + m_offset, onsite_op, rv.is_fermionic)
 
-    leftID = get!(g.leftVertexIDs, lv) do
-      push!(g.leftVertexValues, lv)
-      return length(g.leftVertexValues)
+    left_id = get!(g.left_vertex_ids, lv) do
+      push!(g.left_vertex_values, lv)
+      return length(g.left_vertex_values)
     end
 
-    push!(g.edgeLeftVertex, leftID)
-    push!(g.edgeRightVertex, rightID)
-    push!(g.edgeWeight, weights[i])
+    push!(g.edge_left_vertex, left_id)
+    push!(g.edge_right_vertex, right_id)
+    push!(g.edge_weight, weights[i])
   end
 
   return nothing
 end
 
-function add_edges_id!(
+function add_edges_vector_lookup!(
   g::MPOGraph{C},
   rv::RightVertex,
   rank::Int,
   ms::AbstractVector{Int},
-  mOffset::Int,
-  onsiteOp::OpID,
+  m_offset::Int,
+  onsite_op::OpID,
   weights::AbstractVector{C},
-  fooBar::Vector{Int},
+  id_of_left_vertex::Vector{Int},
 )::Nothing where {C}
-  rightID = get!(g.rightVertexIDs, rv) do
-    push!(g.rightVertexValues, rv)
-    return length(g.rightVertexValues)
+  right_id = get!(g.right_vertex_ids, rv) do
+    push!(g.right_vertex_values, rv)
+    return length(g.right_vertex_values)
   end
 
   for i in 1:length(ms)
     m = ms[i]
     m > rank && return nothing
 
-    if fooBar[m] == 0
-      push!(g.leftVertexValues, LeftVertex(m + mOffset, onsiteOp, rv.isFermionic))
-      fooBar[m] = length(g.leftVertexValues)
+    if id_of_left_vertex[m] == 0
+      push!(g.left_vertex_values, LeftVertex(m + m_offset, onsite_op, rv.is_fermionic))
+      id_of_left_vertex[m] = length(g.left_vertex_values)
     end
 
-    push!(g.edgeLeftVertex, fooBar[m])
-    push!(g.edgeRightVertex, rightID)
-    push!(g.edgeWeight, weights[i])
+    push!(g.edge_left_vertex, id_of_left_vertex[m])
+    push!(g.edge_right_vertex, right_id)
+    push!(g.edge_weight, weights[i])
   end
 
   return nothing
 end
 
 @timeit function sparse_edge_weights(g::MPOGraph{C})::SparseMatrixCSC{C,Int} where {C}
-  @assert length(g.edgeLeftVertex) == length(g.edgeRightVertex)
-  @assert length(g.edgeLeftVertex) == length(g.edgeWeight)
+  @assert length(g.edge_left_vertex) == length(g.edge_right_vertex)
+  @assert length(g.edge_left_vertex) == length(g.edge_weight)
 
-  return sparse(g.edgeLeftVertex, g.edgeRightVertex, g.edgeWeight)
+  return sparse(g.edge_left_vertex, g.edge_right_vertex, g.edge_weight)
 end

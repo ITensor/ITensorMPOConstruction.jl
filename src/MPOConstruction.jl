@@ -12,16 +12,16 @@ BlockSparseMatrix{C} = Dict{Tuple{Int,Int},Matrix{C}}
   return sparse(ret.Q), ret.R, ret.prow, ret.pcol, rank(ret)
 end
 
-function for_non_zeros(f::Function, A::SparseMatrixCSC, maxRow::Int, maxCol::Int)::Nothing
-  @assert maxRow <= size(A, 1)
-  @assert maxCol <= size(A, 2)
+function for_non_zeros(f::Function, A::SparseMatrixCSC, max_row::Int, max_col::Int)::Nothing
+  @assert max_row <= size(A, 1)
+  @assert max_col <= size(A, 2)
 
   rows = rowvals(A)
   vals = nonzeros(A)
-  for col in 1:maxCol
+  for col in 1:max_col
     for idx in nzrange(A, col)
       row = rows[idx]
-      if row <= maxRow
+      if row <= max_row
         value = vals[idx]
         f(value, row, col)
       end
@@ -29,12 +29,12 @@ function for_non_zeros(f::Function, A::SparseMatrixCSC, maxRow::Int, maxCol::Int
   end
 end
 
-function for_non_zeros_batch(f::Function, A::SparseMatrixCSC, maxCol::Int)::Nothing
-  @assert maxCol <= size(A, 2) "$maxCol, $(size(A, 2))"
+function for_non_zeros_batch(f::Function, A::SparseMatrixCSC, max_col::Int)::Nothing
+  @assert max_col <= size(A, 2) "$max_col, $(size(A, 2))"
 
   rows = rowvals(A)
   vals = nonzeros(A)
-  for col in 1:maxCol
+  for col in 1:max_col
     range = nzrange(A, col)
     isempty(range) && continue
     f((@view vals[range]), (@view rows[range]), col)
@@ -58,19 +58,19 @@ end
   n::Int,
   sites::Vector{<:Index},
   tol::Real,
-  opCacheVec::OpCacheVec,
+  op_cache_vec::OpCacheVec,
 )::Tuple{Dict{QN,MPOGraph{C}},BlockSparseMatrix{ValType},Index} where {C}
-  hasQNs = hasqns(sites)
-  nextGraphs = Dict{QN,MPOGraph{C}}()
+  has_qns = hasqns(sites)
+  next_graphs = Dict{QN,MPOGraph{C}}()
 
   matrix = BlockSparseMatrix{ValType}()
 
   qi = Vector{Pair{QN,Int}}()
-  outgoingLinkOffset = 0
+  outgoing_link_offset = 0
 
-  mIdentityToID = Vector{Int}()
+  id_of_left_vertex_in_zero_flux_term = Vector{Int}()
 
-  for (inQN, g) in graphs
+  for (in_qn, g) in graphs
     W = sparse_edge_weights(g)
     Q, R, prow, pcol, rank = sparse_qr(W, tol)
 
@@ -84,28 +84,28 @@ end
       Q *= only(R)
     end
 
-    if hasQNs
-      append!(qi, [inQN => rank])
+    if has_qns
+      append!(qi, [in_qn => rank])
     end
 
     # Form the local transformation tensor.
     # At the 0th dummy site we don't need to do this.
     @timeit "constructing the sparse matrix" if n != 0
       ## TODO: This is wastefull
-      localMatrices = [
-        my_matrix([lv.opOnSite], opCacheVec[n]; needsJWString=lv.needsJWString) for
-        lv in g.leftVertexValues
+      local_matrices = [
+        my_matrix([lv.opOnSite], op_cache_vec[n]; needs_JW_string=lv.needs_JW_string) for
+        lv in g.left_vertex_values
       ]
 
       for_non_zeros(Q, left_size(g), rank) do weight, i, m
-        rightLink = m + outgoingLinkOffset
+        right_link = m + outgoing_link_offset
         lv = left_value(g, prow[i])
 
-        matrixElement = get!(matrix, (lv.link, rightLink)) do
+        matrix_element = get!(matrix, (lv.link, right_link)) do
           return zeros(C, dim(sites[n]), dim(sites[n]))
         end
 
-        matrixElement .+= weight * localMatrices[prow[i]]
+        matrix_element .+= weight * local_matrices[prow[i]]
       end
     end
 
@@ -115,72 +115,72 @@ end
     # Connect this output \tilde{A}_m to \tilde{B}_m = (R \vec{B})_m
     # If we are processing the last site then there's no need to do this.
     @timeit "constructing the next graphs" if n != length(sites)
-      nextGraphOfZeroFlux = get!(nextGraphs, inQN) do
+      next_graph_zero_flux = get!(next_graphs, in_qn) do
         return MPOGraph{C}()
       end
 
-      resize!(mIdentityToID, rank)
-      mIdentityToID .= 0
+      resize!(id_of_left_vertex_in_zero_flux_term, rank)
+      id_of_left_vertex_in_zero_flux_term .= 0
       for_non_zeros_batch(R, right_size(g)) do weights, ms, j
         j = pcol[j]
 
         rv = right_value(g, j)
         if !isempty(rv.ops) && rv.ops[end].n == n + 1
           onsite = pop!(rv.ops)
-          flux = opCacheVec[n + 1][onsite.id].qnFlux
-          newIsFermionic = xor(rv.isFermionic, opCacheVec[n + 1][onsite.id].isFermionic)
+          flux = op_cache_vec[n + 1][onsite.id].qnFlux
+          is_fermionic = xor(rv.is_fermionic, op_cache_vec[n + 1][onsite.id].is_fermionic)
 
-          rv = RightVertex(rv.ops, newIsFermionic)
+          rv = RightVertex(rv.ops, is_fermionic)
 
-          nextGraph = get!(nextGraphs, inQN + flux) do
+          next_graph = get!(next_graphs, in_qn + flux) do
             return MPOGraph{C}()
           end
 
-          add_edges!(nextGraph, rv, rank, ms, outgoingLinkOffset, onsite, weights)
+          add_edges!(next_graph, rv, rank, ms, outgoing_link_offset, onsite, weights)
         else
-          add_edges_id!(
-            nextGraphOfZeroFlux,
+          add_edges_vector_lookup!(
+            next_graph_zero_flux,
             rv,
             rank,
             ms,
-            outgoingLinkOffset,
+            outgoing_link_offset,
             OpID(1, n + 1),
             weights,
-            mIdentityToID,
+            id_of_left_vertex_in_zero_flux_term,
           )
         end
       end
 
-      if num_edges(nextGraphOfZeroFlux) == 0
-        delete!(nextGraphs, inQN)
+      if num_edges(next_graph_zero_flux) == 0
+        delete!(next_graphs, in_qn)
       end
 
-      for (_, nextGraph) in nextGraphs
-        empty!(nextGraph.leftVertexIDs)
+      for (_, next_graph) in next_graphs
+        empty!(next_graph.left_vertex_ids)
       end
     end
 
     empty!(g)
-    outgoingLinkOffset += rank
+    outgoing_link_offset += rank
   end
 
-  for (_, nextGraph) in nextGraphs
-    empty!(nextGraph.rightVertexIDs)
+  for (_, next_graph) in next_graphs
+    empty!(next_graph.right_vertex_ids)
   end
 
-  if hasQNs
-    outgoingLink = Index(qi...; tags="Link,l=$n", dir=ITensors.Out)
+  if has_qns
+    outgoing_link = Index(qi...; tags="Link,l=$n", dir=ITensors.Out)
   else
-    outgoingLink = Index(outgoingLinkOffset; tags="Link,l=$n")
+    outgoing_link = Index(outgoing_link_offset; tags="Link,l=$n")
   end
 
-  return nextGraphs, matrix, outgoingLink
+  return next_graphs, matrix, outgoing_link
 end
 
 @timeit function svdMPO_new(
   ValType::Type{<:Number},
   os::OpIDSum{C},
-  opCacheVec::OpCacheVec,
+  op_cache_vec::OpCacheVec,
   sites::Vector{<:Index};
   tol::Real=-1,
 )::MPO where {C}
@@ -195,8 +195,8 @@ end
 
   llinks = Vector{Index}(undef, N + 1)
   for n in 0:N
-    graphs, symbolicMatrix, llinks[n + 1] = at_site!(
-      ValType, graphs, n, sites, tol, opCacheVec
+    graphs, block_sparse_matrix, llinks[n + 1] = at_site!(
+      ValType, graphs, n, sites, tol, op_cache_vec
     )
 
     # For the 0th iteration we only care about constructing the graphs for the next site.
@@ -213,8 +213,8 @@ end
         dim(dag(sites[n])),
       )
 
-      for ((leftLink, rightLink), localOpMatrix) in symbolicMatrix
-        tensor[leftLink, rightLink, :, :] = localOpMatrix
+      for ((left_link, right_link), block) in block_sparse_matrix
+        tensor[left_link, right_link, :, :] = block
       end
 
       H[n] = itensor(
@@ -246,51 +246,59 @@ function MPO_new(
   ValType::Type{<:Number},
   os::OpIDSum,
   sites::Vector{<:Index},
-  opCacheVec::OpCacheVec;
-  basisOpCacheVec=nothing,
+  op_cache_vec::OpCacheVec;
+  basis_op_cache_vec=nothing,
   tol::Real=-1,
 )::MPO
-  opCacheVec = to_OpCacheVec(sites, opCacheVec)
-  basisOpCacheVec = to_OpCacheVec(sites, basisOpCacheVec)
-  os, opCacheVec = prepare_opID_sum!(os, sites, opCacheVec, basisOpCacheVec)
-  return svdMPO_new(ValType, os, opCacheVec, sites; tol=tol)
+  op_cache_vec = to_OpCacheVec(sites, op_cache_vec)
+  basis_op_cache_vec = to_OpCacheVec(sites, basis_op_cache_vec)
+  os, op_cache_vec = prepare_opID_sum!(os, sites, op_cache_vec, basis_op_cache_vec)
+  return svdMPO_new(ValType, os, op_cache_vec, sites; tol=tol)
 end
 
 function MPO_new(
-  os::OpIDSum, sites::Vector{<:Index}, opCacheVec; basisOpCacheVec=nothing, tol::Real=-1
+  os::OpIDSum,
+  sites::Vector{<:Index},
+  op_cache_vec;
+  basis_op_cache_vec=nothing,
+  tol::Real=-1,
 )::MPO
-  opCacheVec = to_OpCacheVec(sites, opCacheVec)
-  ValType = determine_val_type(os, opCacheVec)
-  return MPO_new(ValType, os, sites, opCacheVec; basisOpCacheVec=basisOpCacheVec, tol=tol)
+  op_cache_vec = to_OpCacheVec(sites, op_cache_vec)
+  ValType = determine_val_type(os, op_cache_vec)
+  return MPO_new(
+    ValType, os, sites, op_cache_vec; basis_op_cache_vec=basis_op_cache_vec, tol=tol
+  )
 end
 
 function MPO_new(
   ValType::Type{<:Number},
   os::OpSum,
   sites::Vector{<:Index};
-  basisOpCacheVec=nothing,
+  basis_op_cache_vec=nothing,
   tol::Real=-1,
 )::MPO
-  opIDSum, opCacheVec = op_sum_to_opID_sum(os, sites)
+  opID_sum, op_cache_vec = op_sum_to_opID_sum(os, sites)
   return MPO_new(
-    ValType, opIDSum, sites, opCacheVec; basisOpCacheVec=basisOpCacheVec, tol=tol
+    ValType, opID_sum, sites, op_cache_vec; basis_op_cache_vec=basis_op_cache_vec, tol=tol
   )
 end
 
 function MPO_new(
-  os::OpSum, sites::Vector{<:Index}; basisOpCacheVec=nothing, tol::Real=-1
+  os::OpSum, sites::Vector{<:Index}; basis_op_cache_vec=nothing, tol::Real=-1
 )::MPO
-  opIDSum, opCacheVec = op_sum_to_opID_sum(os, sites)
-  return MPO_new(opIDSum, sites, opCacheVec; basisOpCacheVec=basisOpCacheVec, tol=tol)
+  opID_sum, op_cache_vec = op_sum_to_opID_sum(os, sites)
+  return MPO_new(
+    opID_sum, sites, op_cache_vec; basis_op_cache_vec=basis_op_cache_vec, tol=tol
+  )
 end
 
 function sparsity(mpo::MPO)::Float64
-  numEntries = 0
-  numZeros = 0
+  num_entries = 0
+  num_zeros = 0
   for tensor in mpo
-    numEntries += prod(size(tensor))
-    numZeros += prod(size(tensor)) - ITensors.nnz(tensor)
+    num_entries += prod(size(tensor))
+    num_zeros += prod(size(tensor)) - ITensors.nnz(tensor)
   end
 
-  return numZeros / numEntries
+  return num_zeros / num_entries
 end

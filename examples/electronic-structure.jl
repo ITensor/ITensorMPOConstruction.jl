@@ -71,12 +71,12 @@ function electronic_structure(
       "Nup * Ndn",
     ]
 
-    opCacheVec = [
+    op_cache_vec = [
       [OpInfo(ITensors.Op(name, n), sites[n]) for name in operatorNames] for
       n in eachindex(sites)
     ]
 
-    return @time "\tConstrucing MPO" MPO_new(os, sites; basisOpCacheVec=opCacheVec)
+    return @time "\tConstrucing MPO" MPO_new(os, sites; basis_op_cache_vec=op_cache_vec)
   end
 end
 
@@ -154,7 +154,7 @@ function electronic_structure_OpIDSum(N::Int, complexBasisFunctions::Bool)::MPO
 
   sites = siteinds("Electron", N; conserve_qns=true)
   return @time "\tConstructing MPO" MPO_new(
-    os, sites, operatorNames; basisOpCacheVec=operatorNames
+    os, sites, operatorNames; basis_op_cache_vec=operatorNames
   )
 end
 

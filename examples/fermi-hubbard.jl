@@ -73,7 +73,7 @@ function Fermi_Hubbard_momentum_space(
       ] for _ in 1:N
     ]
 
-    return @time "\tConstructing MPO" MPO_new(os, sites; basisOpCacheVec=operatorNames)
+    return @time "\tConstructing MPO" MPO_new(os, sites; basis_op_cache_vec=operatorNames)
   end
 end
 
@@ -126,7 +126,7 @@ function Fermi_Hubbard_momentum_space_OpIDSum(N::Int, t::Real=1.0, U::Real=4.0):
 
   sites = siteinds("Electron", N; conserve_qns=true)
   return @time "\tConstructing MPO" MPO_new(
-    os, sites, operatorNames; basisOpCacheVec=operatorNames
+    os, sites, operatorNames; basis_op_cache_vec=operatorNames
   )
 end
 

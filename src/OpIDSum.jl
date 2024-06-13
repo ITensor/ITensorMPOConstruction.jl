@@ -1,15 +1,15 @@
 struct OpInfo
   matrix::Matrix
-  isFermionic::Bool
+  is_fermionic::Bool
   qnFlux::QN
 end
 
-function OpInfo(localOp::Op, site::Index)
-  tensor = op(site, ITensors.which_op(localOp); ITensors.params(localOp)...)
-  isFermionic = has_fermion_string(ITensors.name(localOp), site)
+function OpInfo(local_op::Op, site::Index)
+  tensor = op(site, ITensors.which_op(local_op); ITensors.params(local_op)...)
+  is_fermionic = has_fermion_string(ITensors.name(local_op), site)
   qnFlux = flux(tensor)
 
-  return OpInfo(copy(array(tensor)), isFermionic, isnothing(qnFlux) ? QN() : qnFlux)
+  return OpInfo(copy(array(tensor)), is_fermionic, isnothing(qnFlux) ? QN() : qnFlux)
 end
 
 OpCacheVec = Vector{Vector{OpInfo}}
@@ -91,15 +91,15 @@ function add_to_scalar!(os::OpIDSum{C}, i::Integer, scalar::C)::Nothing where {C
   return nothing
 end
 
-function determine_val_type(os::OpIDSum{C}, opCacheVec::OpCacheVec) where {C}
+function determine_val_type(os::OpIDSum{C}, op_cache_vec::OpCacheVec) where {C}
   !all(isreal(scalar) for scalar in os.scalars) && return ComplexF64
-  !all(isreal(op.matrix) for opsOfSite in opCacheVec for op in opsOfSite) &&
+  !all(isreal(op.matrix) for ops_of_site in op_cache_vec for op in ops_of_site) &&
     return ComplexF64
   return Float64
 end
 
 @timeit function sort_each_term!(
-  os::OpIDSum, opCacheVec::OpCacheVec, sites::Vector{<:Index}
+  os::OpIDSum, op_cache_vec::OpCacheVec, sites::Vector{<:Index}
 )::Nothing
   isless_site(o1::OpID, o2::OpID) = o1.n < o2.n
 
@@ -122,7 +122,7 @@ end
         "The OpSum contains an operator acting on site $(op.n) that extends beyond the number of sites $(length(sites)).",
       )
 
-      if opCacheVec[op.n][op.id].isFermionic
+      if op_cache_vec[op.n][op.id].is_fermionic
         parity = -parity
       else
         # Ignore bosonic operators in perm
@@ -145,13 +145,11 @@ end
 end
 
 @timeit function merge_terms!(os::OpIDSum{C})::Nothing where {C}
-  uniqueTermLocations = Dict{
-    SubArray{OpID,1,Vector{OpID},Tuple{UnitRange{Int64}},true},Int
-  }()
+  unique_location = Dict{SubArray{OpID,1,Vector{OpID},Tuple{UnitRange{Int64}},true},Int}()
   for i in eachindex(os)
     scalar, ops = os[i]
 
-    loc = get!(uniqueTermLocations, ops, i)
+    loc = get!(unique_location, ops, i)
     loc == i && continue
 
     add_to_scalar!(os, loc, scalar)
@@ -161,22 +159,22 @@ end
   return nothing
 end
 
-function convert_to_basis(op::Matrix, basisCache::Vector{OpInfo})::Tuple{ComplexF64,Int}
+function convert_to_basis(op::Matrix, basis_cache::Vector{OpInfo})::Tuple{ComplexF64,Int}
   function check_ratios_are_equal(a1::Number, b1::Number, ai::Number, bi::Number)::Bool
     # TODO: Add a tolerance param here
     return abs(a1 * bi - b1 * ai) <= 1e-10
   end
 
-  for i in eachindex(basisCache)
-    basisOp = basisCache[i].matrix
+  for i in eachindex(basis_cache)
+    basis_op = basis_cache[i].matrix
 
-    j = findfirst(val -> val != 0, basisOp)
+    j = findfirst(val -> val != 0, basis_op)
 
     if all(
-      check_ratios_are_equal(basisOp[j], op[j], basisOp[k], op[k]) for
+      check_ratios_are_equal(basis_op[j], op[j], basis_op[k], op[k]) for
       k in CartesianIndices(op)
     )
-      return op[j] / basisOp[j], i
+      return op[j] / basis_op[j], i
     end
   end
 
@@ -200,28 +198,28 @@ function for_equal_sites(f::Function, ops::AbstractVector{OpID})::Nothing
 end
 
 @timeit function rewrite_in_operator_basis(
-  os::OpIDSum{C}, opCacheVec::OpCacheVec, basisOpCacheVec::OpCacheVec
+  os::OpIDSum{C}, op_cache_vec::OpCacheVec, basis_op_cache_vec::OpCacheVec
 )::OpIDSum{C} where {C}
   @memoize Dict function convert_to_basis_memoized(
     ops::AbstractVector{OpID}
   )::Tuple{ComplexF64,Int}
     n = ops[1].n
-    localOp = my_matrix(ops, opCacheVec[n])
-    return convert_to_basis(localOp, basisOpCacheVec[n])
+    local_op = my_matrix(ops, op_cache_vec[n])
+    return convert_to_basis(local_op, basis_op_cache_vec[n])
   end
 
-  newOpIdSum = OpIDSum{C}()
+  new_os = OpIDSum{C}()
 
-  opsInBasis = Vector{OpID}()
+  ops_in_basis = Vector{OpID}()
   for i in eachindex(os)
     scalar, ops = os[i]
 
-    empty!(opsInBasis)
+    empty!(ops_in_basis)
 
     for_equal_sites(ops) do a, b
-      coeff, basisID = convert_to_basis_memoized(@view ops[a:b])
+      coeff, basis_id = convert_to_basis_memoized(@view ops[a:b])
 
-      if basisID == 0
+      if basis_id == 0
         error(
           "The following operator product cannot be simplified into a single basis operator.\n" *
           "\tOperator product = $(ops[a:b])\n",
@@ -229,13 +227,13 @@ end
       end
 
       scalar *= coeff
-      push!(opsInBasis, OpID(basisID, ops[a].n))
+      push!(ops_in_basis, OpID(basis_id, ops[a].n))
     end
 
-    push!(newOpIdSum, C(scalar), opsInBasis)
+    push!(new_os, C(scalar), ops_in_basis)
   end
 
-  return newOpIdSum
+  return new_os
 end
 
 @timeit function op_sum_to_opID_sum(
@@ -243,49 +241,50 @@ end
 )::Tuple{OpIDSum{C},OpCacheVec} where {C}
   N = length(sites)
 
-  opsOnEachSite = [Dict{Op,Int}(Op("I", n) => 1) for n in 1:N]
+  ops_on_each_site = [Dict{Op,Int}(Op("I", n) => 1) for n in 1:N]
 
   opID_sum = OpIDSum{C}()
 
-  opIDTerm = Vector{OpID}()
+  opID_term = Vector{OpID}()
+  ## TODO: Don't need $i$ here
   for (i, term) in enumerate(os)
-    resize!(opIDTerm, 0)
+    resize!(opID_term, 0)
     for op in ITensors.terms(term)
       op.which_op == "I" && continue
 
       n = ITensors.site(op)
-      opID = get!(opsOnEachSite[n], op, length(opsOnEachSite[n]) + 1)
-      push!(opIDTerm, OpID(opID, n))
+      opID = get!(ops_on_each_site[n], op, length(ops_on_each_site[n]) + 1)
+      push!(opID_term, OpID(opID, n))
     end
 
-    push!(opID_sum, ITensors.coefficient(term), opIDTerm)
+    push!(opID_sum, ITensors.coefficient(term), opID_term)
   end
 
-  opCacheVec = OpCacheVec()
-  for (n, opsOnSite) in enumerate(opsOnEachSite)
-    opCache = Vector{OpInfo}(undef, length(opsOnSite))
+  op_cache_vec = OpCacheVec()
+  for (n, ops_on_site) in enumerate(ops_on_each_site)
+    op_cache = Vector{OpInfo}(undef, length(ops_on_site))
 
-    for (op, id) in opsOnSite
+    for (op, id) in ops_on_site
       @assert ITensors.site(op) == n
-      opCache[id] = OpInfo(op, sites[n])
+      op_cache[id] = OpInfo(op, sites[n])
     end
 
-    push!(opCacheVec, opCache)
+    push!(op_cache_vec, op_cache)
   end
 
-  return opID_sum, opCacheVec
+  return opID_sum, op_cache_vec
 end
 
-@timeit function check_for_errors(os::OpIDSum, opCacheVec::OpCacheVec)::Nothing
+@timeit function check_for_errors(os::OpIDSum, op_cache_vec::OpCacheVec)::Nothing
   for i in eachindex(os)
     _, ops = os[i]
 
     flux = QN()
-    fermionParity = 0
+    fermion_parity = 0
     for j in eachindex(ops)
       opj = ops[j]
-      flux += opCacheVec[opj.n][opj.id].qnFlux
-      fermionParity += opCacheVec[opj.n][opj.id].isFermionic
+      flux += op_cache_vec[opj.n][opj.id].qnFlux
+      fermion_parity += op_cache_vec[opj.n][opj.id].is_fermionic
 
       if j < length(ops)
         ops[j].n > ops[j + 1].n && error("The operators are not sorted by site.")
@@ -295,59 +294,59 @@ end
     end
 
     flux != QN() && error("The term does not have zero flux.")
-    mod(fermionParity, 2) != 0 && error("Odd parity fermion terms not supported.")
+    mod(fermion_parity, 2) != 0 && error("Odd parity fermion terms not supported.")
   end
 end
 
 @timeit function prepare_opID_sum!(
   os::OpIDSum,
   sites::Vector{<:Index},
-  opCacheVec::OpCacheVec,
-  basisOpCacheVec::Union{Nothing,OpCacheVec},
+  op_cache_vec::OpCacheVec,
+  basis_op_cache_vec::Union{Nothing,OpCacheVec},
 )::Tuple{OpIDSum,OpCacheVec}
-  sort_each_term!(os, opCacheVec, sites)
+  sort_each_term!(os, op_cache_vec, sites)
   merge_terms!(os)
 
-  if !isnothing(basisOpCacheVec)
-    os, opCacheVec = rewrite_in_operator_basis(os, opCacheVec, basisOpCacheVec),
-    basisOpCacheVec
+  if !isnothing(basis_op_cache_vec)
+    os, op_cache_vec = rewrite_in_operator_basis(os, op_cache_vec, basis_op_cache_vec),
+    basis_op_cache_vec
     merge_terms!(os)
   end
 
-  check_for_errors(os, opCacheVec)
+  check_for_errors(os, op_cache_vec)
 
   # This is to account for the dummy site at the end
-  push!(opCacheVec, OpInfo[])
+  push!(op_cache_vec, OpInfo[])
 
-  return os, opCacheVec
+  return os, op_cache_vec
 end
 
 function my_matrix(
-  term::AbstractVector{OpID}, opCache::Vector{OpInfo}; needsJWString::Bool=false
+  term::AbstractVector{OpID}, op_cache::Vector{OpInfo}; needs_JW_string::Bool=false
 )
   @assert all(op.n == term[1].n for op in term)
 
   if isempty(term)
-    localMatrix = Matrix{Float64}(I, size(opCache[begin].matrix)...)
+    local_matrix = Matrix{Float64}(I, size(op_cache[begin].matrix)...)
   else
-    localMatrix = prod(opCache[op.id].matrix for op in term)
+    local_matrix = prod(op_cache[op.id].matrix for op in term)
   end
 
-  if needsJWString
-    # localMatrix can be returned directly from the opCache, and in this case we need to copy it
+  if needs_JW_string
+    # local_matrix can be returned directly from the op_cache, and in this case we need to copy it
     # before modification.
-    localMatrix = copy(localMatrix)
+    local_matrix = copy(local_matrix)
 
     # This is a weird way of applying the Jordan-Wigner string it but op("F", sites[n]) is very slow.
-    if size(localMatrix, 1) == 2
-      localMatrix[:, 2] *= -1
-    elseif size(localMatrix, 1) == 4
-      localMatrix[:, 2] *= -1
-      localMatrix[:, 3] *= -1
+    if size(local_matrix, 1) == 2
+      local_matrix[:, 2] *= -1
+    elseif size(local_matrix, 1) == 4
+      local_matrix[:, 2] *= -1
+      local_matrix[:, 3] *= -1
     else
       error("Unknown fermionic site.")
     end
   end
 
-  return localMatrix
+  return local_matrix
 end
