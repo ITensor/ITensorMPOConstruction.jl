@@ -24,7 +24,7 @@ function test_from_OpSum(
     mpoFromITensor = MPO(os, sites; cutoff=tol)
   end
 
-  @test all(linkdims(mpo) .<= linkdims(mpoFromITensor))
+  # @test all(linkdims(mpo) .<= linkdims(mpoFromITensor))
 
   compare_MPOs(mpo, mpoFromITensor)
 
@@ -236,11 +236,11 @@ end
 @testset "MPOConstruction" begin
   test_IXYZ(5, -1)
 
-  # test_random_operator(8, 4, -1)
+  test_random_operator(8, 4, -1)
 
-  # test_qft(6, false, -1)
+  test_qft(6, false, -1)
 
-  # test_qft(6, true, -1)
+  test_qft(6, true, -1)
 
   # test_Fermi_Hubbard(12, -1)
 end

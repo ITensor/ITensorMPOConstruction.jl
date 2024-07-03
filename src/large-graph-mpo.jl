@@ -22,16 +22,18 @@ function MPOGraph{N, C}(os::OpIDSum{C}, op_cache::Vector{OpInfo}) where {N, C}
     push!(g.right_vertices, NTuple{N, OpID}(op_vec))
   end
 
-  ## Next we need to sort the right vertices
+  ## Next we need to sort the right vertices. TODO: Should be able to do this more efficiently I think
   inds = sortperm(g.right_vertices)
+  sort!(g.right_vertices)
+  weights = os.scalars[inds]
 
   ## TODO: Break this out into a function that is shared with at_site!
   next_edges = [Vector{Tuple{Int, C}}() for _ in 1:length(op_cache)]
 
   for j in 1:right_size(g)
-    weight = os.scalars[j]
-    onsite_op = get_onsite_op(right_vertex(g, inds[j]), 1)
-    push!(next_edges[onsite_op], (inds[j], weight))
+    weight = weights[j]
+    onsite_op = get_onsite_op(right_vertex(g, j), 1)
+    push!(next_edges[onsite_op], (j, weight))
   end
 
   for op_id in 1:length(op_cache)
@@ -43,15 +45,13 @@ function MPOGraph{N, C}(os::OpIDSum{C}, op_cache::Vector{OpInfo}) where {N, C}
     push!(g.edges_from_left, next_edges[op_id])
   end
 
-
-  # edges = Vector{Tuple{Int, C}}()
-  # for i in eachindex(os)
-  #   scalar = os.scalars[i]
-  #   scalar == 0 && continue
-  #   push!(edges, (inds[i], scalar))
+  # for (lv_id, lv) in enumerate(g.left_vertices)
+  #   println("Op = $(lv.op_id)")
+  #   for (rv_id, weight) in g.edges_from_left[lv_id]
+  #     println("    $weight $(right_vertex(g, rv_id))")
+  #   end
   # end
 
-  sort!(g.right_vertices)
   return g
 end
 
