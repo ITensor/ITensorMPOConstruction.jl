@@ -52,16 +52,20 @@ Construct the graph of the sum split about a dummy site 0.
 
 Every term in the sum must be unique and sorted by site, have 0 flux, and even fermionic parity.
 """
-@timeit function MPOGraph{C}(os::OpIDSum) where {C}
+@timeit function MPOGraph{C}(os::OpIDSum; verbose::Bool=false) where {C}
   g = MPOGraph{C}()
   lv = LeftVertex(0, OpID(0, 0), false)
 
   push!(g.left_vertex_values, lv)
 
+  nz = 0
   for i in eachindex(os)
     scalar, ops = os[i]
 
-    scalar == 0 && continue
+    if scalar == 0
+      nz += 1
+      continue
+    end
 
     rv = RightVertex(reverse(ops), false)
     push!(g.right_vertex_values, rv)
@@ -70,6 +74,8 @@ Every term in the sum must be unique and sorted by site, have 0 flux, and even f
     push!(g.edge_right_vertex, length(g.right_vertex_values))
     push!(g.edge_weight, scalar)
   end
+
+  verbose && println("    $nz/$(length(os)) terms were ignored since they have zero weight.")
 
   return g
 end

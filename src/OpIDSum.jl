@@ -39,6 +39,8 @@ struct OpID
   n::Int16
 end
 
+Base.isless(op1::OpID, op2::OpID) = (op1.n, op1.id) < (op2.n, op2.id)
+
 struct OpIDSum{C}
   terms::Vector{OpID}
   offsets::Vector{Int}
@@ -62,8 +64,14 @@ function Base.getindex(os::OpIDSum, i::Integer)
 end
 
 function Base.push!(os::OpIDSum{C}, scalar::C, ops)::OpIDSum{C} where {C}
-  append!(os.terms, ops)
-  push!(os.offsets, os.offsets[end] + length(ops))
+  num_appended = 0
+  for op in ops
+    op.id == 1 && continue ## Filter out identity ops
+    push!(os.terms, op)
+    num_appended += 1
+  end
+
+  push!(os.offsets, os.offsets[end] + num_appended)
   push!(os.scalars, scalar)
 
   return os
