@@ -242,5 +242,5 @@ end
 
   test_qft(6, true, -1)
 
-  # test_Fermi_Hubbard(12, -1)
+  test_Fermi_Hubbard(12, -1)
 end

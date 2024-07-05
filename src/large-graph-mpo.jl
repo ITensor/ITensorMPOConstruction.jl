@@ -2,7 +2,7 @@ BlockSparseMatrix{C} = Dict{Tuple{Int,Int},Matrix{C}}
 
 MPOGraph{N, C} = BipartiteGraph{LeftVertex, NTuple{N, OpID}, C}
 
-function MPOGraph{N, C}(os::OpIDSum{C}, op_cache::Vector{OpInfo}) where {N, C}
+function MPOGraph{N, C}(os::OpIDSum{C}, op_cache_vec::OpCacheVec) where {N, C}
   g = MPOGraph{N, C}([], [], [])
 
   op_vec = OpID[OpID(0, 0) for _ in 1:N]
@@ -28,7 +28,7 @@ function MPOGraph{N, C}(os::OpIDSum{C}, op_cache::Vector{OpInfo}) where {N, C}
   weights = os.scalars[inds]
 
   ## TODO: Break this out into a function that is shared with at_site!
-  next_edges = [Vector{Tuple{Int, C}}() for _ in 1:length(op_cache)]
+  next_edges = [Vector{Tuple{Int, C}}() for _ in 1:length(op_cache_vec[1])]
 
   for j in 1:right_size(g)
     weight = weights[j]
@@ -36,21 +36,14 @@ function MPOGraph{N, C}(os::OpIDSum{C}, op_cache::Vector{OpInfo}) where {N, C}
     push!(next_edges[onsite_op], (j, weight))
   end
 
-  for op_id in 1:length(op_cache)
+  for op_id in 1:length(op_cache_vec[1])
     isempty(next_edges[op_id]) && continue
 
     first_rv_id = next_edges[op_id][1][1]
-    needs_JW_string = is_fermionic(right_vertex(g, first_rv_id), 2, op_cache)
+    needs_JW_string = is_fermionic(right_vertex(g, first_rv_id), 2, op_cache_vec)
     push!(g.left_vertices, LeftVertex(1, op_id, needs_JW_string))
     push!(g.edges_from_left, next_edges[op_id])
   end
-
-  # for (lv_id, lv) in enumerate(g.left_vertices)
-  #   println("Op = $(lv.op_id)")
-  #   for (rv_id, weight) in g.edges_from_left[lv_id]
-  #     println("    $weight $(right_vertex(g, rv_id))")
-  #   end
-  # end
 
   return g
 end
@@ -90,7 +83,7 @@ function add_to_local_matrix!(a::Matrix, weight::Number, local_op::Matrix, needs
     a[:, 1] .+= weight * local_op[:, 1]
     a[:, 2] .-= weight * local_op[:, 2]
     a[:, 3] .-= weight * local_op[:, 3]
-    a[:, 4] .-= weight * local_op[:, 4]
+    a[:, 4] .+= weight * local_op[:, 4]
   else
     error("Unknown fermionic site.")
   end
@@ -112,33 +105,35 @@ function at_site!(
   qi = Vector{Pair{QN,Int}}()
   outgoing_link_offset = 0
 
-  next_graph = MPOGraph{N, C}(Vector{LeftVertex}(), g.right_vertices, Vector{Vector{Tuple{Int, C}}}())
+  next_graph = MPOGraph{N, C}([], g.right_vertices, [])
   combine_duplicate_adjacent_right_vertices!(g, terms_eq_from(n + 1))
-  compute_connected_components!(g)
+  ccs = compute_connected_components!(g)
 
-  for cc in 1:num_connected_components(g)
-    length(g.edges_from_left[1]) == 0 && error("Something wrong in graph construction :(")
-    W, left_map, right_map = get_cc_matrix(g, cc)
+  for cc in 1:num_connected_components(ccs)
+    W, left_map, right_map = get_cc_matrix(g, ccs, cc)
     
     ## This information is now in W and not needed again.
     clear_edges!(g, left_map)
 
     ## Compute the decomposition and then free W
     Q, R, prow, pcol, rank = sparse_qr(W, tol)
-
     W = nothing
 
-    #=
-    If we are at the last site, then Q will be a 1x1 matrix containing an overall phase
-    that we need to account for.
-    =#
+    ## If we are at the last site, then Q will be a 1x1 matrix containing an overall phase
+    ## that we need to account for.
     if n == length(sites)
       R *= only(Q)
     end
 
     if has_qns
-      error("Not working with QNs yet :(")
-      # append!(qi, [in_qn => rank])
+      right_flux = flux(right_vertex(g, right_map[1]), n + 1, op_cache_vec)
+
+      ## TODO: This is a TEST
+      for rv_id in right_map
+        @assert right_flux == flux(right_vertex(g, rv_id), n + 1, op_cache_vec)
+      end
+
+      append!(qi, [QN() - right_flux => rank])
     end
 
     # Form the local transformation tensor.
@@ -173,7 +168,7 @@ function at_site!(
         isempty(next_edges[op_id]) && continue
 
         first_rv_id = next_edges[op_id][1][1]
-        needs_JW_string = is_fermionic(right_vertex(g, first_rv_id), n + 1, op_cache_vec[n + 1])
+        needs_JW_string = is_fermionic(right_vertex(g, first_rv_id), n + 2, op_cache_vec)
         push!(next_graph.left_vertices, LeftVertex(m + outgoing_link_offset, op_id, needs_JW_string))
         push!(next_graph.edges_from_left, next_edges[op_id])
       end

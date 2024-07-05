@@ -1,5 +1,6 @@
 using ITensorMPOConstruction
-using ITensorMPOConstruction: terms_eq_from, get_onsite_op
+using ITensorMPOConstruction: terms_eq_from, get_onsite_op, is_fermionic
+using ITensors
 using Test
 
 function test_terms_eq_from()
@@ -34,8 +35,41 @@ function test_get_onsite_op()
   @test get_onsite_op(op, 1) == 1
 end
 
+function test_is_fermionic()
+  sites = siteinds("Fermion", 10)
+  operatorNames = ["I", "C", "Cdag", "N"]
+  I, C, Cdag, N = 1, 2, 3, 4
+
+  op_cache_vec = [
+    [OpInfo(ITensors.Op(name, n), sites[n]) for name in operatorNames] for
+    n in eachindex(sites)
+  ]
+
+  @test !is_fermionic((OpID(I, 1),), 1, op_cache_vec)
+  @test is_fermionic((OpID(C, 1),), 1, op_cache_vec)
+  @test is_fermionic((OpID(Cdag, 1),), 1, op_cache_vec)
+  @test !is_fermionic((OpID(N, 1),), 1, op_cache_vec)
+
+  @test !is_fermionic((OpID(I, 1),), 2, op_cache_vec)
+  @test !is_fermionic((OpID(C, 1),), 2, op_cache_vec)
+  @test !is_fermionic((OpID(Cdag, 1),), 2, op_cache_vec)
+  @test !is_fermionic((OpID(N, 1),), 2, op_cache_vec)
+
+
+  @test !is_fermionic((OpID(C, 5), OpID(Cdag, 2)), 1, op_cache_vec)
+  @test !is_fermionic((OpID(C, 5), OpID(Cdag, 2)), 2, op_cache_vec)
+
+  @test is_fermionic((OpID(C, 5), OpID(Cdag, 2)), 3, op_cache_vec)
+  @test is_fermionic((OpID(C, 5), OpID(Cdag, 2)), 4, op_cache_vec)
+  @test is_fermionic((OpID(C, 5), OpID(Cdag, 2)), 5, op_cache_vec)
+
+  @test !is_fermionic((OpID(C, 5), OpID(Cdag, 2)), 6, op_cache_vec)
+end
+
 @testset "Ops" begin
   test_terms_eq_from()
 
   test_get_onsite_op()
+
+  test_is_fermionic()
 end

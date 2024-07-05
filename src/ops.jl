@@ -25,11 +25,20 @@ function get_onsite_op(ops::NTuple{N, OpID}, n::Int)::Int16 where {N}
   return 1
 end
 
-function is_fermionic(ops::NTuple{N, OpID}, n::Int, op_cache::Vector{OpInfo})::Bool where {N}
+function is_fermionic(ops::NTuple{N, OpID}, n::Int, op_cache_vec::OpCacheVec)::Bool where {N}
   result = false
   for op in ops
-    result = xor(result, op.n > n && op_cache[op.id].is_fermionic)
+    result = xor(result, op.n >= n && op_cache_vec[op.n][op.id].is_fermionic)
   end
 
   return result
+end
+
+function ITensors.flux(ops::NTuple{N, OpID}, n::Int, op_cache_vec::OpCacheVec)::QN where {N}
+  flux = QN()
+  for op in ops
+    op.n >= n && (flux += op_cache_vec[op.n][op.id].qnFlux)
+  end
+  
+  return flux
 end

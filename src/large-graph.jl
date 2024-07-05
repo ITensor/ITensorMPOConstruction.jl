@@ -42,33 +42,40 @@ function combine_duplicate_adjacent_right_vertices!(g::BipartiteGraph, eq::Funct
   return nothing
 end
 
-function compute_connected_components!(g::BipartiteGraph)::Nothing
-  component_of_rv = zeros(Int, right_size(g)) # TODO: IDK if I should allocate this each time, also could probably be Int16
+struct BipartiteGraphConnectedComponents
+  lvs_of_component::Vector{Vector{Int}}
+  component_position_of_rvs::Vector{Int}
+  rv_size_of_component::Vector{Int}
+end
+
+## This ignores vertices that are not connected to anything
+function compute_connected_components!(g::BipartiteGraph)::BipartiteGraphConnectedComponents
+  component_of_rvs = zeros(Int, right_size(g)) # TODO: IDK if I should allocate this each time, also could probably be Int16
 
   rvs_of_component = Vector{Set{Int}}() # TODO: Pretty sure this could be a Vector{Vector{Int}}
   for lv_id in 1:left_size(g)
-    cur_component = minimum(component_of_rv[rv_id] for (rv_id, weight) in g.edges_from_left[lv_id] if component_of_rv[rv_id] != 0; init=typemax(Int))
+    cur_component = minimum(component_of_rvs[rv_id] for (rv_id, weight) in g.edges_from_left[lv_id] if component_of_rvs[rv_id] != 0; init=typemax(Int))
 
     if cur_component == typemax(Int)
       # This means we have found a new component (at least for now).
       push!(rvs_of_component, Set{Int}(rv_id for (rv_id, weight) in g.edges_from_left[lv_id]))
 
       for (rv_id, weight) in g.edges_from_left[lv_id]
-        component_of_rv[rv_id] = length(rvs_of_component)
+        component_of_rvs[rv_id] = length(rvs_of_component)
       end
     else
       for (rv_id, weight) in g.edges_from_left[lv_id]
-        prev_component = component_of_rv[rv_id]
+        prev_component = component_of_rvs[rv_id]
         prev_component == cur_component && continue
 
         if prev_component == 0
-          component_of_rv[rv_id] = cur_component
+          component_of_rvs[rv_id] = cur_component
           push!(rvs_of_component[cur_component], rv_id)
           continue
         end
         
         for rv_id in rvs_of_component[prev_component]
-          component_of_rv[rv_id] = cur_component
+          component_of_rvs[rv_id] = cur_component
         end
 
         union!(rvs_of_component[cur_component], rvs_of_component[prev_component])
@@ -77,35 +84,64 @@ function compute_connected_components!(g::BipartiteGraph)::Nothing
     end
   end
 
-  ## TODO: This is a check
+  rv_size_of_component = [length(rvs) for rvs in rvs_of_component]
+  lvs_of_component = [Vector{Int}() for _ in rvs_of_component]
+  rvs_of_component = nothing
+
   for lv_id in 1:left_size(g)
-    if !allequal(component_of_rv[rv_id] for (rv_id, weight) in g.edges_from_left[lv_id])
-      println("\nError $lv_id: ", [component_of_rv[rv_id] for (rv_id, weight) in g.edges_from_left[lv_id]])
+    isempty(g.edges_from_left[lv_id]) && continue ## If the left vertex is not connected to anything we can skip it.
+    component = component_of_rvs[g.edges_from_left[lv_id][1][1]]
+    push!(lvs_of_component[component], lv_id)
+
+    ## TODO: This is a check
+    if !allequal(component_of_rvs[rv_id] for (rv_id, weight) in g.edges_from_left[lv_id])
+      println("\nError $lv_id: ", [component_of_rvs[rv_id] for (rv_id, weight) in g.edges_from_left[lv_id]])
       error("Oops")
     end
   end
 
-  return nothing
+  ## Mutate component_of_rvs which stores the component of each right right vertex
+  ## into the position of each right vertex within it's component.
+  current_position = zeros(Int, length(lvs_of_component))
+  for rv_id in 1:right_size(g)
+    component = component_of_rvs[rv_id]
+    component == 0 && continue
+
+    current_position[component] += 1
+    component_of_rvs[rv_id] = current_position[component]
+  end
+
+  ## Finally remove the empty components
+  lvs_of_component = [lvs for lvs in lvs_of_component if !isempty(lvs)]
+  rv_size_of_component = [i for i in rv_size_of_component if i != 0]
+
+  return BipartiteGraphConnectedComponents(lvs_of_component, component_of_rvs, rv_size_of_component)
 end
 
-num_connected_components(g::BipartiteGraph) = 1
+num_connected_components(cc::BipartiteGraphConnectedComponents) = length(cc.lvs_of_component)
 
-function get_cc_matrix(g::BipartiteGraph{L, R, C}, cc::Int)::Tuple{SparseMatrixCSC{C, Int}, Vector{Int}, Vector{Int}} where {L, R, C}
-  @assert cc == 1
+function get_cc_matrix(g::BipartiteGraph{L, R, C}, ccs::BipartiteGraphConnectedComponents, cc::Int)::Tuple{SparseMatrixCSC{C, Int}, Vector{Int}, Vector{Int}} where {L, R, C}
+  num_edges = sum(length(g.edges_from_left[lv]) for lvs in ccs.lvs_of_component[cc] for lv in lvs)
+  
+  edge_left_vertex = Vector{Int}(undef, num_edges)
+  edge_right_vertex = Vector{Int}(undef, num_edges)
+  edge_weight = Vector{C}(undef, num_edges)
+  right_map = Vector{Int}(undef, ccs.rv_size_of_component[cc])
 
-  edge_left_vertex = Int[]
-  edge_right_vertex = Int[]
-  edge_weight = C[]
-
-  for lv_id in 1:left_size(g)
+  pos = 1
+  for (i, lv_id) in enumerate(ccs.lvs_of_component[cc])
     for (rv_id, weight) in g.edges_from_left[lv_id]
-      push!(edge_left_vertex, lv_id)
-      push!(edge_right_vertex, rv_id)
-      push!(edge_weight, weight)
+      j = ccs.component_position_of_rvs[rv_id]
+      right_map[j] = rv_id
+
+      edge_left_vertex[pos] = i
+      edge_right_vertex[pos] = j
+      edge_weight[pos] = weight
+      pos += 1
     end
   end
 
-  return sparse(edge_right_vertex, edge_left_vertex, edge_weight), [i for i in 1:left_size(g)], [i for i in 1:right_size(g)]
+  return sparse(edge_right_vertex, edge_left_vertex, edge_weight), ccs.lvs_of_component[cc], right_map
 end
 
 function clear_edges!(g::BipartiteGraph, left_ids::Vector{Int})::Nothing
