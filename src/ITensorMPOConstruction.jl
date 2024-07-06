@@ -13,6 +13,7 @@ using TimerOutputs
 #####################################
 # MPO Construction
 #
+include("time_if.jl")
 include("OpIDSum.jl")
 include("ops.jl")
 include("large-graph.jl")

@@ -10,10 +10,14 @@ right_size(g::BipartiteGraph)::Int = length(g.right_vertices)
 left_vertex(g::BipartiteGraph, lv_id::Integer) = g.left_vertices[lv_id]
 right_vertex(g::BipartiteGraph, rv_id::Integer) = g.right_vertices[rv_id]
 
+function num_edges(g::BipartiteGraph)::Int
+  return sum(length(rvs) for rvs in g.edges_from_left)
+end
+
 """
 The input graph's right vertices should be sorted.
 """
-function combine_duplicate_adjacent_right_vertices!(g::BipartiteGraph, eq::Function)::Nothing
+@timeit function combine_duplicate_adjacent_right_vertices!(g::BipartiteGraph, eq::Function)::Nothing
   new_positions = zeros(Int, right_size(g)) # TODO: IDK if I should allocate this each time
 
   cur, next = 1, 2
@@ -49,7 +53,7 @@ struct BipartiteGraphConnectedComponents
 end
 
 ## This ignores vertices that are not connected to anything
-function compute_connected_components!(g::BipartiteGraph)::BipartiteGraphConnectedComponents
+@timeit function compute_connected_components!(g::BipartiteGraph)::BipartiteGraphConnectedComponents
   component_of_rvs = zeros(Int, right_size(g)) # TODO: IDK if I should allocate this each time, also could probably be Int16
 
   rvs_of_component = Vector{Set{Int}}() # TODO: Pretty sure this could be a Vector{Vector{Int}}
@@ -120,7 +124,7 @@ end
 
 num_connected_components(cc::BipartiteGraphConnectedComponents) = length(cc.lvs_of_component)
 
-function get_cc_matrix(g::BipartiteGraph{L, R, C}, ccs::BipartiteGraphConnectedComponents, cc::Int)::Tuple{SparseMatrixCSC{C, Int}, Vector{Int}, Vector{Int}} where {L, R, C}
+@timeit function get_cc_matrix(g::BipartiteGraph{L, R, C}, ccs::BipartiteGraphConnectedComponents, cc::Int)::Tuple{SparseMatrixCSC{C, Int}, Vector{Int}, Vector{Int}} where {L, R, C}
   num_edges = sum(length(g.edges_from_left[lv]) for lvs in ccs.lvs_of_component[cc] for lv in lvs)
   
   edge_left_vertex = Vector{Int}(undef, num_edges)

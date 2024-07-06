@@ -4,14 +4,14 @@ function svdMPO_new(
   op_cache_vec::OpCacheVec,
   sites::Vector{<:Index};
   tol::Real=-1,
-  verbose::Bool=false
+  output_level::Int=0
 )::MPO where {C}
   # TODO: This should be fixed.
   @assert !ITensors.using_auto_fermion()
 
   N = length(sites)
 
-  g = MPOGraph{6, C}(os, op_cache_vec)
+  @time_if output_level 0 "Constructing MPOGraph" g = MPOGraph{6, C}(os, op_cache_vec)
 
   H = MPO(sites)
 
@@ -23,9 +23,9 @@ function svdMPO_new(
   end
 
   for n in 1:N
-    verbose && println("n = $n: at_site")
-    g, block_sparse_matrix, llinks[n + 1] = at_site!(
-      ValType, g, n, sites, tol, op_cache_vec
+    output_level > 0 && println("At site $n/$(length(sites))")
+    @time_if output_level 1 "at_site!" g, block_sparse_matrix, llinks[n + 1] = at_site!(
+      ValType, g, n, sites, tol, op_cache_vec; output_level
     )
 
     # Constructing the tensor from an array is much faster than setting the components of the ITensor directly.
@@ -75,12 +75,12 @@ function MPO_new(
   op_cache_vec::OpCacheVec;
   basis_op_cache_vec=nothing,
   tol::Real=-1,
-  verbose::Bool=false,
+  output_level::Int=0,
 )::MPO
   op_cache_vec = to_OpCacheVec(sites, op_cache_vec)
   basis_op_cache_vec = to_OpCacheVec(sites, basis_op_cache_vec)
   os, op_cache_vec = prepare_opID_sum!(os, sites, op_cache_vec, basis_op_cache_vec)
-  return svdMPO_new(ValType, os, op_cache_vec, sites; tol, verbose)
+  return svdMPO_new(ValType, os, op_cache_vec, sites; tol, output_level)
 end
 
 function MPO_new(
@@ -89,12 +89,12 @@ function MPO_new(
   op_cache_vec;
   basis_op_cache_vec=nothing,
   tol::Real=-1,
-  verbose::Bool=false,
+  output_level::Int=0,
 )::MPO
   op_cache_vec = to_OpCacheVec(sites, op_cache_vec)
   ValType = determine_val_type(os, op_cache_vec)
   return MPO_new(
-    ValType, os, sites, op_cache_vec; basis_op_cache_vec, tol, verbose
+    ValType, os, sites, op_cache_vec; basis_op_cache_vec, tol, output_level
   )
 end
 
@@ -103,20 +103,20 @@ function MPO_new(
   os::OpSum,
   sites::Vector{<:Index};
   tol::Real=-1,
-  verbose::Bool=false,
+  output_level::Int=0,
 )::MPO
   opID_sum, op_cache_vec = op_sum_to_opID_sum(os, sites)
   return MPO_new(
-    ValType, opID_sum, sites, op_cache_vec; basis_op_cache_vec, tol, verbose
+    ValType, opID_sum, sites, op_cache_vec; basis_op_cache_vec, tol, output_level
   )
 end
 
 function MPO_new(
-  os::OpSum, sites::Vector{<:Index}; basis_op_cache_vec=nothing, tol::Real=-1, verbose::Bool=false
+  os::OpSum, sites::Vector{<:Index}; basis_op_cache_vec=nothing, tol::Real=-1, output_level::Int=0
 )::MPO
   opID_sum, op_cache_vec = op_sum_to_opID_sum(os, sites)
   return MPO_new(
-    opID_sum, sites, op_cache_vec; basis_op_cache_vec, tol, verbose
+    opID_sum, sites, op_cache_vec; basis_op_cache_vec, tol, output_level
   )
 end
 

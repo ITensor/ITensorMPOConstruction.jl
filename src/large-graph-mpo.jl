@@ -2,7 +2,7 @@ BlockSparseMatrix{C} = Dict{Tuple{Int,Int},Matrix{C}}
 
 MPOGraph{N, C} = BipartiteGraph{LeftVertex, NTuple{N, OpID}, C}
 
-function MPOGraph{N, C}(os::OpIDSum{C}, op_cache_vec::OpCacheVec) where {N, C}
+@timeit function MPOGraph{N, C}(os::OpIDSum{C}, op_cache_vec::OpCacheVec) where {N, C}
   g = MPOGraph{N, C}([], [], [])
 
   op_vec = OpID[OpID(0, 0) for _ in 1:N]
@@ -49,16 +49,38 @@ function MPOGraph{N, C}(os::OpIDSum{C}, op_cache_vec::OpCacheVec) where {N, C}
 end
 
 
-function sparse_qr(
+@timeit function sparse_qr(
   A::SparseMatrixCSC, tol::Real
 )::Tuple{SparseMatrixCSC,SparseMatrixCSC,Vector{Int},Vector{Int},Int}
+  A = sparse(adjoint(A))
   if tol < 0
     ret = qr(A)
   else
     ret = qr(A; tol=tol)
   end
 
-  return sparse(ret.Q), ret.R, ret.prow, ret.pcol, rank(ret)
+  return sparse(adjoint(ret.R)), sparse(adjoint(ret.Q)), ret.pcol, ret.prow, rank(ret)
+end
+
+@timeit function sparse_svd!(
+  A::SparseMatrixCSC, tol::Real
+)::Tuple{SparseMatrixCSC,SparseMatrixCSC,Vector{Int},Vector{Int},Int}
+  @timeit "dense" A = Matrix(A)
+  F = svd!(A)
+  U, S, Vt = F.U, F.S, F.Vt
+
+  rank = 0
+  for i in 1:length(S)
+    S[i] < 1e-10 && break ## TODO: This is arbitrary
+    rank = i
+  end
+
+  @timeit "sparse" if true
+    US = sparse(U[:, 1:rank] * Diagonal(S[1:rank]))
+    Vt = sparse(Vt[1:rank, :])
+  end
+
+  return US, Vt, [i for i in 1:size(US, 1)], [i for i in 1:size(Vt, 2)], rank
 end
 
 function for_non_zeros_batch(f::Function, A::SparseMatrixCSC, max_col::Int)::Nothing
@@ -91,13 +113,14 @@ function add_to_local_matrix!(a::Matrix, weight::Number, local_op::Matrix, needs
   return nothing
 end
 
-function at_site!(
+@timeit function at_site!(
   ValType::Type{<:Number},
   g::MPOGraph{N, C},
   n::Int,
   sites::Vector{<:Index},
   tol::Real,
-  op_cache_vec::OpCacheVec)::Tuple{BipartiteGraph,BlockSparseMatrix{ValType},Index} where {N, C}
+  op_cache_vec::OpCacheVec;
+  output_level::Int=0)::Tuple{BipartiteGraph,BlockSparseMatrix{ValType},Index} where {N, C}
 
   has_qns = hasqns(sites)
   matrix = BlockSparseMatrix{ValType}()
@@ -106,17 +129,21 @@ function at_site!(
   outgoing_link_offset = 0
 
   next_graph = MPOGraph{N, C}([], g.right_vertices, [])
+  
   combine_duplicate_adjacent_right_vertices!(g, terms_eq_from(n + 1))
   ccs = compute_connected_components!(g)
 
+  output_level > 0 && println("  The graph has $(left_size(g)) left vertices, $(right_size(g)) right vertices, $(num_edges(g)) edges and $(num_connected_components(ccs)) connected components")
+
   for cc in 1:num_connected_components(ccs)
     W, left_map, right_map = get_cc_matrix(g, ccs, cc)
-    
+
     ## This information is now in W and not needed again.
     clear_edges!(g, left_map)
 
     ## Compute the decomposition and then free W
     Q, R, prow, pcol, rank = sparse_qr(W, tol)
+    # Q, R, prow, pcol, rank = sparse_svd!(W, tol)
     W = nothing
 
     ## If we are at the last site, then Q will be a 1x1 matrix containing an overall phase
@@ -125,19 +152,19 @@ function at_site!(
       R *= only(Q)
     end
 
-    if has_qns
+    @timeit "QNs" if has_qns
       right_flux = flux(right_vertex(g, right_map[1]), n + 1, op_cache_vec)
 
       ## TODO: This is a TEST
-      for rv_id in right_map
-        @assert right_flux == flux(right_vertex(g, rv_id), n + 1, op_cache_vec)
-      end
+      # for rv_id in right_map
+      #   @assert right_flux == flux(right_vertex(g, rv_id), n + 1, op_cache_vec)
+      # end
 
       append!(qi, [QN() - right_flux => rank])
     end
 
     # Form the local transformation tensor.
-    for_non_zeros_batch(R, length(left_map)) do weights, ms, i
+    @timeit "R iteration" for_non_zeros_batch(R, length(left_map)) do weights, ms, i
       lv = left_vertex(g, left_map[pcol[i]])
       local_op = op_cache_vec[n][lv.op_id].matrix
 
@@ -155,7 +182,7 @@ function at_site!(
 
     # Build the graph for the next site. If we are at the last site then
     # we can skip this step.
-    n != length(sites) && for_non_zeros_batch(Q, rank) do weights, js, m
+    @timeit "Q iteration" n != length(sites) && for_non_zeros_batch(Q, rank) do weights, js, m
       next_edges = [Vector{Tuple{Int, C}}() for _ in 1:length(op_cache_vec[n + 1])]
 
       for (weight, j) in zip(weights, js)
