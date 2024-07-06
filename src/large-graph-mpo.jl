@@ -62,27 +62,6 @@ end
   return sparse(adjoint(ret.R)), sparse(adjoint(ret.Q)), ret.pcol, ret.prow, rank(ret)
 end
 
-@timeit function sparse_svd!(
-  A::SparseMatrixCSC, tol::Real
-)::Tuple{SparseMatrixCSC,SparseMatrixCSC,Vector{Int},Vector{Int},Int}
-  @timeit "dense" A = Matrix(A)
-  F = svd!(A)
-  U, S, Vt = F.U, F.S, F.Vt
-
-  rank = 0
-  for i in 1:length(S)
-    S[i] < 1e-10 && break ## TODO: This is arbitrary
-    rank = i
-  end
-
-  @timeit "sparse" if true
-    US = sparse(U[:, 1:rank] * Diagonal(S[1:rank]))
-    Vt = sparse(Vt[1:rank, :])
-  end
-
-  return US, Vt, [i for i in 1:size(US, 1)], [i for i in 1:size(Vt, 2)], rank
-end
-
 function for_non_zeros_batch(f::Function, A::SparseMatrixCSC, max_col::Int)::Nothing
   @assert max_col <= size(A, 2) "$max_col, $(size(A, 2))"
 
@@ -143,7 +122,6 @@ end
 
     ## Compute the decomposition and then free W
     Q, R, prow, pcol, rank = sparse_qr(W, tol)
-    # Q, R, prow, pcol, rank = sparse_svd!(W, tol)
     W = nothing
 
     ## If we are at the last site, then Q will be a 1x1 matrix containing an overall phase
@@ -154,12 +132,6 @@ end
 
     @timeit "QNs" if has_qns
       right_flux = flux(right_vertex(g, right_map[1]), n + 1, op_cache_vec)
-
-      ## TODO: This is a TEST
-      # for rv_id in right_map
-      #   @assert right_flux == flux(right_vertex(g, rv_id), n + 1, op_cache_vec)
-      # end
-
       append!(qi, [QN() - right_flux => rank])
     end
 
@@ -184,6 +156,8 @@ end
     # we can skip this step.
     @timeit "Q iteration" n != length(sites) && for_non_zeros_batch(Q, rank) do weights, js, m
       next_edges = [Vector{Tuple{Int, C}}() for _ in 1:length(op_cache_vec[n + 1])]
+
+      ## TODO: I think something smart can be done here since we know the right vertices are sorted
 
       for (weight, j) in zip(weights, js)
         j = right_map[prow[j]]
