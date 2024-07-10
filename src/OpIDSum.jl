@@ -64,6 +64,8 @@ function Base.getindex(os::OpIDSum, i::Integer)
 end
 
 function Base.push!(os::OpIDSum{C}, scalar::C, ops)::OpIDSum{C} where {C}
+  scalar == zero(C) && return os
+
   num_appended = 0
   for op in ops
     op.id == 1 && continue ## Filter out identity ops
@@ -78,10 +80,13 @@ function Base.push!(os::OpIDSum{C}, scalar::C, ops)::OpIDSum{C} where {C}
 end
 
 function Base.push!(os::OpIDSum{C}, scalar::C, ops::OpID...)::OpIDSum{C} where {C}
+  scalar == zero(C) && return os
   return push!(os, scalar, ops)
 end
 
 function Base.push!(os::OpIDSum{C}, scalar::C, op::OpID)::OpIDSum{C} where {C}
+  scalar == zero(C) && return os
+
   push!(os.terms, op)
   push!(os.offsets, os.offsets[end] + 1)
   push!(os.scalars, scalar)

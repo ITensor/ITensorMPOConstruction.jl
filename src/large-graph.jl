@@ -124,7 +124,7 @@ end
 
 num_connected_components(cc::BipartiteGraphConnectedComponents) = length(cc.lvs_of_component)
 
-@timeit function get_cc_matrix(g::BipartiteGraph{L, R, C}, ccs::BipartiteGraphConnectedComponents, cc::Int)::Tuple{SparseMatrixCSC{C, Int}, Vector{Int}, Vector{Int}} where {L, R, C}
+function get_cc_matrix(g::BipartiteGraph{L, R, C}, ccs::BipartiteGraphConnectedComponents, cc::Int)::Tuple{SparseMatrixCSC{C, Int}, Vector{Int}, Vector{Int}} where {L, R, C}
   num_edges = sum(length(g.edges_from_left[lv]) for lvs in ccs.lvs_of_component[cc] for lv in lvs)
   
   edge_left_vertex = Vector{Int}(undef, num_edges)
@@ -145,7 +145,7 @@ num_connected_components(cc::BipartiteGraphConnectedComponents) = length(cc.lvs_
     end
   end
 
-  return sparse(edge_right_vertex, edge_left_vertex, edge_weight), ccs.lvs_of_component[cc], right_map
+  return sparse(edge_left_vertex, edge_right_vertex, edge_weight), ccs.lvs_of_component[cc], right_map
 end
 
 function clear_edges!(g::BipartiteGraph, left_ids::Vector{Int})::Nothing

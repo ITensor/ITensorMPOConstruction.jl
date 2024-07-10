@@ -1,4 +1,37 @@
-function svdMPO_new(
+function my_ITensor(
+  offsets::Vector{Int},
+  block_sparse_matrices::Vector{BlockSparseMatrix{C}},
+  inds...;
+  tol=0.0,
+  checkflux=true,
+)::ITensor where {C}
+  is = Tuple(ITensors.indices(inds))
+  blocks = Block{length(is)}[]
+  T = ITensors.BlockSparseTensor(C, blocks, inds)
+  _copyto_dropzeros!(T, offsets, block_sparse_matrices; tol)
+  if checkflux
+    ITensors.checkflux(T)
+  end
+  return itensor(T)
+end
+
+function _copyto_dropzeros!(T::ITensors.Tensor, offsets::Vector{Int}, block_sparse_matrices::Vector{<:BlockSparseMatrix}; tol)
+  for (offset, matrix) in zip(offsets, block_sparse_matrices)
+    for ((left_link, right_link), block) in matrix
+      for i in 1:size(block, 1)
+        for j in 1:size(block, 2)
+          if abs(block[i, j]) > tol
+            T[left_link, right_link + offset, i, j] = block[i, j]
+          end
+        end
+      end
+    end
+  end
+
+  return T
+end
+
+@timeit function svdMPO_new(
   ValType::Type{<:Number},
   os::OpIDSum{C},
   op_cache_vec::OpCacheVec,
@@ -24,34 +57,49 @@ function svdMPO_new(
 
   for n in 1:N
     output_level > 0 && println("At site $n/$(length(sites))")
-    @time_if output_level 1 "at_site!" g, block_sparse_matrix, llinks[n + 1] = at_site!(
+    @time_if output_level 1 "at_site!" g, offsets, block_sparse_matrices, llinks[n + 1] = at_site!(
       ValType, g, n, sites, tol, op_cache_vec; output_level
     )
 
     # Constructing the tensor from an array is much faster than setting the components of the ITensor directly.
     # Especially for sparse tensors, and works for both sparse and dense tensors.
-    let
-      tensor = zeros(
-        ValType,
-        dim(dag(llinks[n])),
-        dim(llinks[n + 1]),
-        dim(prime(sites[n])),
-        dim(dag(sites[n])),
-      )
+    @timeit "Constructing ITensor" let
+      if hasqns(sites)
+        H[n] = my_ITensor(
+          offsets,
+          block_sparse_matrices,
+          dag(llinks[n]),
+          llinks[n + 1],
+          prime(sites[n]),
+          dag(sites[n]);
+          tol=1e-10,
+          checkflux=false,
+        )
+      else
+        tensor = zeros(
+          ValType,
+          dim(dag(llinks[n])),
+          dim(llinks[n + 1]),
+          dim(prime(sites[n])),
+          dim(dag(sites[n])),
+        )
 
-      for ((left_link, right_link), block) in block_sparse_matrix
-        tensor[left_link, right_link, :, :] = block
+        for (offset, matrix) in zip(offsets, block_sparse_matrices)
+          for ((left_link, right_link), block) in matrix
+            tensor[left_link, right_link + offset, :, :] = block
+          end
+        end
+
+        H[n] = itensor(
+          tensor,
+          dag(llinks[n]),
+          llinks[n + 1],
+          prime(sites[n]),
+          dag(sites[n]);
+          tol=1e-10,
+          checkflux=false,
+        )
       end
-
-      H[n] = itensor(
-        tensor,
-        dag(llinks[n]),
-        llinks[n + 1],
-        prime(sites[n]),
-        dag(sites[n]);
-        tol=1e-10,
-        checkflux=false,
-      )
     end
   end
 
