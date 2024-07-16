@@ -25,7 +25,7 @@ include("MPOConstruction.jl")
 #
 
 # OpIDSum.jl
-export OpInfo, OpCacheVec, OpID, OpIDSum
+export OpInfo, OpCacheVec, to_OpCacheVec, OpID, OpIDSum
 
 # MPOConstruction.jl
 export MPO_new

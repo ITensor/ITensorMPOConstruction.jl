@@ -2,36 +2,70 @@ BlockSparseMatrix{C} = Dict{Tuple{Int,Int},Matrix{C}}
 
 MPOGraph{N, C} = BipartiteGraph{LeftVertex, NTuple{N, OpID}, C}
 
-@timeit function MPOGraph{N, C}(os::OpIDSum{C}, op_cache_vec::OpCacheVec) where {N, C}
-  g = MPOGraph{N, C}([], [], [])
+## Taken from https://discourse.julialang.org/t/how-to-sort-two-or-more-lists-at-once/12073/13
+struct CoSorterElement{T1,T2}
+  x::T1
+  y::T2
+end
 
-  op_vec = OpID[OpID(0, 0) for _ in 1:N]
-  for i in eachindex(os)
-    scalar, ops = os[i]
+struct CoSorter{T1,T2,S<:AbstractArray{T1},C<:AbstractArray{T2}} <: AbstractVector{CoSorterElement{T1,T2}}
+  sortarray::S
+  coarray::C
+end
 
-    @assert length(ops) <= N
+Base.size(c::CoSorter) = size(c.sortarray)
 
-    for i in 1:length(ops)
-      op_vec[i] = ops[end - i + 1]
+Base.getindex(c::CoSorter, i...) = CoSorterElement(getindex(c.sortarray, i...), getindex(c.coarray, i...))
+
+Base.setindex!(c::CoSorter, t::CoSorterElement, i...) = (setindex!(c.sortarray, t.x, i...); setindex!(c.coarray, t.y, i...); c)
+
+Base.isless(a::CoSorterElement, b::CoSorterElement) = isless(a.x, b.x)
+
+
+@timeit function MPOGraph(os::OpIDSum{N, C}, op_cache_vec::OpCacheVec)::MPOGraph{N, C} where {N, C}
+  for i in 1:length(os)
+    for j in size(os.terms, 1):-1:1
+      if os.terms[j, i] != zero(OpID)
+        reverse!(view(os.terms, 1:j, i))
+        break
+      end
     end
-
-    for i in (length(ops) + 1):N
-      op_vec[i] = OpID(0, 0)
-    end
-
-    push!(g.right_vertices, NTuple{N, OpID}(op_vec))
+  end
+  
+  @timeit "sorting" let
+    resize!(os._data, length(os))
+    resize!(os.scalars, length(os))
+    c = CoSorter(os._data, os.scalars)
+    sort!(c; alg=QuickSort)
   end
 
-  ## Next we need to sort the right vertices. TODO: Should be able to do this more efficiently I think
-  inds = sortperm(g.right_vertices)
-  sort!(g.right_vertices)
-  weights = os.scalars[inds]
+  for i in 1:(length(os) - 1)
+    if os._data[i] == os._data[i + 1]
+      os.scalars[i + 1] += os.scalars[i]
+      os.scalars[i] = 0
+    end
+  end
+
+  nnz = 0
+  for i in eachindex(os)
+    if os.scalars[i] != 0
+      nnz += 1
+      os.scalars[nnz] = os.scalars[i]
+      os._data[nnz] = os._data[i]
+    end
+  end
+
+  os.num_terms = nnz
+  resize!(os._data, nnz)
+  resize!(os.scalars, nnz)
+
+  g = MPOGraph{N, C}([], os._data, [])
 
   ## TODO: Break this out into a function that is shared with at_site!
   next_edges = [Vector{Tuple{Int, C}}() for _ in 1:length(op_cache_vec[1])]
 
   for j in 1:right_size(g)
-    weight = weights[j]
+    weight = os.scalars[j]
     onsite_op = get_onsite_op(right_vertex(g, j), 1)
     push!(next_edges[onsite_op], (j, weight))
   end

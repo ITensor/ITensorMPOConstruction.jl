@@ -33,18 +33,18 @@ end
 
 @timeit function svdMPO_new(
   ValType::Type{<:Number},
-  os::OpIDSum{C},
+  os::OpIDSum,
   op_cache_vec::OpCacheVec,
   sites::Vector{<:Index};
   tol::Real=-1,
   output_level::Int=0
-)::MPO where {C}
+)::MPO
   # TODO: This should be fixed.
   @assert !ITensors.using_auto_fermion()
 
   N = length(sites)
 
-  @time_if output_level 0 "Constructing MPOGraph" g = MPOGraph{6, C}(os, op_cache_vec)
+  @time_if output_level 0 "Constructing MPOGraph" g = MPOGraph(os, op_cache_vec)
 
   H = MPO(sites)
 

@@ -35,6 +35,7 @@ The input graph's right vertices should be sorted.
   end
 
   resize!(g.right_vertices, cur)
+  sizehint!(g.right_vertices, cur)
 
   ## Re-label the left edges. TODO: Think if there may be a better place to do this, my initial guess is no.
   for lv_id in 1:left_size(g)
