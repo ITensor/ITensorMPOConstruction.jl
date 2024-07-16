@@ -45,6 +45,7 @@ end
   N = length(sites)
 
   @time_if output_level 0 "Constructing MPOGraph" g = MPOGraph(os, op_cache_vec)
+  left_link_is_fermionic = [false]
 
   H = MPO(sites)
 
@@ -57,8 +58,8 @@ end
 
   for n in 1:N
     output_level > 0 && println("At site $n/$(length(sites))")
-    @time_if output_level 1 "at_site!" g, offsets, block_sparse_matrices, llinks[n + 1] = at_site!(
-      ValType, g, n, sites, tol, op_cache_vec; output_level
+    @time_if output_level 1 "at_site!" g, left_link_is_fermionic, offsets, block_sparse_matrices, llinks[n + 1] = at_site!(
+      ValType, g, left_link_is_fermionic, n, sites, tol, op_cache_vec; output_level
     )
 
     # Constructing the tensor from an array is much faster than setting the components of the ITensor directly.

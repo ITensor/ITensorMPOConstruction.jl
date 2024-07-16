@@ -59,24 +59,15 @@ Base.isless(a::CoSorterElement, b::CoSorterElement) = isless(a.x, b.x)
   resize!(os._data, nnz)
   resize!(os.scalars, nnz)
 
-  g = MPOGraph{N, C}([], os._data, [])
-
-  ## TODO: Break this out into a function that is shared with at_site!
-  next_edges = [Vector{Tuple{Int, C}}() for _ in 1:length(op_cache_vec[1])]
+  g = MPOGraph{N, C}([], os._data, [Vector{Tuple{Int, C}}() for _ in 1:nnz])
+  for (op_id, op_info) in enumerate(op_cache_vec[1])
+    push!(g.left_vertices, LeftVertex(1, op_id, op_info.is_fermionic))
+  end
 
   for j in 1:right_size(g)
     weight = os.scalars[j]
-    onsite_op = get_onsite_op(right_vertex(g, j), 1)
-    push!(next_edges[onsite_op], (j, weight))
-  end
-
-  for op_id in 1:length(op_cache_vec[1])
-    isempty(next_edges[op_id]) && continue
-
-    first_rv_id = next_edges[op_id][1][1]
-    needs_JW_string = is_fermionic(right_vertex(g, first_rv_id), 2, op_cache_vec)
-    push!(g.left_vertices, LeftVertex(1, op_id, needs_JW_string))
-    push!(g.edges_from_left, next_edges[op_id])
+    onsite_op_id = get_onsite_op_id(right_vertex(g, j), 1)
+    push!(g.edges_from_right[j], (onsite_op_id, weight))
   end
 
   return g
@@ -151,15 +142,14 @@ end
 @timeit function at_site!(
   ValType::Type{<:Number},
   g::MPOGraph{N, C},
+  left_link_is_fermionic::Vector{Bool},
   n::Int,
   sites::Vector{<:Index},
   tol::Real,
   op_cache_vec::OpCacheVec;
-  output_level::Int=0)::Tuple{BipartiteGraph,Vector{Int},Vector{BlockSparseMatrix{ValType}},Index} where {N, C}
+  output_level::Int=0)::Tuple{MPOGraph{N, C}, Vector{Bool}, Vector{Int},Vector{BlockSparseMatrix{ValType}},Index} where {N, C}
 
   has_qns = hasqns(sites)
-
-  next_graph = MPOGraph{N, C}([], g.right_vertices, [])
   
   combine_duplicate_adjacent_right_vertices!(g, terms_eq_from(n + 1))
   ccs = compute_connected_components!(g)
@@ -167,21 +157,25 @@ end
 
   output_level > 0 && println("  The graph has $(left_size(g)) left vertices, $(right_size(g)) right vertices, $(num_edges(g)) edges and $(nccs) connected components")
 
+  next_graph = MPOGraph{N, C}([], g.right_vertices, Vector{Tuple{Int, C}}[Vector{Tuple{Int, C}}() for _ in 1:right_size(g)])
+
   offset_of_cc = zeros(Int, nccs + 1)
   matrix_of_cc = [BlockSparseMatrix{ValType}() for _ in 1:nccs]
   qi_of_cc = Pair{QN,Int}[QN() => 0 for _ in 1:nccs]
-  next_edges_of_cc = [Matrix{Vector{Tuple{Int, C}}}(undef, 0, 0) for _ in 1:nccs]
+
+  right_link_is_fermionic = Vector{Bool}()
 
   @timeit "Threaded loop" for cc in 1:nccs
     W, left_map, right_map = get_cc_matrix(g, ccs, cc)
 
     ## This information is now in W and not needed again.
-    clear_edges!(g, left_map)
+    clear_edges!(g, right_map)
 
     ## Compute the decomposition and then free W
     Q, R, prow, pcol, rank = sparse_qr(W, tol)
     W = nothing
 
+    ## TODO: This isn't thread safe
     offset_of_cc[cc + 1] = offset_of_cc[cc] + rank
 
     if has_qns
@@ -192,17 +186,28 @@ end
     # Form the local transformation tensor.
     let
       for_non_zeros_batch(Q, rank) do weights, m
+        first_time = true
         for (i, weight) in enumerate(weights)
           weight == 0 && continue
 
-          lv = left_vertex(g, left_map[prow[i]])
-          local_op = op_cache_vec[n][lv.op_id].matrix
+          # Convert the linear index into the 2D index (link, op_id).
+          lv_id = left_map[prow[i]]
+          link = (lv_id - 1) ÷ length(op_cache_vec[n]) + 1
+          op_id = lv_id - (link - 1) * length(op_cache_vec[n])
 
-          matrix_element = get!(matrix_of_cc[cc], (lv.link, m)) do
+          local_op = op_cache_vec[n][op_id].matrix
+
+          matrix_element = get!(matrix_of_cc[cc], (link, m)) do
             return zeros(C, dim(sites[n]), dim(sites[n]))
           end
 
-          add_to_local_matrix!(matrix_element, weight, local_op, lv.needs_JW_string)
+          needs_JW_string = xor(left_link_is_fermionic[link], op_cache_vec[n][op_id].is_fermionic)
+          if first_time
+            first_time = false
+            push!(right_link_is_fermionic, needs_JW_string)
+          end
+
+          add_to_local_matrix!(matrix_element, weight, local_op, needs_JW_string)
         end
       end
     end
@@ -215,39 +220,28 @@ end
       end
     end
 
-    # Build the graph for the next site. If we are at the last site then
-    # we can skip this step.
+    # Build the graph for the next site. If we are at the last site then we can skip this step.
+    ## TODO: This isn't thread safe
+    ## TODO: Pretty sure if this seems faster we can make it even better by storing some is_fermionic info, but maybe not.
     if n != length(sites)
-      next_edges = Matrix{Vector{Tuple{Int, C}}}(undef, rank, length(op_cache_vec[n + 1]))
-      for i in eachindex(next_edges)
-        next_edges[i] = Vector{Tuple{Int, C}}()
+      for m in 1:rank
+        for op_id in 1:length(op_cache_vec[n + 1])
+          push!(next_graph.left_vertices, LeftVertex(0, 0, false))
+        end
       end
 
       for_non_zeros_batch(R, length(right_map)) do weights, ms, j
         j = right_map[pcol[j]]
-        op_id = get_onsite_op(right_vertex(g, j), n + 1)
+        op_id = get_onsite_op_id(right_vertex(g, j), n + 1)
 
-        for (weight, m) in zip(weights, ms)
-          m > rank && continue
-          push!(next_edges[m, op_id], (j, weight))
+        end_idx = searchsortedlast(ms, rank)
+        resize!(next_graph.edges_from_right[j], end_idx)
+
+        for idx in 1:end_idx
+          weight, m = weights[idx], ms[idx]
+          lv_id = length(op_cache_vec[n + 1]) * (m + offset_of_cc[cc] - 1) + op_id
+          next_graph.edges_from_right[j][idx] = (lv_id, weight)
         end
-      end
-
-      next_edges_of_cc[cc] = next_edges
-    end
-  end
-
-  @timeit "Combining graphs" for cc in 1:nccs
-    offset = offset_of_cc[cc]
-    next_edges = next_edges_of_cc[cc]
-    for op_id in 1:size(next_edges, 2)
-      for m in 1:size(next_edges, 1)
-        isempty(next_edges[m, op_id]) && continue
-
-        first_rv_id = next_edges[m, op_id][1][1]
-        needs_JW_string = is_fermionic(right_vertex(g, first_rv_id), n + 2, op_cache_vec)
-        push!(next_graph.left_vertices, LeftVertex(m + offset, op_id, needs_JW_string))
-        push!(next_graph.edges_from_left, next_edges[m, op_id])
       end
     end
   end
@@ -258,5 +252,5 @@ end
     outgoing_link = Index(offset_of_cc[end]; tags="Link,l=$n")
   end
 
-  return next_graph, offset_of_cc, matrix_of_cc, outgoing_link
+  return next_graph, right_link_is_fermionic, offset_of_cc, matrix_of_cc, outgoing_link
 end

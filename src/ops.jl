@@ -17,7 +17,7 @@ function terms_eq_from(n::Int)::Function
   return are_equal
 end
 
-function get_onsite_op(ops::NTuple{N, OpID}, n::Int)::Int16 where {N}
+function get_onsite_op_id(ops::NTuple{N, OpID}, n::Int)::Int16 where {N}
   for i in 1:N
     ops[i].n == n && return ops[i].id
   end

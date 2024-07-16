@@ -1,5 +1,5 @@
 using ITensorMPOConstruction
-using ITensorMPOConstruction: terms_eq_from, get_onsite_op, is_fermionic, sort_fermion_perm!
+using ITensorMPOConstruction: terms_eq_from, get_onsite_op_id, is_fermionic, sort_fermion_perm!
 using ITensors
 using Test
 
@@ -21,18 +21,18 @@ function test_terms_eq_from()
   @test terms_eq_from(10)(op1, op2)
 end
 
-function test_get_onsite_op()
+function test_get_onsite_op_id()
   op = (OpID(1, 10), OpID(5, 7), OpID(1, 1), OpID(1, 1), OpID(1, 1))
-  @test get_onsite_op(op, 10) == 1
-  @test get_onsite_op(op, 9) == 1
-  @test get_onsite_op(op, 8) == 1
-  @test get_onsite_op(op, 7) == 5
-  @test get_onsite_op(op, 6) == 1
-  @test get_onsite_op(op, 5) == 1
-  @test get_onsite_op(op, 4) == 1
-  @test get_onsite_op(op, 3) == 1
-  @test get_onsite_op(op, 2) == 1
-  @test get_onsite_op(op, 1) == 1
+  @test get_onsite_op_id(op, 10) == 1
+  @test get_onsite_op_id(op, 9) == 1
+  @test get_onsite_op_id(op, 8) == 1
+  @test get_onsite_op_id(op, 7) == 5
+  @test get_onsite_op_id(op, 6) == 1
+  @test get_onsite_op_id(op, 5) == 1
+  @test get_onsite_op_id(op, 4) == 1
+  @test get_onsite_op_id(op, 3) == 1
+  @test get_onsite_op_id(op, 2) == 1
+  @test get_onsite_op_id(op, 1) == 1
 end
 
 function test_is_fermionic()
@@ -98,7 +98,7 @@ end
 @testset "Ops" begin
   test_terms_eq_from()
 
-  test_get_onsite_op()
+  test_get_onsite_op_id()
 
   test_is_fermionic()
 
