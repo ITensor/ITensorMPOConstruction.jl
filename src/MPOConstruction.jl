@@ -56,7 +56,7 @@ end
   end
 
   for n in 1:N
-    output_level > 0 && println("At site $n/$(length(sites))")
+    output_level > 0 && println("At site $n/$(length(sites)) the graph takes up $(Base.format_bytes(Base.summarysize(g)))")
     @time_if output_level 1 "at_site!" g, offsets, block_sparse_matrices, llinks[n + 1] = at_site!(
       ValType, g, n, sites, tol, op_cache_vec; output_level
     )

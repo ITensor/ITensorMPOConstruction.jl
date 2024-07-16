@@ -167,22 +167,19 @@ end
 
   output_level > 0 && println("  The graph has $(left_size(g)) left vertices, $(right_size(g)) right vertices, $(num_edges(g)) edges and $(nccs) connected components")
 
-  offset_of_cc = zeros(Int, nccs + 1)
+  rank_of_cc = zeros(Int, nccs + 1)
   matrix_of_cc = [BlockSparseMatrix{ValType}() for _ in 1:nccs]
   qi_of_cc = Pair{QN,Int}[QN() => 0 for _ in 1:nccs]
   next_edges_of_cc = [Matrix{Vector{Tuple{Int, C}}}(undef, 0, 0) for _ in 1:nccs]
 
-  @timeit "Threaded loop" for cc in 1:nccs
-    W, left_map, right_map = get_cc_matrix(g, ccs, cc)
-
-    ## This information is now in W and not needed again.
-    clear_edges!(g, left_map)
+  @timeit "Threaded loop" Threads.@threads for cc in 1:nccs
+    W, left_map, right_map = get_cc_matrix(g, ccs, cc; clear_edges=true)
 
     ## Compute the decomposition and then free W
     Q, R, prow, pcol, rank = sparse_qr(W, tol)
     W = nothing
 
-    offset_of_cc[cc + 1] = offset_of_cc[cc] + rank
+    rank_of_cc[cc + 1] = rank
 
     if has_qns
       right_flux = flux(right_vertex(g, right_map[1]), n + 1, op_cache_vec)
@@ -190,50 +187,55 @@ end
     end
 
     # Form the local transformation tensor.
-    let
-      for_non_zeros_batch(Q, rank) do weights, m
-        for (i, weight) in enumerate(weights)
-          weight == 0 && continue
+    for_non_zeros_batch(Q, rank) do weights, m
+      for (i, weight) in enumerate(weights)
+        weight == 0 && continue
 
-          lv = left_vertex(g, left_map[prow[i]])
-          local_op = op_cache_vec[n][lv.op_id].matrix
+        lv = left_vertex(g, left_map[prow[i]])
+        local_op = op_cache_vec[n][lv.op_id].matrix
 
-          matrix_element = get!(matrix_of_cc[cc], (lv.link, m)) do
-            return zeros(C, dim(sites[n]), dim(sites[n]))
-          end
-
-          add_to_local_matrix!(matrix_element, weight, local_op, lv.needs_JW_string)
+        matrix_element = get!(matrix_of_cc[cc], (lv.link, m)) do
+          return zeros(C, dim(sites[n]), dim(sites[n]))
         end
+
+        add_to_local_matrix!(matrix_element, weight, local_op, lv.needs_JW_string)
       end
     end
 
-    ## If we are at the last site, then R will be a 1x1 matrix containing an overall scaling.
+    # If we are at the last site, then R will be a 1x1 matrix containing an overall scaling.
+    # We can also skip building the next graph.
     if n == length(sites)
       scaling = only(R)
       for block in values(matrix_of_cc[cc])
         block .*= scaling
       end
+
+      continue
     end
 
-    # Build the graph for the next site. If we are at the last site then
-    # we can skip this step.
-    if n != length(sites)
-      next_edges = Matrix{Vector{Tuple{Int, C}}}(undef, rank, length(op_cache_vec[n + 1]))
-      for i in eachindex(next_edges)
-        next_edges[i] = Vector{Tuple{Int, C}}()
+    # Build the graph for the next site.
+    next_edges = Matrix{Vector{Tuple{Int, C}}}(undef, rank, length(op_cache_vec[n + 1]))
+    for i in eachindex(next_edges)
+      next_edges[i] = Vector{Tuple{Int, C}}()
+    end
+
+    for_non_zeros_batch(R, length(right_map)) do weights, ms, j
+      j = right_map[pcol[j]]
+      op_id = get_onsite_op(right_vertex(g, j), n + 1)
+
+      for (weight, m) in zip(weights, ms)
+        m > rank && return
+        push!(next_edges[m, op_id], (j, weight))
       end
+    end
 
-      for_non_zeros_batch(R, length(right_map)) do weights, ms, j
-        j = right_map[pcol[j]]
-        op_id = get_onsite_op(right_vertex(g, j), n + 1)
+    next_edges_of_cc[cc] = next_edges
+  end
 
-        for (weight, m) in zip(weights, ms)
-          m > rank && continue
-          push!(next_edges[m, op_id], (j, weight))
-        end
-      end
-
-      next_edges_of_cc[cc] = next_edges
+  offset_of_cc = rank_of_cc
+  let
+    for cc in 2:nccs
+      offset_of_cc[cc] += offset_of_cc[cc - 1]
     end
   end
 
