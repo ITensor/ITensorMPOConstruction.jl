@@ -95,7 +95,7 @@ function Base.getindex(os::OpIDSum, i::Integer)
   return os.scalars[i], view(os.terms, :, i)
 end
 
-function Base.push!(os::OpIDSum{N, C}, scalar::C, ops)::OpIDSum{N, C} where {N, C}
+function ITensors.add!(os::OpIDSum{N, C}, scalar::C, ops)::OpIDSum{N, C} where {N, C}
   scalar == zero(C) && return os
 
   os.num_terms += 1
@@ -116,9 +116,8 @@ function Base.push!(os::OpIDSum{N, C}, scalar::C, ops)::OpIDSum{N, C} where {N, 
   return os
 end
 
-function Base.push!(os::OpIDSum{C}, scalar::C, ops::OpID...)::OpIDSum{C} where {C}
-  scalar == zero(C) && return os
-  return push!(os, scalar, ops)
+function ITensors.add!(os::OpIDSum{N, C}, scalar::C, ops::OpID...)::OpIDSum{N, C} where {N, C}
+  return add!(os, scalar, ops)
 end
 
 function determine_val_type(os::OpIDSum{C}) where {C}
@@ -257,7 +256,7 @@ end
       push!(opID_term, OpID(opID, n))
     end
   
-    push!(opID_sum, ITensors.coefficient(term), opID_term)
+    add!(opID_sum, ITensors.coefficient(term), opID_term)
   end
 
   return opID_sum

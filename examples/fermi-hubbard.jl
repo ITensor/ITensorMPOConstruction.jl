@@ -79,6 +79,8 @@ function Fermi_Hubbard_momentum_space(
 end
 
 function Fermi_Hubbard_momentum_space_OpIDSum(N::Int, t::Real=1.0, U::Real=4.0; output_level::Int=0)::MPO
+  sites = siteinds("Electron", N; conserve_qns=true)
+
   operatorNames = [
     [
       "I",
@@ -100,6 +102,8 @@ function Fermi_Hubbard_momentum_space_OpIDSum(N::Int, t::Real=1.0, U::Real=4.0; 
     ] for _ in 1:N
   ]
 
+  op_cache_vec = to_OpCacheVec(sites, operatorNames)
+
   ↓ = false
   ↑ = true
 
@@ -107,27 +111,26 @@ function Fermi_Hubbard_momentum_space_OpIDSum(N::Int, t::Real=1.0, U::Real=4.0; 
   opCdag(k::Int, spin::Bool) = OpID(4 + spin, mod1(k, N))
   opN(k::Int, spin::Bool) = OpID(6 + spin, mod1(k, N))
 
-  os = OpIDSum{Float64}()
+  os = OpIDSum{4, Float64}(N^3 + 2 * N, op_cache_vec)
 
   @time "\tConstructing OpIDSum" let
     for k in 1:N
       epsilon = -2 * t * cospi(2 * k / N)
-      push!(os, epsilon, opN(k, ↑))
-      push!(os, epsilon, opN(k, ↓))
+      add!(os, epsilon, opN(k, ↑))
+      add!(os, epsilon, opN(k, ↓))
     end
 
     for p in 1:N
       for q in 1:N
         for k in 1:N
-          push!(os, U / N, opCdag(p - k, ↑), opCdag(q + k, ↓), opC(q, ↓), opC(p, ↑))
+          add!(os, U / N, opCdag(p - k, ↑), opCdag(q + k, ↓), opC(q, ↓), opC(p, ↑))
         end
       end
     end
   end
 
-  sites = siteinds("Electron", N; conserve_qns=true)
   return @time "\tConstructing MPO" MPO_new(
-    os, sites, operatorNames; basis_op_cache_vec=operatorNames, output_level
+    os, sites; basis_op_cache_vec=op_cache_vec, output_level
   )
 end
 
@@ -161,14 +164,13 @@ let
 end
 
 let
-  N = 100
-
-  reset_timer!()
-  println("Constructing the Fermi-Hubbard momentum space MPO for $N sites using OpIDSum")
-  mpo = Fermi_Hubbard_momentum_space_OpIDSum(N)
-  println("The maximum bond dimension is $(maxlinkdim(mpo))")
-  println(ITensorMPOConstruction.sparsity(mpo))
-  print_timer()
+  for N in [10, 20, 30, 40, 50, 100, 200]
+    println("Constructing the Fermi-Hubbard momentum space MPO for $N sites using OpIDSum")
+    @time mpo = Fermi_Hubbard_momentum_space_OpIDSum(N)
+    println("The maximum bond dimension is $(maxlinkdim(mpo))")
+    println(ITensorMPOConstruction.sparsity(mpo))
+    println()
+  end
 end
 
 nothing;

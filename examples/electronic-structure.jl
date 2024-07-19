@@ -52,7 +52,7 @@ function electronic_structure(
   if useITensorsAlg
     return @time "\tConstrucing MPO" MPO(os, sites)
   else
-    operatorNames = [
+    operatorNames = [[
       "I",
       "Cdn",
       "Cup",
@@ -69,38 +69,36 @@ function electronic_structure(
       "Nup * Cdn",
       "Nup * Cdagdn",
       "Nup * Ndn",
-    ]
+    ] for _ in 1:N]
 
-    op_cache_vec = [
-      [OpInfo(ITensors.Op(name, n), sites[n]) for name in operatorNames] for
-      n in eachindex(sites)
-    ]
-
+    op_cache_vec = to_OpCacheVec(sites, operatorNames)
     return @time "\tConstrucing MPO" MPO_new(os, sites; basis_op_cache_vec=op_cache_vec)
   end
 end
 
 function electronic_structure_OpIDSum(N::Int, complexBasisFunctions::Bool)::MPO
-  operatorNames = [
-    [
-      "I",
-      "Cdn",
-      "Cup",
-      "Cdagdn",
-      "Cdagup",
-      "Ndn",
-      "Nup",
-      "Cup * Cdn",
-      "Cup * Cdagdn",
-      "Cup * Ndn",
-      "Cdagup * Cdn",
-      "Cdagup * Cdagdn",
-      "Cdagup * Ndn",
-      "Nup * Cdn",
-      "Nup * Cdagdn",
-      "Nup * Ndn",
-    ] for _ in 1:N
-  ]
+  sites = siteinds("Electron", N; conserve_qns=true)
+
+  operatorNames = [[
+    "I",
+    "Cdn",
+    "Cup",
+    "Cdagdn",
+    "Cdagup",
+    "Ndn",
+    "Nup",
+    "Cup * Cdn",
+    "Cup * Cdagdn",
+    "Cup * Ndn",
+    "Cdagup * Cdn",
+    "Cdagup * Cdagdn",
+    "Cdagup * Ndn",
+    "Nup * Cdn",
+    "Nup * Cdagdn",
+    "Nup * Ndn",
+  ] for _ in 1:N]
+
+  op_cache_vec = to_OpCacheVec(sites, operatorNames)
 
   ↓ = false
   ↑ = true
@@ -111,17 +109,17 @@ function electronic_structure_OpIDSum(N::Int, complexBasisFunctions::Bool)::MPO
 
   coeff() = !complexBasisFunctions ? rand() : rand() + 1im * rand()
 
-  os = complexBasisFunctions ? OpIDSum{ComplexF64}() : OpIDSum{Float64}()
+  os = complexBasisFunctions ? OpIDSum{4, ComplexF64}(2 * N^4, op_cache_vec) : OpIDSum{4, Float64}(2 * N^4, op_cache_vec)
   @time "\tConstructing OpIDSum" let
     for a in 1:N
       for b in a:N
         epsilon_ab = coeff()
-        push!(os, epsilon_ab, opCdag(a, ↑), opC(b, ↑))
-        push!(os, epsilon_ab, opCdag(a, ↓), opC(b, ↓))
+        add!(os, epsilon_ab, opCdag(a, ↑), opC(b, ↑))
+        add!(os, epsilon_ab, opCdag(a, ↓), opC(b, ↓))
 
         a == b && continue
-        push!(os, conj(epsilon_ab), opCdag(b, ↑), opC(a, ↑))
-        push!(os, conj(epsilon_ab), opCdag(b, ↓), opC(a, ↓))
+        add!(os, conj(epsilon_ab), opCdag(b, ↑), opC(a, ↑))
+        add!(os, conj(epsilon_ab), opCdag(b, ↓), opC(a, ↓))
       end
     end
 
@@ -140,8 +138,8 @@ function electronic_structure_OpIDSum(N::Int, complexBasisFunctions::Bool)::MPO
                 (s_m, m) <= (s_k, k) && continue
 
                 value = coeff()
-                push!(os, value, opCdag(j, s_j), opCdag(l, s_l), opC(m, s_m), opC(k, s_k))
-                push!(
+                add!(os, value, opCdag(j, s_j), opCdag(l, s_l), opC(m, s_m), opC(k, s_k))
+                add!(
                   os, conj(value), opCdag(k, s_k), opCdag(m, s_m), opC(l, s_l), opC(j, s_j)
                 )
               end
@@ -152,27 +150,26 @@ function electronic_structure_OpIDSum(N::Int, complexBasisFunctions::Bool)::MPO
     end
   end
 
-  sites = siteinds("Electron", N; conserve_qns=true)
   return @time "\tConstructing MPO" MPO_new(
-    os, sites, operatorNames; basis_op_cache_vec=operatorNames
+    os, sites; basis_op_cache_vec=op_cache_vec
   )
 end
 
 let
-  N = 20
+  N = 10
   useITensorsAlg = false
 
   println("Constructing the Electronic Structure MPO for $N orbitals")
   @time "Total" mpo = electronic_structure(N, false; useITensorsAlg=useITensorsAlg)
-  println("The maximum bond dimension is $(maxlinkdim(mpo))")
+  println("The maximum bond dimension is $(maxlinkdim(mpo))\n")
 end
 
 let
-  N = 20
-
-  println("Constructing the Electronic Structure MPO for $N orbitals using OpIDSum")
-  @time "Total" mpo = electronic_structure_OpIDSum(N, false)
-  println("The maximum bond dimension is $(maxlinkdim(mpo))")
+  for N in [10, 10, 20, 30, 40, 50]
+    println("Constructing the Electronic Structure MPO for $N orbitals using OpIDSum")
+    @time "Total" mpo = electronic_structure_OpIDSum(N, false)
+    println("The maximum bond dimension is $(maxlinkdim(mpo))\n")
+  end
 end
 
 nothing;
