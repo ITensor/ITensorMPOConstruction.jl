@@ -14,9 +14,10 @@ function test_from_OpSum(
   os::OpSum,
   sites::Vector{<:Index},
   basis_op_cache_vec::Union{Nothing,OpCacheVec},
-  tol::Real,
+  tol::Real;
+  combine_qn_sectors::Bool=false
 )::Tuple{MPO,MPO}
-  mpo = MPO_new(os, sites; tol=tol, basis_op_cache_vec=basis_op_cache_vec)
+  mpo = MPO_new(os, sites; tol, basis_op_cache_vec, combine_qn_sectors, output_level=0)
 
   if tol < 0
     mpoFromITensor = MPO(os, sites)
@@ -142,7 +143,7 @@ function test_random_operator(N::Integer, maxWeight::Integer, tol::Real)::Nothin
   return nothing
 end
 
-function test_Fermi_Hubbard(N::Int, tol::Real)::Nothing
+function test_Fermi_Hubbard(N::Int, tol::Real, combine_qn_sectors::Bool)::Nothing
   t, U = 1, 4
   sites = siteinds("Electron", N; conserve_qns=true)
 
@@ -186,7 +187,7 @@ function test_Fermi_Hubbard(N::Int, tol::Real)::Nothing
     n in eachindex(sites)
   ]
 
-  test_from_OpSum(os, sites, op_cache_vec, tol)
+  test_from_OpSum(os, sites, op_cache_vec, tol; combine_qn_sectors)
   return nothing
 end
 
@@ -242,5 +243,7 @@ end
 
   test_qft(6, true, -1)
 
-  test_Fermi_Hubbard(12, -1)
+  test_Fermi_Hubbard(12, -1, false)
+
+  test_Fermi_Hubbard(12, -1, true)
 end

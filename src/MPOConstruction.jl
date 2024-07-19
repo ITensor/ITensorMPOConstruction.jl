@@ -8,14 +8,14 @@ function my_ITensor(
   is = Tuple(ITensors.indices(inds))
   blocks = Block{length(is)}[]
   T = ITensors.BlockSparseTensor(C, blocks, inds)
-  _copyto_dropzeros!(T, offsets, block_sparse_matrices; tol)
+  my_copyto_dropzeros!(T, offsets, block_sparse_matrices; tol)
   if checkflux
     ITensors.checkflux(T)
   end
   return itensor(T)
 end
 
-function _copyto_dropzeros!(T::ITensors.Tensor, offsets::Vector{Int}, block_sparse_matrices::Vector{<:BlockSparseMatrix}; tol)
+function my_copyto_dropzeros!(T::ITensors.Tensor, offsets::Vector{Int}, block_sparse_matrices::Vector{<:BlockSparseMatrix}; tol)
   for (offset, matrix) in zip(offsets, block_sparse_matrices)
     for ((left_link, right_link), block) in matrix
       for i in 1:size(block, 1)
@@ -34,9 +34,9 @@ end
 @timeit function svdMPO_new(
   ValType::Type{<:Number},
   os::OpIDSum,
-  op_cache_vec::OpCacheVec,
   sites::Vector{<:Index};
   tol::Real=-1,
+  combine_qn_sectors::Bool=false,
   output_level::Int=0
 )::MPO
   # TODO: This should be fixed.
@@ -44,7 +44,7 @@ end
 
   N = length(sites)
 
-  @time_if output_level 0 "Constructing MPOGraph" g = MPOGraph(os, op_cache_vec)
+  @time_if output_level 0 "Constructing MPOGraph" g = MPOGraph(os)
 
   H = MPO(sites)
 
@@ -58,7 +58,7 @@ end
   for n in 1:N
     output_level > 0 && println("At site $n/$(length(sites)) the graph takes up $(Base.format_bytes(Base.summarysize(g)))")
     @time_if output_level 1 "at_site!" g, offsets, block_sparse_matrices, llinks[n + 1] = at_site!(
-      ValType, g, n, sites, tol, op_cache_vec; output_level
+      ValType, g, n, sites, tol, os.op_cache_vec; combine_qn_sectors, output_level
     )
 
     # Constructing the tensor from an array is much faster than setting the components of the ITensor directly.
@@ -119,53 +119,42 @@ end
 function MPO_new(
   ValType::Type{<:Number},
   os::OpIDSum,
-  sites::Vector{<:Index},
-  op_cache_vec::OpCacheVec;
-  basis_op_cache_vec=nothing,
+  sites::Vector{<:Index};
+  basis_op_cache_vec::Union{OpCacheVec, Nothing}=nothing,
   tol::Real=-1,
+  combine_qn_sectors::Bool=false,
   output_level::Int=0,
 )::MPO
-  op_cache_vec = to_OpCacheVec(sites, op_cache_vec)
-  basis_op_cache_vec = to_OpCacheVec(sites, basis_op_cache_vec)
-  os, op_cache_vec = prepare_opID_sum!(os, sites, op_cache_vec, basis_op_cache_vec)
-  return svdMPO_new(ValType, os, op_cache_vec, sites; tol, output_level)
+  prepare_opID_sum!(os, basis_op_cache_vec)
+  return svdMPO_new(ValType, os, sites; tol, combine_qn_sectors, output_level)
 end
 
 function MPO_new(
   os::OpIDSum,
-  sites::Vector{<:Index},
-  op_cache_vec;
-  basis_op_cache_vec=nothing,
-  tol::Real=-1,
-  output_level::Int=0,
+  sites::Vector{<:Index};
+  kwargs...
 )::MPO
-  op_cache_vec = to_OpCacheVec(sites, op_cache_vec)
-  ValType = determine_val_type(os, op_cache_vec)
-  return MPO_new(
-    ValType, os, sites, op_cache_vec; basis_op_cache_vec, tol, output_level
-  )
+  ValType = determine_val_type(os)
+  return MPO_new(ValType, os, sites; kwargs...)
 end
 
 function MPO_new(
   ValType::Type{<:Number},
   os::OpSum,
   sites::Vector{<:Index};
-  tol::Real=-1,
-  output_level::Int=0,
+  kwargs...
 )::MPO
-  opID_sum, op_cache_vec = op_sum_to_opID_sum(os, sites)
-  return MPO_new(
-    ValType, opID_sum, sites, op_cache_vec; basis_op_cache_vec, tol, output_level
-  )
+  opID_sum = op_sum_to_opID_sum(os, sites)
+  return MPO_new(ValType, opID_sum, sites; kwargs...)
 end
 
 function MPO_new(
-  os::OpSum, sites::Vector{<:Index}; basis_op_cache_vec=nothing, tol::Real=-1, output_level::Int=0
+  os::OpSum,
+  sites::Vector{<:Index};
+  kwargs...
 )::MPO
-  opID_sum, op_cache_vec = op_sum_to_opID_sum(os, sites)
-  return MPO_new(
-    opID_sum, sites, op_cache_vec; basis_op_cache_vec, tol, output_level
-  )
+  opID_sum = op_sum_to_opID_sum(os, sites)
+  return MPO_new(opID_sum, sites; kwargs...)
 end
 
 function sparsity(mpo::MPO)::Float64

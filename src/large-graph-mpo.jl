@@ -22,7 +22,7 @@ Base.setindex!(c::CoSorter, t::CoSorterElement, i...) = (setindex!(c.sortarray, 
 Base.isless(a::CoSorterElement, b::CoSorterElement) = isless(a.x, b.x)
 
 
-@timeit function MPOGraph(os::OpIDSum{N, C}, op_cache_vec::OpCacheVec)::MPOGraph{N, C} where {N, C}
+@timeit function MPOGraph(os::OpIDSum{N, C})::MPOGraph{N, C} where {N, C}
   for i in 1:length(os)
     for j in size(os.terms, 1):-1:1
       if os.terms[j, i] != zero(OpID)
@@ -62,7 +62,7 @@ Base.isless(a::CoSorterElement, b::CoSorterElement) = isless(a.x, b.x)
   g = MPOGraph{N, C}([], os._data, [])
 
   ## TODO: Break this out into a function that is shared with at_site!
-  next_edges = [Vector{Tuple{Int, C}}() for _ in 1:length(op_cache_vec[1])]
+  next_edges = [Vector{Tuple{Int, C}}() for _ in 1:length(os.op_cache_vec[1])]
 
   for j in 1:right_size(g)
     weight = os.scalars[j]
@@ -70,11 +70,11 @@ Base.isless(a::CoSorterElement, b::CoSorterElement) = isless(a.x, b.x)
     push!(next_edges[onsite_op], (j, weight))
   end
 
-  for op_id in 1:length(op_cache_vec[1])
+  for op_id in 1:length(os.op_cache_vec[1])
     isempty(next_edges[op_id]) && continue
 
     first_rv_id = next_edges[op_id][1][1]
-    needs_JW_string = is_fermionic(right_vertex(g, first_rv_id), 2, op_cache_vec)
+    needs_JW_string = is_fermionic(right_vertex(g, first_rv_id), 2, os.op_cache_vec)
     push!(g.left_vertices, LeftVertex(1, op_id, needs_JW_string))
     push!(g.edges_from_left, next_edges[op_id])
   end
@@ -148,6 +148,22 @@ function add_to_local_matrix!(a::Matrix, weight::Number, local_op::Matrix, needs
   return nothing
 end
 
+function merge_qn_sectors(qi_of_cc::Vector{Pair{QN, Int}})::Tuple{Vector{Int}, Vector{Pair{QN, Int}}}
+  new_order = sortperm(qi_of_cc, by = pair -> pair[1])
+  qi_of_cc = sort(qi_of_cc, by = pair -> pair[1])
+  
+  new_qi = Pair{QN, Int}[qi_of_cc[1]]
+  for qi in view(qi_of_cc, 2:length(qi_of_cc))
+    if qi.first == new_qi[end].first
+      new_qi[end] = qi.first => new_qi[end].second + qi.second
+    else
+      push!(new_qi, qi)
+    end
+  end
+
+  return new_order, new_qi
+end
+
 @timeit function at_site!(
   ValType::Type{<:Number},
   g::MPOGraph{N, C},
@@ -155,11 +171,10 @@ end
   sites::Vector{<:Index},
   tol::Real,
   op_cache_vec::OpCacheVec;
+  combine_qn_sectors::Bool=false,
   output_level::Int=0)::Tuple{BipartiteGraph,Vector{Int},Vector{BlockSparseMatrix{ValType}},Index} where {N, C}
 
   has_qns = hasqns(sites)
-
-  next_graph = MPOGraph{N, C}([], g.right_vertices, [])
   
   combine_duplicate_adjacent_right_vertices!(g, terms_eq_from(n + 1))
   ccs = compute_connected_components!(g)
@@ -167,7 +182,7 @@ end
 
   output_level > 0 && println("  The graph has $(left_size(g)) left vertices, $(right_size(g)) right vertices, $(num_edges(g)) edges and $(nccs) connected components")
 
-  rank_of_cc = zeros(Int, nccs + 1)
+  rank_of_cc = zeros(Int, nccs)
   matrix_of_cc = [BlockSparseMatrix{ValType}() for _ in 1:nccs]
   qi_of_cc = Pair{QN,Int}[QN() => 0 for _ in 1:nccs]
   next_edges_of_cc = [Matrix{Vector{Tuple{Int, C}}}(undef, 0, 0) for _ in 1:nccs]
@@ -179,7 +194,7 @@ end
     Q, R, prow, pcol, rank = sparse_qr(W, tol)
     W = nothing
 
-    rank_of_cc[cc + 1] = rank
+    rank_of_cc[cc] = rank
 
     if has_qns
       right_flux = flux(right_vertex(g, right_map[1]), n + 1, op_cache_vec)
@@ -232,15 +247,22 @@ end
     next_edges_of_cc[cc] = next_edges
   end
 
-  offset_of_cc = rank_of_cc
-  let
-    for cc in 2:nccs
-      offset_of_cc[cc] += offset_of_cc[cc - 1]
+  cc_order = [i for i in 1:nccs]
+  if combine_qn_sectors && has_qns
+    cc_order, qi_of_cc = merge_qn_sectors(qi_of_cc)
+
+    if output_level > 1
+      println("    Reduced the number of sectors from $nccs to $(length(qi_of_cc))")
     end
   end
 
-  @timeit "Combining graphs" for cc in 1:nccs
-    offset = offset_of_cc[cc]
+  next_graph = MPOGraph{N, C}([], g.right_vertices, [])
+  offset_of_cc = zeros(Int, nccs + 1)
+
+  cur_offset = 0
+  @timeit "Combining graphs" for (i, cc) in enumerate(cc_order)
+    offset_of_cc[cc] = cur_offset
+
     next_edges = next_edges_of_cc[cc]
     for op_id in 1:size(next_edges, 2)
       for m in 1:size(next_edges, 1)
@@ -248,16 +270,18 @@ end
 
         first_rv_id = next_edges[m, op_id][1][1]
         needs_JW_string = is_fermionic(right_vertex(g, first_rv_id), n + 2, op_cache_vec)
-        push!(next_graph.left_vertices, LeftVertex(m + offset, op_id, needs_JW_string))
+        push!(next_graph.left_vertices, LeftVertex(m + cur_offset, op_id, needs_JW_string))
         push!(next_graph.edges_from_left, next_edges[m, op_id])
       end
     end
+
+    cur_offset += rank_of_cc[cc]
   end
 
   if has_qns
     outgoing_link = Index(qi_of_cc...; tags="Link,l=$n", dir=ITensors.Out)
   else
-    outgoing_link = Index(offset_of_cc[end]; tags="Link,l=$n")
+    outgoing_link = Index(cur_offset; tags="Link,l=$n")
   end
 
   return next_graph, offset_of_cc, matrix_of_cc, outgoing_link

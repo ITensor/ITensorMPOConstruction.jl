@@ -121,9 +121,9 @@ function Base.push!(os::OpIDSum{C}, scalar::C, ops::OpID...)::OpIDSum{C} where {
   return push!(os, scalar, ops)
 end
 
-function determine_val_type(os::OpIDSum{C}, op_cache_vec::OpCacheVec) where {C}
+function determine_val_type(os::OpIDSum{C}) where {C}
   !all(isreal(scalar) for scalar in os.scalars) && return ComplexF64
-  !all(isreal(op.matrix) for ops_of_site in op_cache_vec for op in ops_of_site) &&
+  !all(isreal(op.matrix) for ops_of_site in os.op_cache_vec for op in ops_of_site) &&
     return ComplexF64
   return Float64
 end
@@ -144,10 +144,13 @@ function for_equal_sites(f::Function, ops::AbstractVector{OpID})::Nothing
   return nothing
 end
 
-@timeit function rewrite_in_operator_basis(
-  os::OpIDSum{N, C}, op_cache_vec::OpCacheVec, basis_op_cache_vec::OpCacheVec
-)::OpIDSum{N, C} where {N, C}
+@timeit function rewrite_in_operator_basis!(
+  os::OpIDSum{N, C},
+  basis_op_cache_vec::OpCacheVec
+) where {N, C}
   
+  op_cache_vec = os.op_cache_vec
+
   function scale_by_first_nz!(matrix::Matrix{ComplexF64})::ComplexF64
     for i in eachindex(matrix)
       entry = matrix[i]
@@ -225,8 +228,9 @@ end
 end
 
 @timeit function op_sum_to_opID_sum(
-  os::OpSum{C}, sites::Vector{<:Index}
-)::Tuple{OpIDSum, OpCacheVec} where {C}
+  os::OpSum{C},
+  sites::Vector{<:Index}
+)::OpIDSum where {C}
   N = length(sites)
 
   ops_on_each_site = [Dict{Op,Int}(Op("I", n) => 1) for n in 1:N]
@@ -256,7 +260,7 @@ end
     push!(opID_sum, ITensors.coefficient(term), opID_term)
   end
 
-  return opID_sum, op_cache_vec
+  return opID_sum
 end
 
 @timeit function check_for_errors(os::OpIDSum, op_cache_vec::OpCacheVec)::Nothing
@@ -287,18 +291,13 @@ end
 
 @timeit function prepare_opID_sum!(
   os::OpIDSum,
-  sites::Vector{<:Index},
-  op_cache_vec::OpCacheVec,
   basis_op_cache_vec::Union{Nothing,OpCacheVec},
-)::Tuple{OpIDSum,OpCacheVec}
+)
   if !isnothing(basis_op_cache_vec)
-    os, op_cache_vec = rewrite_in_operator_basis(os, op_cache_vec, basis_op_cache_vec),
-    basis_op_cache_vec
+    rewrite_in_operator_basis!(os, basis_op_cache_vec)
   end
 
   # check_for_errors(os, op_cache_vec)
-
-  return os, op_cache_vec
 end
 
 function my_matrix(term::AbstractVector{OpID}, op_cache::Vector{OpInfo})::Matrix{ComplexF64}
