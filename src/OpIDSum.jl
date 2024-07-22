@@ -66,7 +66,7 @@ mutable struct OpIDSum{N, C}
   scalars::Vector{C}
   num_terms::Int
   op_cache_vec::OpCacheVec
-  modify!::Function
+  modify!::FunctionWrappers.FunctionWrapper{C, Tuple{SubArray{OpID, 1, Base.ReinterpretArray{OpID, 2, NTuple{N, OpID}, Vector{NTuple{N, OpID}}, true}, Tuple{UnitRange{Int64}, Int64}, false}}}
 end
 
 function OpIDSum{N, C}(max_terms::Int, op_cache_vec::OpCacheVec, f::Function)::OpIDSum{N, C} where {N, C}
@@ -76,11 +76,12 @@ function OpIDSum{N, C}(max_terms::Int, op_cache_vec::OpCacheVec, f::Function)::O
     terms[i] = zero(OpID)
   end
 
-  return OpIDSum(data, terms, zeros(C, max_terms), 0, op_cache_vec, f)
+  f_wrapped = FunctionWrappers.FunctionWrapper{C, Tuple{SubArray{OpID, 1, Base.ReinterpretArray{OpID, 2, NTuple{N, OpID}, Vector{NTuple{N, OpID}}, true}, Tuple{UnitRange{Int64}, Int64}, false}}}(f)
+  return OpIDSum(data, terms, zeros(C, max_terms), 0, op_cache_vec, f_wrapped)
 end
 
 function OpIDSum{N, C}(max_terms::Int, op_cache_vec::OpCacheVec)::OpIDSum{N, C} where {N, C}
-  return OpIDSum{N, C}(max_terms, op_cache_vec, ops::AbstractVector{OpID} -> 1)
+  return OpIDSum{N, C}(max_terms, op_cache_vec, ops -> 1)
 end
 
 function Base.length(os::OpIDSum)::Int
@@ -109,7 +110,7 @@ function ITensors.add!(os::OpIDSum{N, C}, scalar::C, ops)::OpIDSum{N, C} where {
 
   permutation_sign = sort_fermion_perm!(view(os.terms, 1:num_appended, os.num_terms), os.op_cache_vec)
 
-  scalar_modification::Int = os.modify!(view(os.terms, 1:num_appended, os.num_terms))
+  scalar_modification = os.modify!(view(os.terms, 1:num_appended, os.num_terms))
 
   os.scalars[os.num_terms] = scalar * permutation_sign * scalar_modification
 

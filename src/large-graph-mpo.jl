@@ -250,10 +250,6 @@ end
   cc_order = [i for i in 1:nccs]
   if combine_qn_sectors && has_qns
     cc_order, qi_of_cc = merge_qn_sectors(qi_of_cc)
-
-    if output_level > 1
-      println("    Reduced the number of sectors from $nccs to $(length(qi_of_cc))")
-    end
   end
 
   next_graph = MPOGraph{N, C}([], g.right_vertices, [])
@@ -280,8 +276,10 @@ end
 
   if has_qns
     outgoing_link = Index(qi_of_cc...; tags="Link,l=$n", dir=ITensors.Out)
+    output_level > 1 && println("    Total rank is $cur_offset with $(length(qi_of_cc)) different QN sectors.")
   else
     outgoing_link = Index(cur_offset; tags="Link,l=$n")
+    output_level > 1 && println("    Total rank is $cur_offset.")
   end
 
   return next_graph, offset_of_cc, matrix_of_cc, outgoing_link

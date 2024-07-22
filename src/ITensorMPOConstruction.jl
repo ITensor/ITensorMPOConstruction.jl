@@ -7,8 +7,8 @@ using ITensorMPS
 using ITensors
 using LinearAlgebra
 using SparseArrays
-using Memoize
 using TimerOutputs
+using FunctionWrappers
 
 #####################################
 # MPO Construction
