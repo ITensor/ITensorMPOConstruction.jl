@@ -31,34 +31,28 @@ function my_copyto_dropzeros!(T::ITensors.Tensor, offsets::Vector{Int}, block_sp
   return T
 end
 
-@timeit function svdMPO_new(
+function resume_svd_MPO(
   ValType::Type{<:Number},
-  os::OpIDSum,
-  sites::Vector{<:Index};
+  n_init::Int,
+  H::MPO,
+  sites::Vector{<:Index},
+  llinks::Vector{<:Index},
+  g::MPOGraph,
+  op_cache_vec::OpCacheVec;
   tol::Real=-1,
   combine_qn_sectors::Bool=false,
+  call_back::Function=(args...) -> nothing,
   output_level::Int=0
-)::MPO
+  )::MPO
   # TODO: This should be fixed.
   @assert !ITensors.using_auto_fermion()
 
   N = length(sites)
 
-  @time_if output_level 0 "Constructing MPOGraph" g = MPOGraph(os)
-
-  H = MPO(sites)
-
-  llinks = Vector{Index}(undef, N + 1)
-  if hasqns(sites)
-    llinks[1] = Index(QN() => 1; tags="Link,l=0", dir=ITensors.Out)
-  else
-    llinks[1] = Index(1; tags="Link,l=0")
-  end
-
-  for n in 1:N
+  for n in n_init:N
     output_level > 0 && println("At site $n/$(length(sites)) the graph takes up $(Base.format_bytes(Base.summarysize(g)))")
     @time_if output_level 1 "at_site!" g, offsets, block_sparse_matrices, llinks[n + 1] = at_site!(
-      ValType, g, n, sites, tol, os.op_cache_vec; combine_qn_sectors, output_level
+      ValType, g, n, sites, tol, op_cache_vec; combine_qn_sectors, output_level
     )
 
     # Constructing the tensor from an array is much faster than setting the components of the ITensor directly.
@@ -101,6 +95,8 @@ end
         )
       end
     end
+
+    call_back(n, H, sites, llinks, g, op_cache_vec)
   end
 
   # Remove the dummy link indices from the left and right.
@@ -116,17 +112,41 @@ end
   return H
 end
 
+@timeit function svdMPO_new(
+  ValType::Type{<:Number},
+  os::OpIDSum,
+  sites::Vector{<:Index};
+  output_level::Int=0,
+  kwargs...
+)::MPO
+  # TODO: This should be fixed.
+  @assert !ITensors.using_auto_fermion()
+
+  N = length(sites)
+
+  @time_if output_level 0 "Constructing MPOGraph" g = MPOGraph(os)
+
+  H = MPO(sites)
+
+  llinks = Vector{Index}(undef, N + 1)
+  if hasqns(sites)
+    llinks[1] = Index(QN() => 1; tags="Link,l=0", dir=ITensors.Out)
+  else
+    llinks[1] = Index(1; tags="Link,l=0")
+  end
+
+  return resume_svd_MPO(ValType, 1, H, sites, llinks, g, os.op_cache_vec; output_level, kwargs...)
+end
+
 function MPO_new(
   ValType::Type{<:Number},
   os::OpIDSum,
   sites::Vector{<:Index};
   basis_op_cache_vec::Union{OpCacheVec, Nothing}=nothing,
-  tol::Real=-1,
-  combine_qn_sectors::Bool=false,
-  output_level::Int=0,
+  kwargs...,
 )::MPO
   prepare_opID_sum!(os, basis_op_cache_vec)
-  return svdMPO_new(ValType, os, sites; tol, combine_qn_sectors, output_level)
+  return svdMPO_new(ValType, os, sites; kwargs...)
 end
 
 function MPO_new(
