@@ -1,6 +1,6 @@
 BlockSparseMatrix{C} = Dict{Tuple{Int,Int},Matrix{C}}
 
-MPOGraph{N, C} = BipartiteGraph{LeftVertex, NTuple{N, OpID}, C}
+MPOGraph{N, C, Ti} = BipartiteGraph{LeftVertex, NTuple{N, OpID{Ti}}, C}
 
 ## Taken from https://discourse.julialang.org/t/how-to-sort-two-or-more-lists-at-once/12073/13
 struct CoSorterElement{T1,T2}
@@ -22,10 +22,10 @@ Base.setindex!(c::CoSorter, t::CoSorterElement, i...) = (setindex!(c.sortarray, 
 Base.isless(a::CoSorterElement, b::CoSorterElement) = isless(a.x, b.x)
 
 
-@timeit function MPOGraph(os::OpIDSum{N, C})::MPOGraph{N, C} where {N, C}
+@timeit function MPOGraph(os::OpIDSum{N, C, Ti})::MPOGraph{N, C, Ti} where {N, C, Ti}
   for i in 1:length(os)
     for j in size(os.terms, 1):-1:1
-      if os.terms[j, i] != zero(OpID)
+      if os.terms[j, i] != zero(os.terms[j, i])
         reverse!(view(os.terms, 1:j, i))
         break
       end
@@ -59,7 +59,7 @@ Base.isless(a::CoSorterElement, b::CoSorterElement) = isless(a.x, b.x)
   resize!(os._data, nnz)
   resize!(os.scalars, nnz)
 
-  g = MPOGraph{N, C}([], os._data, [])
+  g = MPOGraph{N, C, Ti}([], os._data, [])
 
   ## TODO: Break this out into a function that is shared with at_site!
   next_edges = [Vector{Tuple{Int, C}}() for _ in 1:length(os.op_cache_vec[1])]
@@ -166,13 +166,13 @@ end
 
 @timeit function at_site!(
   ValType::Type{<:Number},
-  g::MPOGraph{N, C},
+  g::MPOGraph{N, C, Ti},
   n::Int,
   sites::Vector{<:Index},
   tol::Real,
   op_cache_vec::OpCacheVec;
   combine_qn_sectors::Bool=false,
-  output_level::Int=0)::Tuple{BipartiteGraph,Vector{Int},Vector{BlockSparseMatrix{ValType}},Index} where {N, C}
+  output_level::Int=0)::Tuple{MPOGraph{N, C, Ti},Vector{Int},Vector{BlockSparseMatrix{ValType}},Index} where {N, C, Ti}
 
   has_qns = hasqns(sites)
   
@@ -252,7 +252,7 @@ end
     cc_order, qi_of_cc = merge_qn_sectors(qi_of_cc)
   end
 
-  next_graph = MPOGraph{N, C}([], g.right_vertices, [])
+  next_graph = MPOGraph{N, C, Ti}([], g.right_vertices, [])
   offset_of_cc = zeros(Int, nccs + 1)
 
   cur_offset = 0

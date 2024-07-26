@@ -34,16 +34,16 @@ function to_OpCacheVec(sites::Vector{<:Index}, ::Nothing)::Nothing
   return nothing
 end
 
-struct OpID
-  id::Int16
-  n::Int16
+struct OpID{Ti}
+  id::Ti
+  n::Ti
 end
 
-Base.zero(::Type{OpID}) = OpID(0, 0)
+Base.zero(::OpID{Ti}) where {Ti} = OpID{Ti}(0, 0)
 
 Base.isless(op1::OpID, op2::OpID) = (op1.n, op1.id) < (op2.n, op2.id)
 
-function sort_fermion_perm!(ops::AbstractVector{OpID}, op_cache_vec::OpCacheVec)::Int
+function sort_fermion_perm!(ops::AbstractVector{<:OpID}, op_cache_vec::OpCacheVec)::Int
   sign = +1
   for i in 2:length(ops)
     cur_op_is_fermionic = op_cache_vec[ops[i].n][ops[i].id].is_fermionic
@@ -60,25 +60,25 @@ function sort_fermion_perm!(ops::AbstractVector{OpID}, op_cache_vec::OpCacheVec)
   return sign
 end
 
-mutable struct OpIDSum{N, C}
-  _data::Vector{NTuple{N, OpID}}
-  terms::Base.ReinterpretArray{OpID, 2, NTuple{N, OpID}, Vector{NTuple{N, OpID}}, true}
+mutable struct OpIDSum{N, C, Ti}
+  _data::Vector{NTuple{N, OpID{Ti}}}
+  terms::Base.ReinterpretArray{OpID{Ti}, 2, NTuple{N, OpID{Ti}}, Vector{NTuple{N, OpID{Ti}}}, true}
   scalars::Vector{C}
   num_terms::Threads.Atomic{Int}
   op_cache_vec::OpCacheVec
-  abs_tol::C
-  modify!::FunctionWrappers.FunctionWrapper{C, Tuple{SubArray{OpID, 1, Base.ReinterpretArray{OpID, 2, NTuple{N, OpID}, Vector{NTuple{N, OpID}}, true}, Tuple{UnitRange{Int64}, Int64}, false}}}
+  abs_tol::Float64
+  modify!::FunctionWrappers.FunctionWrapper{C, Tuple{SubArray{OpID{Ti}, 1, Base.ReinterpretArray{OpID{Ti}, 2, NTuple{N, OpID{Ti}}, Vector{NTuple{N, OpID{Ti}}}, true}, Tuple{UnitRange{Int64}, Int64}, false}}}
 end
 
-function OpIDSum{N, C}(max_terms::Int, op_cache_vec::OpCacheVec, f::Function; abs_tol::C=zero(C))::OpIDSum{N, C} where {N, C}
-  data = Vector{NTuple{N, OpID}}(undef, max_terms)
-  terms = reinterpret(reshape, OpID, data)
-  f_wrapped = FunctionWrappers.FunctionWrapper{C, Tuple{SubArray{OpID, 1, Base.ReinterpretArray{OpID, 2, NTuple{N, OpID}, Vector{NTuple{N, OpID}}, true}, Tuple{UnitRange{Int64}, Int64}, false}}}(f)
-  return OpIDSum(data, terms, zeros(C, max_terms), Threads.Atomic{Int}(0), op_cache_vec, abs_tol, f_wrapped)
+function OpIDSum{N, C, Ti}(max_terms::Int, op_cache_vec::OpCacheVec, f::Function; abs_tol::Real=0)::OpIDSum{N, C, Ti} where {N, C, Ti}
+  data = Vector{NTuple{N, OpID{Ti}}}(undef, max_terms)
+  terms = reinterpret(reshape, OpID{Ti}, data)
+  f_wrapped = FunctionWrappers.FunctionWrapper{C, Tuple{SubArray{OpID{Ti}, 1, Base.ReinterpretArray{OpID{Ti}, 2, NTuple{N, OpID{Ti}}, Vector{NTuple{N, OpID{Ti}}}, true}, Tuple{UnitRange{Int64}, Int64}, false}}}(f)
+  return OpIDSum(data, terms, Vector{C}(undef, max_terms), Threads.Atomic{Int}(0), op_cache_vec, Float64(abs_tol), f_wrapped)
 end
 
-function OpIDSum{N, C}(max_terms::Int, op_cache_vec::OpCacheVec; abs_tol::C=zero(C))::OpIDSum{N, C} where {N, C}
-  return OpIDSum{N, C}(max_terms, op_cache_vec, ops -> 1; abs_tol)
+function OpIDSum{N, C, Ti}(max_terms::Int, op_cache_vec::OpCacheVec; abs_tol::Real=0)::OpIDSum{N, C, Ti} where {N, C, Ti}
+  return OpIDSum{N, C, Ti}(max_terms, op_cache_vec, ops -> 1; abs_tol)
 end
 
 function Base.length(os::OpIDSum)::Int
@@ -93,7 +93,7 @@ function Base.getindex(os::OpIDSum, i::Integer)
   return os.scalars[i], view(os.terms, :, i)
 end
 
-function ITensors.add!(os::OpIDSum{N, C}, scalar::C, ops)::OpIDSum{N, C} where {N, C}
+function ITensors.add!(os::OpIDSum, scalar::Number, ops)::OpIDSum
   abs(scalar) <= os.abs_tol && return os
 
   num_terms = Threads.atomic_add!(os.num_terms, 1) + 1
@@ -105,8 +105,8 @@ function ITensors.add!(os::OpIDSum{N, C}, scalar::C, ops)::OpIDSum{N, C} where {
     os.terms[num_appended, num_terms] = op
   end
 
-  for i in (num_appended + 1):N
-    os.terms[i, num_terms] = zero(OpID)
+  for i in (num_appended + 1):size(os.terms, 1)
+    os.terms[i, num_terms] = zero(os.terms[i, num_terms])
   end
 
   permutation_sign = sort_fermion_perm!(view(os.terms, 1:num_appended, num_terms), os.op_cache_vec)
@@ -118,18 +118,18 @@ function ITensors.add!(os::OpIDSum{N, C}, scalar::C, ops)::OpIDSum{N, C} where {
   return os
 end
 
-function ITensors.add!(os::OpIDSum{N, C}, scalar::C, ops::OpID...)::OpIDSum{N, C} where {N, C}
+function ITensors.add!(os::OpIDSum, scalar::Number, ops::OpID...)::OpIDSum
   return add!(os, scalar, ops)
 end
 
-function determine_val_type(os::OpIDSum{C}) where {C}
+function determine_val_type(os::OpIDSum)
   !all(isreal(scalar) for scalar in os.scalars) && return ComplexF64
   !all(isreal(op.matrix) for ops_of_site in os.op_cache_vec for op in ops_of_site) &&
     return ComplexF64
   return Float64
 end
 
-function for_equal_sites(f::Function, ops::AbstractVector{OpID})::Nothing
+function for_equal_sites(f::Function, ops::AbstractVector{<:OpID})::Nothing
   i = 1
   while i <= length(ops)
     j = i
@@ -146,9 +146,9 @@ function for_equal_sites(f::Function, ops::AbstractVector{OpID})::Nothing
 end
 
 @timeit function rewrite_in_operator_basis!(
-  os::OpIDSum{N, C},
+  os::OpIDSum,
   basis_op_cache_vec::OpCacheVec
-) where {N, C}
+)
   
   op_cache_vec = os.op_cache_vec
 
@@ -172,7 +172,7 @@ end
   end
 
   function convert_to_basis_memoized(
-    ops::AbstractVector{OpID}
+    ops::AbstractVector{<:OpID}
   )::Tuple{ComplexF64,Int}
     n = ops[1].n
     local_matrix = my_matrix(ops, op_cache_vec[n])
@@ -196,7 +196,7 @@ end
     scalar, ops = os[i]
 
     for_equal_sites(ops) do a, b
-      ops[a] == zero(OpID) && return
+      ops[a] == zero(ops[a]) && return
 
       if a == b
         coeff, basis_id = single_op_translation[ops[a].n][ops[a].id]
@@ -215,7 +215,7 @@ end
 
       ops[a] = OpID(basis_id, ops[a].n)
       for k in (a + 1):b
-        ops[k] = zero(OpID)
+        ops[k] = zero(ops[k])
       end
     end
 
@@ -238,9 +238,9 @@ end
   op_cache_vec = [[OpInfo(Op("I", n), sites[n])] for n in 1:N]
 
   max_ops_per_term = maximum(length, ITensors.terms(os))
-  opID_sum = OpIDSum{max_ops_per_term, C}(length(os), op_cache_vec)
+  opID_sum = OpIDSum{max_ops_per_term, C, Int}(length(os), op_cache_vec)
 
-  opID_term = Vector{OpID}()
+  opID_term = Vector{OpID{Int}}()
   ## TODO: Don't need $i$ here
   for (i, term) in enumerate(os)
     resize!(opID_term, 0)
@@ -272,13 +272,13 @@ end
     fermion_parity = 0
     for j in eachindex(ops)
       opj = ops[j]
-      opj == zero(OpID) && continue
+      opj == zero(opj) && continue
 
       flux += op_cache_vec[opj.n][opj.id].qnFlux
       fermion_parity += op_cache_vec[opj.n][opj.id].is_fermionic
 
       if j < length(ops)
-        ops[j + 1] == zero(OpID) && continue
+        ops[j + 1] == zero(ops[j + 1]) && continue
         ops[j].n > ops[j + 1].n && error("The operators are not sorted by site: $ops")
         ops[j].n == ops[j + 1].n &&
           error("A site has more than one operator acting on it in a term: $ops")
@@ -301,7 +301,7 @@ end
   # check_for_errors(os, op_cache_vec)
 end
 
-function my_matrix(term::AbstractVector{OpID}, op_cache::Vector{OpInfo})::Matrix{ComplexF64}
+function my_matrix(term::AbstractVector{<:OpID}, op_cache::Vector{OpInfo})::Matrix{ComplexF64}
   @assert all(op.n == term[1].n for op in term)
   @assert !isempty(term)
 
