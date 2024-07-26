@@ -55,7 +55,7 @@ Base.isless(a::CoSorterElement, b::CoSorterElement) = isless(a.x, b.x)
     end
   end
 
-  os.num_terms = nnz
+  os.num_terms[] = nnz
   resize!(os._data, nnz)
   resize!(os.scalars, nnz)
 

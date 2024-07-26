@@ -64,7 +64,7 @@ mutable struct OpIDSum{N, C}
   _data::Vector{NTuple{N, OpID}}
   terms::Base.ReinterpretArray{OpID, 2, NTuple{N, OpID}, Vector{NTuple{N, OpID}}, true}
   scalars::Vector{C}
-  num_terms::Int
+  num_terms::Threads.Atomic{Int}
   op_cache_vec::OpCacheVec
   modify!::FunctionWrappers.FunctionWrapper{C, Tuple{SubArray{OpID, 1, Base.ReinterpretArray{OpID, 2, NTuple{N, OpID}, Vector{NTuple{N, OpID}}, true}, Tuple{UnitRange{Int64}, Int64}, false}}}
 end
@@ -72,12 +72,8 @@ end
 function OpIDSum{N, C}(max_terms::Int, op_cache_vec::OpCacheVec, f::Function)::OpIDSum{N, C} where {N, C}
   data = Vector{NTuple{N, OpID}}(undef, max_terms)
   terms = reinterpret(reshape, OpID, data)
-  for i in eachindex(terms)
-    terms[i] = zero(OpID)
-  end
-
   f_wrapped = FunctionWrappers.FunctionWrapper{C, Tuple{SubArray{OpID, 1, Base.ReinterpretArray{OpID, 2, NTuple{N, OpID}, Vector{NTuple{N, OpID}}, true}, Tuple{UnitRange{Int64}, Int64}, false}}}(f)
-  return OpIDSum(data, terms, zeros(C, max_terms), 0, op_cache_vec, f_wrapped)
+  return OpIDSum(data, terms, zeros(C, max_terms), Threads.Atomic{Int}(0), op_cache_vec, f_wrapped)
 end
 
 function OpIDSum{N, C}(max_terms::Int, op_cache_vec::OpCacheVec)::OpIDSum{N, C} where {N, C}
@@ -85,7 +81,7 @@ function OpIDSum{N, C}(max_terms::Int, op_cache_vec::OpCacheVec)::OpIDSum{N, C} 
 end
 
 function Base.length(os::OpIDSum)::Int
-  return os.num_terms
+  return os.num_terms[]
 end
 
 function Base.eachindex(os::OpIDSum)::UnitRange{Int}
@@ -99,20 +95,24 @@ end
 function ITensors.add!(os::OpIDSum{N, C}, scalar::C, ops)::OpIDSum{N, C} where {N, C}
   scalar == zero(C) && return os
 
-  os.num_terms += 1
+  num_terms = Threads.atomic_add!(os.num_terms, 1) + 1
   num_appended = 0
   for op in ops
     op.id == 1 && continue ## Filter out identity ops
 
     num_appended += 1
-    os.terms[num_appended, os.num_terms] = op
+    os.terms[num_appended, num_terms] = op
   end
 
-  permutation_sign = sort_fermion_perm!(view(os.terms, 1:num_appended, os.num_terms), os.op_cache_vec)
+  for i in (num_appended + 1):N
+    os.terms[i, num_terms] = zero(OpID)
+  end
 
-  scalar_modification = os.modify!(view(os.terms, 1:num_appended, os.num_terms))
+  permutation_sign = sort_fermion_perm!(view(os.terms, 1:num_appended, num_terms), os.op_cache_vec)
 
-  os.scalars[os.num_terms] = scalar * permutation_sign * scalar_modification
+  scalar_modification = os.modify!(view(os.terms, 1:num_appended, num_terms))
+
+  os.scalars[num_terms] = scalar * permutation_sign * scalar_modification
 
   return os
 end
