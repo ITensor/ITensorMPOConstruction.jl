@@ -48,7 +48,7 @@ Base.isless(a::CoSorterElement, b::CoSorterElement) = isless(a.x, b.x)
 
   nnz = 0
   for i in eachindex(os)
-    if os.scalars[i] != 0
+    if abs(os.scalars[i]) > os.abs_tol
       nnz += 1
       os.scalars[nnz] = os.scalars[i]
       os._data[nnz] = os._data[i]

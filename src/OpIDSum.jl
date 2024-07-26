@@ -66,18 +66,19 @@ mutable struct OpIDSum{N, C}
   scalars::Vector{C}
   num_terms::Threads.Atomic{Int}
   op_cache_vec::OpCacheVec
+  abs_tol::C
   modify!::FunctionWrappers.FunctionWrapper{C, Tuple{SubArray{OpID, 1, Base.ReinterpretArray{OpID, 2, NTuple{N, OpID}, Vector{NTuple{N, OpID}}, true}, Tuple{UnitRange{Int64}, Int64}, false}}}
 end
 
-function OpIDSum{N, C}(max_terms::Int, op_cache_vec::OpCacheVec, f::Function)::OpIDSum{N, C} where {N, C}
+function OpIDSum{N, C}(max_terms::Int, op_cache_vec::OpCacheVec, f::Function; abs_tol::C=zero(C))::OpIDSum{N, C} where {N, C}
   data = Vector{NTuple{N, OpID}}(undef, max_terms)
   terms = reinterpret(reshape, OpID, data)
   f_wrapped = FunctionWrappers.FunctionWrapper{C, Tuple{SubArray{OpID, 1, Base.ReinterpretArray{OpID, 2, NTuple{N, OpID}, Vector{NTuple{N, OpID}}, true}, Tuple{UnitRange{Int64}, Int64}, false}}}(f)
-  return OpIDSum(data, terms, zeros(C, max_terms), Threads.Atomic{Int}(0), op_cache_vec, f_wrapped)
+  return OpIDSum(data, terms, zeros(C, max_terms), Threads.Atomic{Int}(0), op_cache_vec, abs_tol, f_wrapped)
 end
 
-function OpIDSum{N, C}(max_terms::Int, op_cache_vec::OpCacheVec)::OpIDSum{N, C} where {N, C}
-  return OpIDSum{N, C}(max_terms, op_cache_vec, ops -> 1)
+function OpIDSum{N, C}(max_terms::Int, op_cache_vec::OpCacheVec; abs_tol::C=zero(C))::OpIDSum{N, C} where {N, C}
+  return OpIDSum{N, C}(max_terms, op_cache_vec, ops -> 1; abs_tol)
 end
 
 function Base.length(os::OpIDSum)::Int
@@ -93,7 +94,7 @@ function Base.getindex(os::OpIDSum, i::Integer)
 end
 
 function ITensors.add!(os::OpIDSum{N, C}, scalar::C, ops)::OpIDSum{N, C} where {N, C}
-  scalar == zero(C) && return os
+  abs(scalar) <= os.abs_tol && return os
 
   num_terms = Threads.atomic_add!(os.num_terms, 1) + 1
   num_appended = 0
