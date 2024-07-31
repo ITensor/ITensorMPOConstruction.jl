@@ -48,13 +48,15 @@ end
 
 struct BipartiteGraphConnectedComponents
   lvs_of_component::Vector{Vector{Int}}
+  component_position_of_rvs::Vector{Int}
+  rv_size_of_component::Vector{Int}
 end
 
 function compute_connected_components2!(g::BipartiteGraph)::BipartiteGraphConnectedComponents
-  min_lv_connected_to_rv = fill(typemax(Int32), right_size(g))
+  min_lv_connected_to_rv = fill(typemax(Int), right_size(g))
   component_of_lv = Int32[i for i in 1:left_size(g)]
   lvs_of_component = Vector{Int}[[i] for i in 1:left_size(g)]
-  
+
   for lv_id in 1:left_size(g)
     cur_min_lv = lv_id
 
@@ -84,7 +86,19 @@ function compute_connected_components2!(g::BipartiteGraph)::BipartiteGraphConnec
 
   lvs_of_component = [lvs for lvs in lvs_of_component if !isempty(lvs)]
 
-  return BipartiteGraphConnectedComponents(lvs_of_component)
+  ## Mutate component_of_rvs which stores the component of each right right vertex
+  ## into the position of each right vertex within it's component.
+  rv_size_of_component = zeros(Int, length(lvs_of_component))
+  for rv_id in 1:right_size(g)
+    min_lv = min_lv_connected_to_rv[rv_id]
+    min_lv == typemax(Int) && continue
+    
+    component = component_of_lv[min_lv]
+    rv_size_of_component[component] += 1
+    min_lv_connected_to_rv[rv_id] = rv_size_of_component[component]
+  end
+
+  return BipartiteGraphConnectedComponents(lvs_of_component, min_lv_connected_to_rv, rv_size_of_component)
 end
 
 function compute_connected_components3!(g::BipartiteGraph)::BipartiteGraphConnectedComponents
@@ -134,7 +148,19 @@ function compute_connected_components3!(g::BipartiteGraph)::BipartiteGraphConnec
 
   lvs_of_component = [collect(lvs) for lvs in lvs_of_component if !isempty(lvs)]
 
-  return BipartiteGraphConnectedComponents(lvs_of_component)
+  ## Mutate component_of_rvs which stores the component of each right right vertex
+  ## into the position of each right vertex within it's component.
+  rv_size_of_component = zeros(Int, length(lvs_of_component))
+  for rv_id in 1:right_size(g)
+    min_lv = min_lv_connected_to_rv[rv_id]
+    min_lv == typemax(Int) && continue
+    
+    component = component_of_lv[min_lv]
+    rv_size_of_component[component] += 1
+    min_lv_connected_to_rv[rv_id] = rv_size_of_component[component]
+  end
+
+  return BipartiteGraphConnectedComponents(lvs_of_component, min_lv_connected_to_rv, rv_size_of_component)
 end
 
 ## This ignores vertices that are not connected to anything
@@ -198,21 +224,17 @@ num_connected_components(cc::BipartiteGraphConnectedComponents) = length(cc.lvs_
 
 function get_cc_matrix(g::BipartiteGraph{L, R, C}, ccs::BipartiteGraphConnectedComponents, cc::Int; clear_edges::Bool=false)::Tuple{SparseMatrixCSC{C, Int}, Vector{Int}, Vector{Int}} where {L, R, C}
   num_edges = sum(length(g.edges_from_left[lv]) for lvs in ccs.lvs_of_component[cc] for lv in lvs)
-
+  
   edge_left_vertex = Vector{Int}(undef, num_edges)
   edge_right_vertex = Vector{Int}(undef, num_edges)
   edge_weight = Vector{C}(undef, num_edges)
-
-  right_map_inv = Dict{Int, Int}()
-  right_map = Vector{Int}()
+  right_map = Vector{Int}(undef, ccs.rv_size_of_component[cc])
 
   pos = 1
   for (i, lv_id) in enumerate(ccs.lvs_of_component[cc])
     for (rv_id, weight) in g.edges_from_left[lv_id]
-      j = get!(right_map_inv, rv_id) do 
-        push!(right_map, rv_id)
-        return length(right_map)
-      end
+      j = ccs.component_position_of_rvs[rv_id]
+      right_map[j] = rv_id
 
       edge_left_vertex[pos] = i
       edge_right_vertex[pos] = j
