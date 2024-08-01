@@ -99,12 +99,7 @@ end
 function sparse_qr(
   A::SparseMatrixCSC, tol::Real
 )::Tuple{SparseArrays.SPQR.QRSparseQ,SparseMatrixCSC,Vector{Int},Vector{Int},Int}
-  if tol < 0
-    ret = qr(A)
-  else
-    ret = qr(A; tol=tol)
-  end
-
+  ret = qr(A; tol=tol)
   return ret.Q, ret.R, ret.prow, ret.pcol, rank(ret)
 end
 
@@ -177,7 +172,7 @@ end
   has_qns = hasqns(sites)
   
   combine_duplicate_adjacent_right_vertices!(g, terms_eq_from(n + 1))
-  ccs = compute_connected_components!(g)
+  ccs = compute_connected_components(g)
   nccs = num_connected_components(ccs)
 
   output_level > 0 && println("  The graph has $(left_size(g)) left vertices, $(right_size(g)) right vertices, $(num_edges(g)) edges and $(nccs) connected components")
@@ -186,6 +181,8 @@ end
   matrix_of_cc = [BlockSparseMatrix{ValType}() for _ in 1:nccs]
   qi_of_cc = Pair{QN,Int}[QN() => 0 for _ in 1:nccs]
   next_edges_of_cc = [Matrix{Vector{Tuple{Int, C}}}(undef, 0, 0) for _ in 1:nccs]
+
+  tol == -1 && (tol = get_default_tol(g))
 
   @timeit "Threaded loop" Threads.@threads for cc in 1:nccs
     W, left_map, right_map = get_cc_matrix(g, ccs, cc; clear_edges=true)
@@ -256,7 +253,7 @@ end
   offset_of_cc = zeros(Int, nccs + 1)
 
   cur_offset = 0
-  @timeit "Combining graphs" for (i, cc) in enumerate(cc_order)
+  for (i, cc) in enumerate(cc_order)
     offset_of_cc[cc] = cur_offset
 
     next_edges = next_edges_of_cc[cc]

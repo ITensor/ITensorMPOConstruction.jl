@@ -52,9 +52,9 @@ struct BipartiteGraphConnectedComponents
   rv_size_of_component::Vector{Int}
 end
 
-function compute_connected_components2!(g::BipartiteGraph)::BipartiteGraphConnectedComponents
+@timeit function compute_connected_components(g::BipartiteGraph)::BipartiteGraphConnectedComponents
   min_lv_connected_to_rv = fill(typemax(Int), right_size(g))
-  component_of_lv = Int32[i for i in 1:left_size(g)]
+  component_of_lv = Int[i for i in 1:left_size(g)]
   lvs_of_component = Vector{Int}[[i] for i in 1:left_size(g)]
 
   for lv_id in 1:left_size(g)
@@ -63,7 +63,7 @@ function compute_connected_components2!(g::BipartiteGraph)::BipartiteGraphConnec
     for (rv_id, _) in g.edges_from_left[lv_id]
       min_lv_of_rv = min_lv_connected_to_rv[rv_id]
 
-      if min_lv_of_rv == typemax(Int32)
+      if min_lv_of_rv == typemax(Int)
         min_lv_connected_to_rv[rv_id] = lv_id
         continue
       end
@@ -84,8 +84,6 @@ function compute_connected_components2!(g::BipartiteGraph)::BipartiteGraphConnec
     end
   end
 
-  lvs_of_component = [lvs for lvs in lvs_of_component if !isempty(lvs)]
-
   ## Mutate component_of_rvs which stores the component of each right right vertex
   ## into the position of each right vertex within it's component.
   rv_size_of_component = zeros(Int, length(lvs_of_component))
@@ -98,126 +96,10 @@ function compute_connected_components2!(g::BipartiteGraph)::BipartiteGraphConnec
     min_lv_connected_to_rv[rv_id] = rv_size_of_component[component]
   end
 
-  return BipartiteGraphConnectedComponents(lvs_of_component, min_lv_connected_to_rv, rv_size_of_component)
-end
-
-function compute_connected_components3!(g::BipartiteGraph)::BipartiteGraphConnectedComponents
-  ## TODO: This is a fix for DataStructures MutableLinkedList.append! that has yet to be
-  ## released, should be in the next release (currently julia v0.18.20, github V0.18.15??)
-  function my_append!(l1::MutableLinkedList{T}, l2::MutableLinkedList{T}) where T
-    l1.node.prev.next = l2.node.next # l1's last's next is now l2's first
-    l2.node.prev.next = l1.node # l2's last's next is now l1.node
-    l2.node.next.prev = l1.node.prev # l2's first's prev is now l1's last
-    l1.node.prev      = l2.node.prev # l1's first's prev is now l2's last
-    l1.len += length(l2)
-    # make l2 empty
-    l2.node.prev = l2.node
-    l2.node.next = l2.node
-    l2.len = 0
-    return l1
-  end
-
-  min_lv_connected_to_rv = fill(typemax(Int32), right_size(g))
-  component_of_lv = Int32[i for i in 1:left_size(g)]
-  lvs_of_component = MutableLinkedList{Int}[MutableLinkedList{Int}(i) for i in 1:left_size(g)]
-  
-  for lv_id in 1:left_size(g)
-    cur_min_lv = lv_id
-
-    for (rv_id, _) in g.edges_from_left[lv_id]
-      min_lv_of_rv = min_lv_connected_to_rv[rv_id]
-
-      if min_lv_of_rv == typemax(Int32)
-        min_lv_connected_to_rv[rv_id] = lv_id
-        continue
-      end
-
-      cur_min_lv, src_lv = minmax(cur_min_lv, min_lv_of_rv)
-      cur_component = component_of_lv[cur_min_lv]
-      src_component = component_of_lv[src_lv]
-
-      cur_component == src_component && continue
-
-      for lv_id in lvs_of_component[src_component]
-        component_of_lv[lv_id] = cur_component
-      end
-
-      my_append!(lvs_of_component[cur_component], lvs_of_component[src_component])
-    end
-  end
-
-  lvs_of_component = [collect(lvs) for lvs in lvs_of_component if !isempty(lvs)]
-
-  ## Mutate component_of_rvs which stores the component of each right right vertex
-  ## into the position of each right vertex within it's component.
-  rv_size_of_component = zeros(Int, length(lvs_of_component))
-  for rv_id in 1:right_size(g)
-    min_lv = min_lv_connected_to_rv[rv_id]
-    min_lv == typemax(Int) && continue
-    
-    component = component_of_lv[min_lv]
-    rv_size_of_component[component] += 1
-    min_lv_connected_to_rv[rv_id] = rv_size_of_component[component]
-  end
-
-  return BipartiteGraphConnectedComponents(lvs_of_component, min_lv_connected_to_rv, rv_size_of_component)
-end
-
-## This ignores vertices that are not connected to anything
-@timeit function compute_connected_components!(g::BipartiteGraph)::BipartiteGraphConnectedComponents
-  component_of_rvs = zeros(Int, right_size(g)) # TODO: IDK if I should allocate this each time, also could probably be Int16
-
-  rvs_of_component = Vector{Set{Int}}() # TODO: Pretty sure this could be a Vector{Vector{Int}}
-  for lv_id in 1:left_size(g)
-    cur_component = minimum(component_of_rvs[rv_id] for (rv_id, weight) in g.edges_from_left[lv_id] if component_of_rvs[rv_id] != 0; init=typemax(Int))
-
-    if cur_component == typemax(Int)
-      # This means we have found a new component (at least for now).
-      push!(rvs_of_component, Set{Int}(rv_id for (rv_id, weight) in g.edges_from_left[lv_id]))
-
-      for (rv_id, weight) in g.edges_from_left[lv_id]
-        component_of_rvs[rv_id] = length(rvs_of_component)
-      end
-    else
-      for (rv_id, weight) in g.edges_from_left[lv_id]
-        prev_component = component_of_rvs[rv_id]
-        prev_component == cur_component && continue
-
-        if prev_component == 0
-          component_of_rvs[rv_id] = cur_component
-          push!(rvs_of_component[cur_component], rv_id)
-          continue
-        end
-        
-        for rv_id in rvs_of_component[prev_component]
-          component_of_rvs[rv_id] = cur_component
-        end
-
-        union!(rvs_of_component[cur_component], rvs_of_component[prev_component])
-        empty!(rvs_of_component[prev_component])
-      end
-    end
-  end
-
-  lvs_of_component = [Vector{Int}() for _ in rvs_of_component]
-  rvs_of_component = nothing
-
-  for lv_id in 1:left_size(g)
-    isempty(g.edges_from_left[lv_id]) && continue ## If the left vertex is not connected to anything we can skip it.
-    component = component_of_rvs[g.edges_from_left[lv_id][1][1]]
-    push!(lvs_of_component[component], lv_id)
-
-    ## TODO: This is a check
-    if !allequal(component_of_rvs[rv_id] for (rv_id, weight) in g.edges_from_left[lv_id])
-      println("\nError $lv_id: ", [component_of_rvs[rv_id] for (rv_id, weight) in g.edges_from_left[lv_id]])
-      error("Oops")
-    end
-  end
-
-  ## Finally remove the empty components
   lvs_of_component = [lvs for lvs in lvs_of_component if !isempty(lvs)]
+  rv_size_of_component = [i for i in rv_size_of_component if i != 0]
 
-  return BipartiteGraphConnectedComponents(lvs_of_component)
+  return BipartiteGraphConnectedComponents(lvs_of_component, min_lv_connected_to_rv, rv_size_of_component)
 end
 
 num_connected_components(cc::BipartiteGraphConnectedComponents) = length(cc.lvs_of_component)
@@ -249,4 +131,17 @@ function get_cc_matrix(g::BipartiteGraph{L, R, C}, ccs::BipartiteGraphConnectedC
   end
 
   return sparse(edge_left_vertex, edge_right_vertex, edge_weight), ccs.lvs_of_component[cc], right_map
+end
+
+@timeit function get_default_tol(g::BipartiteGraph{L, R, C})::Float64 where {L, R, C}
+  column_norms = zeros(right_size(g))
+  for edges in g.edges_from_left
+    for (rv_id, weight) in edges
+      column_norms[rv_id] += abs2(weight)
+    end
+  end
+
+  # Taken from https://fossies.org/linux/SuiteSparse/SPQR/Doc/spqr_user_guide.pdf
+  # Section 2.3: The opts parameter
+  return 20 * (left_size(g) + right_size(g)) * eps(real(C)) * maximum(column_norms)
 end

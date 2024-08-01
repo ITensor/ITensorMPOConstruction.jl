@@ -1,9 +1,7 @@
 using ITensorMPOConstruction:
   BipartiteGraph,
   combine_duplicate_adjacent_right_vertices!,
-  compute_connected_components!,
-  compute_connected_components2!,
-  compute_connected_components3!,
+  compute_connected_components,
   num_connected_components
 
 using Test
@@ -32,7 +30,7 @@ function test_get_connected_components(nl::Int, nr::Int, max_edges_from_left::In
     end
   end
 
-  ccs = compute_connected_components3!(g)
+  ccs = compute_connected_components(g)
   ccs_ref = connected_components(g_ref)
 
   ## Remove the right vertices from each reference connected component.
