@@ -182,14 +182,18 @@ end
   qi_of_cc = Pair{QN,Int}[QN() => 0 for _ in 1:nccs]
   next_edges_of_cc = [Matrix{Vector{Tuple{Int, C}}}(undef, 0, 0) for _ in 1:nccs]
 
-  tol == -1 && (tol = get_default_tol(g))
+  tol == -1 && (tol = get_default_tol(g, ccs))
 
-  @timeit "Threaded loop" Threads.@threads for cc in 1:nccs
+  @timeit "Threaded loop" for cc in 1:nccs
+    output_level > 10 && println("$cc / $nccs")
     W, left_map, right_map = get_cc_matrix(g, ccs, cc; clear_edges=true)
 
     ## Compute the decomposition and then free W
+    output_level > 10 && println("  sparse_qr...")
     Q, R, prow, pcol, rank = sparse_qr(W, tol)
     W = nothing
+
+    output_level > 10 && println("  rank = $rank")
 
     rank_of_cc[cc] = rank
 
@@ -198,6 +202,7 @@ end
       qi_of_cc[cc] = (QN() - right_flux) => rank
     end
 
+    output_level > 10 && println("  forming tensor...")
     # Form the local transformation tensor.
     for_non_zeros_batch(Q, rank) do weights, m
       for (i, weight) in enumerate(weights)
@@ -213,6 +218,9 @@ end
         add_to_local_matrix!(matrix_element, weight, local_op, lv.needs_JW_string)
       end
     end
+
+    Q = nothing
+    prow = nothing
 
     # If we are at the last site, then R will be a 1x1 matrix containing an overall scaling.
     # We can also skip building the next graph.
@@ -231,6 +239,7 @@ end
       next_edges[i] = Vector{Tuple{Int, C}}()
     end
 
+    output_level > 10 && println("  forming next graph...")
     for_non_zeros_batch(R, length(right_map)) do weights, ms, j
       j = right_map[pcol[j]]
       op_id = get_onsite_op(right_vertex(g, j), n + 1)

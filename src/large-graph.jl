@@ -133,7 +133,7 @@ function get_cc_matrix(g::BipartiteGraph{L, R, C}, ccs::BipartiteGraphConnectedC
   return sparse(edge_left_vertex, edge_right_vertex, edge_weight), ccs.lvs_of_component[cc], right_map
 end
 
-@timeit function get_default_tol(g::BipartiteGraph{L, R, C})::Float64 where {L, R, C}
+@timeit function get_default_tol(g::BipartiteGraph{L, R, C}, ccs::BipartiteGraphConnectedComponents)::Float64 where {L, R, C}
   column_norms = zeros(right_size(g))
   for edges in g.edges_from_left
     for (rv_id, weight) in edges
@@ -141,7 +141,11 @@ end
     end
   end
 
-  # Taken from https://fossies.org/linux/SuiteSparse/SPQR/Doc/spqr_user_guide.pdf
-  # Section 2.3: The opts parameter
-  return 20 * (left_size(g) + right_size(g)) * eps(real(C)) * maximum(column_norms)
+  # Taken from https://fossies.org/linux/SuiteSparse/SPQR/Doc/spqr_user_guide.pdf Section 2.3: The opts parameter
+  # It is possible that there are right vertices that are not connected to anything on the left. This corresponds
+  # to the truncation dropping terms wholesale.
+  num_rows = left_size(g)
+  num_columns = sum(ccs.rv_size_of_component)
+
+  return 20 * (num_rows + num_columns) * eps() * sqrt(maximum(column_norms))
 end
