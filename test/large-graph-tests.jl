@@ -37,11 +37,15 @@ function test_get_connected_components(nl::Int, nr::Int, max_edges_from_left::In
   ref_verts = Set{Vector{Int}}()
   for verts in ccs_ref
     new_verts = Vector{Int}()
+    has_edge_to_right = false
     for v in verts
-      v <= nl && push!(new_verts, v)
+      v > nl && continue
+      has_edge_to_right = has_edge_to_right || !isempty(neighbors(g_ref, v))
+
+      push!(new_verts, v)
     end
 
-    !isempty(new_verts) && push!(ref_verts, sort!(new_verts))
+    !isempty(new_verts) && has_edge_to_right && push!(ref_verts, sort!(new_verts))
   end
 
   @test length(ref_verts) == num_connected_components(ccs)

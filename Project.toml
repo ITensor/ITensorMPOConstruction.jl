@@ -4,7 +4,6 @@ authors = ["Ben Corbett and contributors"]
 version = "0.1.0"
 
 [deps]
-DataStructures = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
 FunctionWrappers = "069b7b12-0de2-55c6-9aab-29f3d0a68a2e"
 Graphs = "86223c79-3864-5bf0-83f7-82e725a168b6"
 ITensorMPS = "0d1a4710-d33b-49a5-8f18-73bdf49b47e2"

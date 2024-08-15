@@ -96,13 +96,21 @@ end
     min_lv_connected_to_rv[rv_id] = rv_size_of_component[component]
   end
 
-  lvs_of_component = [lvs for lvs in lvs_of_component if !isempty(lvs)]
-  rv_size_of_component = [i for i in rv_size_of_component if i != 0]
+  lvs_of_component_non_empty = Vector{Vector{Int}}()
+  rv_size_of_component_non_empty = Vector{Int}()
+  for (i, lvs) in enumerate(lvs_of_component)
+    if !isempty(lvs) && rv_size_of_component[i] != 0
+      push!(lvs_of_component_non_empty, lvs)
+      push!(rv_size_of_component_non_empty, rv_size_of_component[i])
+    end
+  end
 
-  return BipartiteGraphConnectedComponents(lvs_of_component, min_lv_connected_to_rv, rv_size_of_component)
+  return BipartiteGraphConnectedComponents(lvs_of_component_non_empty, min_lv_connected_to_rv, rv_size_of_component_non_empty)
 end
 
-num_connected_components(cc::BipartiteGraphConnectedComponents) = length(cc.lvs_of_component)
+num_connected_components(ccs::BipartiteGraphConnectedComponents) = length(ccs.lvs_of_component)
+
+left_size(ccs::BipartiteGraphConnectedComponents, cc::Int) = length(ccs.lvs_of_component[cc])
 
 function get_cc_matrix(g::BipartiteGraph{L, R, C}, ccs::BipartiteGraphConnectedComponents, cc::Int; clear_edges::Bool=false)::Tuple{SparseMatrixCSC{C, Int}, Vector{Int}, Vector{Int}} where {L, R, C}
   num_edges = sum(length(g.edges_from_left[lv]) for lvs in ccs.lvs_of_component[cc] for lv in lvs)

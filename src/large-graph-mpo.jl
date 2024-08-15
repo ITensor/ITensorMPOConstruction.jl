@@ -184,25 +184,33 @@ end
 
   tol == -1 && (tol = get_default_tol(g, ccs))
 
-  @timeit "Threaded loop" for cc in 1:nccs
-    output_level > 10 && println("$cc / $nccs")
-    W, left_map, right_map = get_cc_matrix(g, ccs, cc; clear_edges=true)
+  @timeit "Threaded loop" Threads.@threads for cc in 1:nccs
+    if left_size(ccs, cc) == 1
+      lv_id = only(ccs.lvs_of_component[cc])
 
-    ## Compute the decomposition and then free W
-    output_level > 10 && println("  sparse_qr...")
-    Q, R, prow, pcol, rank = sparse_qr(W, tol)
-    W = nothing
+      left_map = ccs.lvs_of_component[cc]
+      Q = qr(sparse(reshape([one(C)], 1, 1)); tol=0).Q
+      prow = [1]
+      rank = 1
 
-    output_level > 10 && println("  rank = $rank")
+      first_rv_id, _ = g.edges_from_left[lv_id][1]
+    else
+      W, left_map, right_map = get_cc_matrix(g, ccs, cc; clear_edges=true)
+
+      ## Compute the decomposition and then free W
+      Q, R, prow, pcol, rank = sparse_qr(W, tol)
+      W = nothing
+
+      first_rv_id = right_map[1]
+    end
 
     rank_of_cc[cc] = rank
 
     if has_qns
-      right_flux = flux(right_vertex(g, right_map[1]), n + 1, op_cache_vec)
+      right_flux = flux(right_vertex(g, first_rv_id), n + 1, op_cache_vec)
       qi_of_cc[cc] = (QN() - right_flux) => rank
     end
 
-    output_level > 10 && println("  forming tensor...")
     # Form the local transformation tensor.
     for_non_zeros_batch(Q, rank) do weights, m
       for (i, weight) in enumerate(weights)
@@ -239,14 +247,23 @@ end
       next_edges[i] = Vector{Tuple{Int, C}}()
     end
 
-    output_level > 10 && println("  forming next graph...")
-    for_non_zeros_batch(R, length(right_map)) do weights, ms, j
-      j = right_map[pcol[j]]
-      op_id = get_onsite_op(right_vertex(g, j), n + 1)
+    if left_size(ccs, cc) == 1
+      for (rv_id, weight) in g.edges_from_left[lv_id]
+        op_id = get_onsite_op(right_vertex(g, rv_id), n + 1)
+        push!(next_edges[1, op_id], (rv_id, weight))
+      end
 
-      for (weight, m) in zip(weights, ms)
-        m > rank && return
-        push!(next_edges[m, op_id], (j, weight))
+      empty!(g.edges_from_left[lv_id])
+      sizehint!(g.edges_from_left[lv_id], 0)
+    else
+      for_non_zeros_batch(R, length(right_map)) do weights, ms, j
+        j = right_map[pcol[j]]
+        op_id = get_onsite_op(right_vertex(g, j), n + 1)
+
+        for (weight, m) in zip(weights, ms)
+          m > rank && return
+          push!(next_edges[m, op_id], (j, weight))
+        end
       end
     end
 

@@ -9,7 +9,6 @@ using LinearAlgebra
 using SparseArrays
 using TimerOutputs
 using FunctionWrappers
-using DataStructures
 
 #####################################
 # MPO Construction
