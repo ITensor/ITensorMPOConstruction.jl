@@ -159,6 +159,14 @@ function merge_qn_sectors(qi_of_cc::Vector{Pair{QN, Int}})::Tuple{Vector{Int}, V
   return new_order, new_qi
 end
 
+function find_first_eq_rv(g::MPOGraph, j::Int, n::Int)::Int
+  while j > 1 && are_equal(right_vertex(g, j), right_vertex(g, j - 1), n)
+    j -= 1
+  end
+
+  return j
+end
+
 @timeit function at_site!(
   ValType::Type{<:Number},
   g::MPOGraph{N, C, Ti},
@@ -171,7 +179,7 @@ end
 
   has_qns = hasqns(sites)
   
-  combine_duplicate_adjacent_right_vertices!(g, terms_eq_from(n + 1))
+  # combine_duplicate_adjacent_right_vertices!(g, terms_eq_from(n + 1))
   ccs = compute_connected_components(g)
   nccs = num_connected_components(ccs)
 
@@ -248,8 +256,11 @@ end
     end
 
     if left_size(ccs, cc) == 1
-      for (rv_id, weight) in g.edges_from_left[lv_id]
-        op_id = get_onsite_op(right_vertex(g, rv_id), n + 1)
+      for (j, weight) in g.edges_from_left[lv_id]
+        op_id = get_onsite_op(right_vertex(g, j), n + 1)
+
+        rv_id = find_first_eq_rv(g, j, n + 2)
+
         push!(next_edges[1, op_id], (rv_id, weight))
       end
 
@@ -259,10 +270,12 @@ end
       for_non_zeros_batch(R, length(right_map)) do weights, ms, j
         j = right_map[pcol[j]]
         op_id = get_onsite_op(right_vertex(g, j), n + 1)
+        
+        rv_id = find_first_eq_rv(g, j, n + 2)
 
         for (weight, m) in zip(weights, ms)
           m > rank && return
-          push!(next_edges[m, op_id], (j, weight))
+          push!(next_edges[m, op_id], (rv_id, weight))
         end
       end
     end
