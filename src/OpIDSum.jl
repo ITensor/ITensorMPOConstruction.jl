@@ -146,9 +146,9 @@ function for_equal_sites(f::Function, ops::AbstractVector{<:OpID})::Nothing
 end
 
 @timeit function rewrite_in_operator_basis!(
-  os::OpIDSum,
+  os::OpIDSum{N, C, Ti},
   basis_op_cache_vec::OpCacheVec
-)
+) where {N, C, Ti}
   
   op_cache_vec = os.op_cache_vec
 
@@ -172,7 +172,7 @@ end
   end
 
   function convert_to_basis_memoized(
-    ops::AbstractVector{<:OpID}
+    ops::AbstractVector{OpID{Ti}}
   )::Tuple{ComplexF64,Int}
     n = ops[1].n
     local_matrix = my_matrix(ops, op_cache_vec[n])
@@ -188,7 +188,7 @@ end
   single_op_translation = Vector{Tuple{ComplexF64, Int}}[Vector{Tuple{ComplexF64, Int}}() for _ in eachindex(basis_op_cache_vec)]
   for n in eachindex(op_cache_vec)
     for id in eachindex(op_cache_vec[n])
-      push!(single_op_translation[n], convert_to_basis_memoized([OpID(id, n)]))
+      push!(single_op_translation[n], convert_to_basis_memoized([OpID{Ti}(id, n)]))
     end
   end
 
@@ -213,7 +213,7 @@ end
 
       scalar *= coeff
 
-      ops[a] = OpID(basis_id, ops[a].n)
+      ops[a] = OpID{Ti}(basis_id, ops[a].n)
       for k in (a + 1):b
         ops[k] = zero(ops[k])
       end
