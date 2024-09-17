@@ -107,11 +107,11 @@ function Fermi_Hubbard_momentum_space_OpIDSum(N::Int, t::Real=1.0, U::Real=4.0; 
   ↓ = false
   ↑ = true
 
-  opC(k::Int, spin::Bool) = OpID(2 + spin, mod1(k, N))
-  opCdag(k::Int, spin::Bool) = OpID(4 + spin, mod1(k, N))
-  opN(k::Int, spin::Bool) = OpID(6 + spin, mod1(k, N))
+  opC(k::Int, spin::Bool) = OpID{UInt8}(2 + spin, mod1(k, N))
+  opCdag(k::Int, spin::Bool) = OpID{UInt8}(4 + spin, mod1(k, N))
+  opN(k::Int, spin::Bool) = OpID{UInt8}(6 + spin, mod1(k, N))
 
-  os = OpIDSum{4, Float64}(N^3 + 2 * N, op_cache_vec)
+  os = OpIDSum{4, Float64, UInt8}(N^3 + 2 * N, op_cache_vec)
 
   @time "\tConstructing OpIDSum" let
     for k in 1:N
@@ -159,7 +159,6 @@ let
   mpo = Fermi_Hubbard_momentum_space_OpIDSum(N)
   println("The maximum bond dimension is $(maxlinkdim(mpo))")
   println(ITensorMPOConstruction.sparsity(mpo))
-  println()
   println()
 end
 
