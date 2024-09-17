@@ -183,14 +183,14 @@ end
   ccs = compute_connected_components(g)
   nccs = num_connected_components(ccs)
 
-  output_level > 0 && println("  The graph has $(left_size(g)) left vertices, $(right_size(g)) right vertices, $(num_edges(g)) edges and $(nccs) connected components")
-
   rank_of_cc = zeros(Int, nccs)
   matrix_of_cc = [BlockSparseMatrix{ValType}() for _ in 1:nccs]
   qi_of_cc = Pair{QN,Int}[QN() => 0 for _ in 1:nccs]
   next_edges_of_cc = [Matrix{Vector{Tuple{Int, C}}}(undef, 0, 0) for _ in 1:nccs]
 
   tol == -1 && (tol = get_default_tol(g, ccs))
+
+  output_level > 0 && println("  The graph is $(left_size(g)) × $(right_size(g)) with $(num_edges(g)) edges and $(nccs) connected components. tol = $(@sprintf("%.2E", tol))")
 
   @timeit "Threaded loop" Threads.@threads for cc in 1:nccs
     if left_size(ccs, cc) == 1
@@ -241,7 +241,12 @@ end
     # If we are at the last site, then R will be a 1x1 matrix containing an overall scaling.
     # We can also skip building the next graph.
     if n == length(sites)
-      scaling = only(R)
+      if left_size(ccs, cc) == 1
+        scaling = only(g.edges_from_left[lv_id])[2]
+      else
+        scaling = only(R)
+      end
+
       for block in values(matrix_of_cc[cc])
         block .*= scaling
       end

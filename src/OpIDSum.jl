@@ -237,7 +237,10 @@ end
   ops_on_each_site = [Dict{Op,Int}(Op("I", n) => 1) for n in 1:N]
   op_cache_vec = [[OpInfo(Op("I", n), sites[n])] for n in 1:N]
 
-  max_ops_per_term = maximum(length, ITensors.terms(os))
+  ## If there is only a single op per term then there actually winds up being a weird
+  ## error when using reinterpret(reshape, ...) later on. This is the easiest way to fix it.
+  max_ops_per_term = max(2, maximum(length, ITensors.terms(os)))
+
   opID_sum = OpIDSum{max_ops_per_term, C, Int}(length(os), op_cache_vec)
 
   opID_term = Vector{OpID{Int}}()
