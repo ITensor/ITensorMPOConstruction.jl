@@ -125,6 +125,29 @@ function for_non_zeros_batch(f::Function, Q::SparseArrays.SPQR.QRSparseQ, max_co
   end
 end
 
+function column_one_norms(A::SparseArrays.SPQR.QRSparseQ, max_col::Int)::Vector{Float64}
+  sums = zeros(max_col)
+  for_non_zeros_batch(A, max_col) do entries, col
+    sums[col] = sum(abs, entries)
+  end
+
+  return sums
+end
+
+function row_one_norms(A::SparseMatrixCSC, max_row::Int)::Vector{Float64}
+  sums = zeros(max_row)
+
+  for_non_zeros_batch(A, size(A, 2)) do entries, rows, col
+    @assert issorted(rows)
+    for (entry, row) in zip(entries, rows)
+      row > max_row && return
+      sums[row] += abs(entry)
+    end
+  end
+
+  return sums
+end
+
 function add_to_local_matrix!(a::Matrix, weight::Number, local_op::Matrix, needs_JW_string::Bool)::Nothing
   if !needs_JW_string
     a .+= weight * local_op
@@ -175,6 +198,7 @@ end
   tol::Real,
   op_cache_vec::OpCacheVec;
   combine_qn_sectors::Bool=false,
+  redistribute_weight::Bool=false,
   output_level::Int=0)::Tuple{MPOGraph{N, C, Ti},Vector{Int},Vector{BlockSparseMatrix{ValType}},Index} where {N, C, Ti}
 
   has_qns = hasqns(sites)
@@ -201,6 +225,8 @@ end
       prow = [1]
       rank = 1
 
+      lambdas = Float64[1.0]
+
       first_rv_id, _ = g.edges_from_left[lv_id][1]
     else
       W, left_map, right_map = get_cc_matrix(g, ccs, cc; clear_edges=true)
@@ -208,6 +234,15 @@ end
       ## Compute the decomposition and then free W
       Q, R, prow, pcol, rank = sparse_qr(W, tol)
       W = nothing
+
+      ## TODO: Not even sure if this is a bottleneck, but it could be done better
+      if redistribute_weight
+        scaled_Q_col_norms = column_one_norms(Q, rank) ./ size(Q, 1)
+        scaled_R_row_norms = row_one_norms(R, rank) ./ size(R, 2)
+        lambdas = [sqrt(scaled_R_row_norms[m] / scaled_Q_col_norms[m]) for m in 1:rank]
+      else
+        lambdas = ones(rank)
+      end
 
       first_rv_id = right_map[1]
     end
@@ -223,6 +258,7 @@ end
     for_non_zeros_batch(Q, rank) do weights, m
       for (i, weight) in enumerate(weights)
         weight == 0 && continue
+        weight *= lambdas[m]
 
         lv = left_vertex(g, left_map[prow[i]])
         local_op = op_cache_vec[n][lv.op_id].matrix
@@ -248,7 +284,7 @@ end
       end
 
       for block in values(matrix_of_cc[cc])
-        block .*= scaling
+        block .*= scaling / lambdas[1]
       end
 
       continue
@@ -262,6 +298,8 @@ end
 
     if left_size(ccs, cc) == 1
       for (j, weight) in g.edges_from_left[lv_id]
+        weight /= lambdas[1]
+
         op_id = get_onsite_op(right_vertex(g, j), n + 1)
 
         rv_id = find_first_eq_rv(g, j, n + 2)
@@ -278,8 +316,11 @@ end
         
         rv_id = find_first_eq_rv(g, j, n + 2)
 
+        @assert issorted(ms)
         for (weight, m) in zip(weights, ms)
           m > rank && return
+
+          weight /= lambdas[m]
           push!(next_edges[m, op_id], (rv_id, weight))
         end
       end

@@ -41,6 +41,7 @@ function resume_svd_MPO(
   op_cache_vec::OpCacheVec;
   tol::Real=-1,
   combine_qn_sectors::Bool=false,
+  redistribute_weight::Bool=false,
   call_back::Function=(args...) -> nothing,
   output_level::Int=0
   )::MPO
@@ -52,7 +53,7 @@ function resume_svd_MPO(
   for n in n_init:N
     output_level > 0 && println("At site $n/$(length(sites)) the graph takes up $(Base.format_bytes(Base.summarysize(g)))")
     @time_if output_level 1 "at_site!" g, offsets, block_sparse_matrices, llinks[n + 1] = at_site!(
-      ValType, g, n, sites, tol, op_cache_vec; combine_qn_sectors, output_level
+      ValType, g, n, sites, tol, op_cache_vec; combine_qn_sectors, redistribute_weight, output_level
     )
 
     # Constructing the tensor from an array is much faster than setting the components of the ITensor directly.
