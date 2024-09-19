@@ -95,15 +95,57 @@ function get_column!(Q::SparseArrays.SPQR.QRSparseQ, col::Int, res::Vector)
   return res
 end
 
+function get_diagonal(R::SparseMatrixCSC{Tv})::Vector{Tv} where {Tv}
+  diagonal_size = min(size(R)...)
+  diagonal = zeros(Tv, diagonal_size)
+
+  for_non_zeros_batch(R, diagonal_size) do entries, rows, col
+    rows[end] == col && (diagonal[col] = entries[end])
+  end
+
+  return diagonal
+end
 
 function sparse_qr(
   A::SparseMatrixCSC, tol::Real
-)::Tuple{SparseArrays.SPQR.QRSparseQ,SparseMatrixCSC,Vector{Int},Vector{Int},Int}
-  ret = qr(A; tol=tol)
-  return ret.Q, ret.R, ret.prow, ret.pcol, rank(ret)
+)::Tuple{SparseArrays.SPQR.QRSparseQ,SparseMatrixCSC, Vector{Float64}, Vector{Int},Vector{Int},Vector{Int},Int,Float64}
+  truncate_after_qr = false
+  if truncate_after_qr
+
+    D = normalize_columns!(A)
+    @timeit "sparse qr" ret = qr(A; tol=0)
+    Q, R, prow, pcol = ret.Q, ret.R, ret.prow, ret.pcol
+    permute!(D, pcol)
+
+    error_weights = row_two_norms(R, D)
+    bond_positions = Vector{Int}(undef, size(R, 1))
+    rank = 0
+    total_error = 0.0
+
+    let
+      for (b, error_weight) in enumerate(error_weights)
+        if error_weight < tol
+          total_error += error_weight
+          bond_positions[b] = 0
+        else
+          rank += 1
+          bond_positions[b] = rank
+        end
+      end
+    end
+  else
+    ret = qr(A; tol=tol)
+    Q, R, prow, pcol = ret.Q, ret.R, ret.prow, ret.pcol
+    rank = SparseArrays.rank(ret)
+    bond_positions = [i for i in 1:rank]
+    total_error = 0.0
+    D = ones(size(R, 2))
+  end
+
+  return Q, R, D, prow, pcol, bond_positions, rank, total_error
 end
 
-function for_non_zeros_batch(f::Function, A::SparseMatrixCSC, max_col::Int)::Nothing
+function for_non_zeros_batch(f::Function, A::SparseMatrixCSC, max_col::Int=size(A, 2))::Nothing
   @assert max_col <= size(A, 2) "$max_col, $(size(A, 2))"
 
   rows = rowvals(A)
@@ -115,7 +157,7 @@ function for_non_zeros_batch(f::Function, A::SparseMatrixCSC, max_col::Int)::Not
   end
 end
 
-function for_non_zeros_batch(f::Function, Q::SparseArrays.SPQR.QRSparseQ, max_col::Int)::Nothing
+function for_non_zeros_batch(f::Function, Q::SparseArrays.SPQR.QRSparseQ, max_col::Int=size(Q, 2))::Nothing
   @assert max_col <= size(Q, 2) "$max_col, $(size(Q, 2))"
 
   res = zeros(eltype(Q), size(Q, 1))
@@ -134,6 +176,17 @@ function column_one_norms(A::SparseArrays.SPQR.QRSparseQ, max_col::Int)::Vector{
   return sums
 end
 
+function normalize_columns!(A::SparseMatrixCSC)::Vector{Float64}
+  norms = Vector{Float64}(undef, size(A, 2))
+  for_non_zeros_batch(A) do entries, rows, col
+    norm = sqrt(sum(abs2, entries))
+    entries ./= norm
+    norms[col] = norm
+  end
+
+  return norms
+end
+
 function row_one_norms(A::SparseMatrixCSC, max_row::Int)::Vector{Float64}
   sums = zeros(max_row)
 
@@ -143,6 +196,23 @@ function row_one_norms(A::SparseMatrixCSC, max_row::Int)::Vector{Float64}
       row > max_row && return
       sums[row] += abs(entry)
     end
+  end
+
+  return sums
+end
+
+function row_two_norms(A::SparseMatrixCSC, D::Vector{Float64})::Vector{Float64}
+  sums = zeros(size(A, 1))
+
+  for_non_zeros_batch(A, size(A, 2)) do entries, rows, col
+    @assert issorted(rows)
+    for (entry, row) in zip(entries, rows)
+      sums[row] += D[col] * abs2(entry)
+    end
+  end
+
+  for i in eachindex(sums)
+    sums[i] = sqrt(sums[i])
   end
 
   return sums
@@ -216,7 +286,7 @@ end
 
   output_level > 0 && println("  The graph is $(left_size(g)) × $(right_size(g)) with $(num_edges(g)) edges and $(nccs) connected components. tol = $(@sprintf("%.2E", tol))")
 
-  @timeit "Threaded loop" Threads.@threads for cc in 1:nccs
+  @timeit "Threaded loop" for cc in 1:nccs
     if left_size(ccs, cc) == 1
       lv_id = only(ccs.lvs_of_component[cc])
 
@@ -224,25 +294,20 @@ end
       Q = qr(sparse(reshape([one(C)], 1, 1)); tol=0).Q
       prow = [1]
       rank = 1
+      bond_positions = [1]
 
-      lambdas = Float64[1.0]
+      size_R_1 = 1
 
       first_rv_id, _ = g.edges_from_left[lv_id][1]
     else
       W, left_map, right_map = get_cc_matrix(g, ccs, cc; clear_edges=true)
 
       ## Compute the decomposition and then free W
-      Q, R, prow, pcol, rank = sparse_qr(W, tol)
+      Q, R, D, prow, pcol, bond_positions, rank, error = sparse_qr(W, tol)
+      # @show error
       W = nothing
 
-      ## TODO: Not even sure if this is a bottleneck, but it could be done better
-      if redistribute_weight
-        scaled_Q_col_norms = column_one_norms(Q, rank) ./ size(Q, 1)
-        scaled_R_row_norms = row_one_norms(R, rank) ./ size(R, 2)
-        lambdas = [sqrt(scaled_R_row_norms[m] / scaled_Q_col_norms[m]) for m in 1:rank]
-      else
-        lambdas = ones(rank)
-      end
+      size_R_1 = size(R, 1)
 
       first_rv_id = right_map[1]
     end
@@ -255,10 +320,12 @@ end
     end
 
     # Form the local transformation tensor.
-    for_non_zeros_batch(Q, rank) do weights, m
+    for_non_zeros_batch(Q, size_R_1) do weights, m
+      m = bond_positions[m]
+      m == 0 && return
+
       for (i, weight) in enumerate(weights)
         weight == 0 && continue
-        weight *= lambdas[m]
 
         lv = left_vertex(g, left_map[prow[i]])
         local_op = op_cache_vec[n][lv.op_id].matrix
@@ -280,11 +347,12 @@ end
       if left_size(ccs, cc) == 1
         scaling = only(g.edges_from_left[lv_id])[2]
       else
-        scaling = only(R)
+        scaling = only(R) * only(D)
       end
 
+      @show scaling
       for block in values(matrix_of_cc[cc])
-        block .*= scaling / lambdas[1]
+        block .*= scaling
       end
 
       continue
@@ -298,8 +366,6 @@ end
 
     if left_size(ccs, cc) == 1
       for (j, weight) in g.edges_from_left[lv_id]
-        weight /= lambdas[1]
-
         op_id = get_onsite_op(right_vertex(g, j), n + 1)
 
         rv_id = find_first_eq_rv(g, j, n + 2)
@@ -311,16 +377,17 @@ end
       sizehint!(g.edges_from_left[lv_id], 0)
     else
       for_non_zeros_batch(R, length(right_map)) do weights, ms, j
+        Dj = D[j]
         j = right_map[pcol[j]]
         op_id = get_onsite_op(right_vertex(g, j), n + 1)
         
         rv_id = find_first_eq_rv(g, j, n + 2)
 
-        @assert issorted(ms)
         for (weight, m) in zip(weights, ms)
-          m > rank && return
+          m = bond_positions[m]
+          m == 0 && continue
 
-          weight /= lambdas[m]
+          weight *= Dj
           push!(next_edges[m, op_id], (rv_id, weight))
         end
       end
