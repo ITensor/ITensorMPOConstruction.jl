@@ -216,8 +216,26 @@ end
 
   output_level > 0 && println("  The graph is $(left_size(g)) × $(right_size(g)) with $(num_edges(g)) edges and $(nccs) connected components. tol = $(@sprintf("%.2E", tol))")
 
-  @timeit "Threaded loop" Threads.@threads for cc in 1:nccs
-    if left_size(ccs, cc) == 1
+  use_svd = true
+
+  @timeit "Threaded loop" for cc in 1:nccs
+    if use_svd
+      W = get_dense_cc_matrix(g, ccs, cc; clear_edges=true)
+      F = svd(W; full=false)
+      U, S, Vdag = F.U, F.S, F.Vt
+
+      rank = length(S)
+      let
+        weight_thrown_away = 0.0
+        while rank > 1
+          weight_thrown_away += S[rank]
+          weight_thrown_away > tol && break
+          rank -= 1
+        end
+      end
+
+
+    elseif left_size(ccs, cc) == 1
       lv_id = only(ccs.lvs_of_component[cc])
 
       left_map = ccs.lvs_of_component[cc]
@@ -228,11 +246,15 @@ end
       lambdas = Float64[1.0]
 
       first_rv_id, _ = g.edges_from_left[lv_id][1]
-    else
+
       W, left_map, right_map = get_cc_matrix(g, ccs, cc; clear_edges=true)
 
       ## Compute the decomposition and then free W
       Q, R, prow, pcol, rank = sparse_qr(W, tol)
+
+      sparsity(A) = 1 - SparseArrays.nnz(A) / prod(size(A))
+      # println("n = $n, cc = $cc, size(W) = $(size(W)), sparsity(W) = $(sparsity(W))")
+
       W = nothing
 
       ## TODO: Not even sure if this is a bottleneck, but it could be done better

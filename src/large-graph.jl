@@ -141,6 +141,29 @@ function get_cc_matrix(g::BipartiteGraph{L, R, C}, ccs::BipartiteGraphConnectedC
   return sparse(edge_left_vertex, edge_right_vertex, edge_weight), ccs.lvs_of_component[cc], right_map
 end
 
+function get_dense_cc_matrix(g::BipartiteGraph{L, R, C}, ccs::BipartiteGraphConnectedComponents, cc::Int; clear_edges::Bool=false)::Tuple{Matrix{C}, Vector{Int}, Vector{Int}} where {L, R, C}
+  A = zeros(C, left_size(ccs, cc), ccs.rv_size_of_component[cc])
+  right_map = Vector{Int}(undef, ccs.rv_size_of_component[cc])
+
+  pos = 1
+  for (i, lv_id) in enumerate(ccs.lvs_of_component[cc])
+    for (rv_id, weight) in g.edges_from_left[lv_id]
+      j = ccs.component_position_of_rvs[rv_id]
+      right_map[j] = rv_id
+
+      A[i, j] = weight
+      pos += 1
+    end
+
+    if clear_edges
+      empty!(g.edges_from_left[lv_id])
+      sizehint!(g.edges_from_left[lv_id], 0)
+    end
+  end
+
+  return A, ccs.lvs_of_component[cc], right_map
+end
+
 @timeit function get_default_tol(g::BipartiteGraph{L, R, C}, ccs::BipartiteGraphConnectedComponents)::Float64 where {L, R, C}
   column_norms = zeros(right_size(g))
   for edges in g.edges_from_left

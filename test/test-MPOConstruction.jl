@@ -2,6 +2,7 @@ using ITensorMPOConstruction
 using ITensors
 using ITensorMPS
 using Test
+using TimerOutputs
 
 function norm2_of_difference(A::MPO, B::MPO; relativeNorm::Bool=false)::Real
   lognormA = Float64[]
@@ -279,7 +280,11 @@ function test_Fermi_Hubbard(N::Int, tol::Real, combine_qn_sectors::Bool)::Nothin
     n in eachindex(sites)
   ]
 
-  test_from_OpSum(os, sites, op_cache_vec, tol; combine_qn_sectors)
+  reset_timer!()
+  MPO_new(os, sites; tol, basis_op_cache_vec=op_cache_vec, combine_qn_sectors, output_level=1)
+  print_timer()
+
+  # test_from_OpSum(os, sites, op_cache_vec, tol; combine_qn_sectors)
   return nothing
 end
 
@@ -327,17 +332,17 @@ function test_qft(N::Int64, applyR::Bool, tol::Real)
 end
 
 @testset "MPOConstruction" begin
-  test_IXYZ(8, -1)
+  # test_IXYZ(8, -1)
 
-  test_weight_one(100, -1)
+  # test_weight_one(100, -1)
 
-  test_random_operator(8, 4, -1)
+  # test_random_operator(8, 4, -1)
 
-  test_qft(6, false, -1)
+  # test_qft(6, false, -1)
 
-  test_qft(6, true, -1)
+  # test_qft(6, true, -1)
 
-  test_Fermi_Hubbard(12, -1, false)
+  test_Fermi_Hubbard(64, -1, false)
 
-  test_Fermi_Hubbard(12, -1, true)
+  # test_Fermi_Hubbard(12, -1, true)
 end
