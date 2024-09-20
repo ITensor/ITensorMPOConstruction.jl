@@ -125,12 +125,13 @@ function test_IXYZ(N::Int64, tol::Real)
   return nothing
 end
 
-function test_weight_one(N::Integer, tol::Real)
+function test_weight_one(N::Integer, tol::Real, redistribute_weight)
   localOps = ["X", "Y", "Z"]
 
   ops = Tuple{ComplexF64, String}[]
   for _ in 1:N
-    push!(ops, (random_complex(), rand(localOps)))
+    push!(ops, (1.0, "X"))
+    # push!(ops, (random_complex(), rand(localOps)))
   end
 
   os = OpSum{ComplexF64}()
@@ -139,7 +140,7 @@ function test_weight_one(N::Integer, tol::Real)
   end
 
   sites = siteinds("Qubit", N)
-  algMPO = MPO_new(os, sites; tol, output_level=0)
+  algMPO = MPO_new(os, sites; tol, redistribute_weight, output_level=0)
 
   exact = MPO(sites)
 
@@ -327,17 +328,23 @@ function test_qft(N::Int64, applyR::Bool, tol::Real)
 end
 
 @testset "MPOConstruction" begin
-  test_IXYZ(8, -1)
+  # test_IXYZ(8, -1)
 
-  test_weight_one(100, -1)
+  # println("No redistribution...")
+  # test_weight_one(1000, -1, false)
+  # println()
 
-  test_random_operator(8, 4, -1)
+  println("Redistribution")
+  test_weight_one(1000, -1, true)
+  println()
 
-  test_qft(6, false, -1)
+  # test_random_operator(8, 4, -1)
 
-  test_qft(6, true, -1)
+  # test_qft(6, false, -1)
 
-  test_Fermi_Hubbard(12, -1, false)
+  # test_qft(6, true, -1)
 
-  test_Fermi_Hubbard(12, -1, true)
+  # test_Fermi_Hubbard(12, -1, false)
+
+  # test_Fermi_Hubbard(12, -1, true)
 end

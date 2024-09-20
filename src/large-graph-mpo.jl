@@ -196,6 +196,7 @@ end
   n::Int,
   sites::Vector{<:Index},
   tol::Real,
+  left_norm2s::Vector{Float64},
   op_cache_vec::OpCacheVec;
   combine_qn_sectors::Bool=false,
   redistribute_weight::Bool=false,
@@ -211,6 +212,7 @@ end
   matrix_of_cc = [BlockSparseMatrix{ValType}() for _ in 1:nccs]
   qi_of_cc = Pair{QN,Int}[QN() => 0 for _ in 1:nccs]
   next_edges_of_cc = [Matrix{Vector{Tuple{Int, C}}}(undef, 0, 0) for _ in 1:nccs]
+  next_left_norm2s_of_cc = [Vector{Float64}() for _ in 1:nccs]
 
   tol == -1 && (tol = get_default_tol(g, ccs))
 
@@ -232,7 +234,7 @@ end
       W, left_map, right_map = get_cc_matrix(g, ccs, cc; clear_edges=true)
 
       ## Compute the decomposition and then free W
-      Q, R, prow, pcol, rank = sparse_qr(W, tol)
+      Q, R, prow, pcol, rank = sparse_qr(W, tol, left_norms_of_these_specific_entries)
       W = nothing
 
       ## TODO: Not even sure if this is a bottleneck, but it could be done better
@@ -254,11 +256,13 @@ end
       qi_of_cc[cc] = (QN() - right_flux) => rank
     end
 
+    next_left_norm2s_of_cc[cc] = Vector{Float64}(undef, rank)
+
     # Form the local transformation tensor.
     for_non_zeros_batch(Q, rank) do weights, m
+      cur_norm2 = 0
       for (i, weight) in enumerate(weights)
         weight == 0 && continue
-        weight *= lambdas[m]
 
         lv = left_vertex(g, left_map[prow[i]])
         local_op = op_cache_vec[n][lv.op_id].matrix
@@ -267,8 +271,13 @@ end
           return zeros(C, dim(sites[n]), dim(sites[n]))
         end
 
+        cur_norm2 += abs2(weight) * left_norm2s[lv.link]
+
+        weight *= lambdas[m]
         add_to_local_matrix!(matrix_element, weight, local_op, lv.needs_JW_string)
       end
+
+      next_left_norm2s_of_cc[cc][m] = lambdas[m]^2 * cur_norm2
     end
 
     Q = nothing
