@@ -99,7 +99,7 @@ end
 function sparse_qr(
   A::SparseMatrixCSC, tol::Real
 )::Tuple{SparseArrays.SPQR.QRSparseQ,SparseMatrixCSC,Vector{Int},Vector{Int},Int}
-  ret = qr(A; tol=tol)
+  ret = qr(A; tol=tol, ordering=SparseArrays.SPQR.ORDERING_BEST)
   return ret.Q, ret.R, ret.prow, ret.pcol, rank(ret)
 end
 
