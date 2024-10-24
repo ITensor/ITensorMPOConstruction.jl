@@ -50,9 +50,10 @@ function resume_svd_MPO(
 
   N = length(sites)
 
+  normalization = 1.0
   for n in n_init:N
     output_level > 0 && println("At site $n/$(length(sites)) the graph takes up $(Base.format_bytes(Base.summarysize(g)))")
-    @time_if output_level 1 "at_site!" g, offsets, block_sparse_matrices, llinks[n + 1] = at_site!(
+    @time_if output_level 1 "at_site!" g, offsets, block_sparse_matrices, llinks[n + 1], normalization = at_site!(
       ValType, g, n, sites, tol, op_cache_vec; combine_qn_sectors, redistribute_weight, output_level
     )
 
@@ -98,6 +99,11 @@ function resume_svd_MPO(
     end
 
     call_back(n, H, sites, llinks, g, op_cache_vec)
+  end
+
+  norm_per_tensor = normalization^(1 / N)
+  for n in 1:N
+    H[n] *= norm_per_tensor
   end
 
   # Remove the dummy link indices from the left and right.

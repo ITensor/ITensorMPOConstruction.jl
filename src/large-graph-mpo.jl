@@ -95,13 +95,12 @@ function get_column!(Q::SparseArrays.SPQR.QRSparseQ, col::Int, res::Vector)
   return res
 end
 
-
 function sparse_qr(
   A::SparseMatrixCSC, tol::Real
 )::Tuple{SparseArrays.SPQR.QRSparseQ,SparseMatrixCSC,Vector{Int},Vector{Int},Int}
   ret = nothing
   SparseArrays.CHOLMOD.@cholmod_param SPQR_nthreads = 1 begin
-    ret = qr(A; tol=tol)
+    ret = qr(A; tol=SparseArrays.SPQR._default_tol(A) / 100)
   end
 
   return ret.Q, ret.R, ret.prow, ret.pcol, rank(ret)
@@ -150,6 +149,15 @@ function row_one_norms(A::SparseMatrixCSC, max_row::Int)::Vector{Float64}
   end
 
   return sums
+end
+
+function l2NormSquared(A::SparseMatrixCSC)::Float64
+  total = 0.0
+  for_non_zeros_batch(A, size(A, 2)) do entries, rows, col
+    total += sum(abs2(entry) for entry in entries)
+  end
+
+  return total
 end
 
 function add_to_local_matrix!(a::Matrix, weight::Number, local_op::Matrix, needs_JW_string::Bool)::Nothing
@@ -203,7 +211,7 @@ end
   op_cache_vec::OpCacheVec;
   combine_qn_sectors::Bool=false,
   redistribute_weight::Bool=false,
-  output_level::Int=0)::Tuple{MPOGraph{N, C, Ti},Vector{Int},Vector{BlockSparseMatrix{ValType}},Index} where {N, C, Ti}
+  output_level::Int=0)::Tuple{MPOGraph{N, C, Ti},Vector{Int},Vector{BlockSparseMatrix{ValType}},Index, Float64} where {N, C, Ti}
 
   has_qns = hasqns(sites)
   
@@ -216,9 +224,15 @@ end
   qi_of_cc = Pair{QN,Int}[QN() => 0 for _ in 1:nccs]
   next_edges_of_cc = [Matrix{Vector{Tuple{Int, C}}}(undef, 0, 0) for _ in 1:nccs]
 
+  compute_discarded_weight = true
+  discarded_weight_of_cc = zeros(Float64, nccs)
+  total_weight_of_cc = zeros(Float64, nccs)
+
   tol == -1 && (tol = get_default_tol(g, ccs))
 
   output_level > 0 && println("  The graph is $(left_size(g)) × $(right_size(g)) with $(num_edges(g)) edges and $(nccs) connected components. tol = $(@sprintf("%.2E", tol))")
+
+  normalization = 1.0
 
   @timeit "Threaded loop" Threads.@threads for cc in 1:nccs
     if left_size(ccs, cc) == 1
@@ -231,12 +245,23 @@ end
 
       lambdas = Float64[1.0]
 
+      if compute_discarded_weight
+        total_weight_of_cc[cc] = sum(abs2(weight) for (j, weight) in g.edges_from_left[lv_id])
+      end
+
       first_rv_id, _ = g.edges_from_left[lv_id][1]
     else
       W, left_map, right_map = get_cc_matrix(g, ccs, cc; clear_edges=true)
 
       ## Compute the decomposition and then free W
       Q, R, prow, pcol, rank = sparse_qr(W, tol)
+
+      if compute_discarded_weight
+        Wapprox = sparse(Q)[:, 1:rank] * R[1:rank, :]
+        discarded_weight_of_cc[cc] = l2NormSquared(Wapprox - W[prow, pcol])
+        total_weight_of_cc[cc] = l2NormSquared(W)
+      end
+
       W = nothing
 
       ## TODO: Not even sure if this is a bottleneck, but it could be done better
@@ -281,11 +306,17 @@ end
     # If we are at the last site, then R will be a 1x1 matrix containing an overall scaling.
     # We can also skip building the next graph.
     if n == length(sites)
+      @assert nccs == 1
+      
       if left_size(ccs, cc) == 1
         scaling = only(g.edges_from_left[lv_id])[2]
       else
         scaling = only(R)
       end
+
+      normalization = abs(scaling)
+
+      scaling = scaling / normalization
 
       for block in values(matrix_of_cc[cc])
         block .*= scaling / lambdas[1]
@@ -360,6 +391,12 @@ end
     cur_offset += rank_of_cc[cc]
   end
 
+  if compute_discarded_weight && output_level > 1
+    discarded_weight = sqrt(sum(discarded_weight_of_cc))
+    total_weight = sqrt(sum(total_weight_of_cc))
+    println("    Discarded weight of $discarded_weight out of a total of $total_weight")
+  end
+
   if has_qns
     outgoing_link = Index(qi_of_cc...; tags="Link,l=$n", dir=ITensors.Out)
     output_level > 1 && println("    Total rank is $cur_offset with $(length(qi_of_cc)) different QN sectors.")
@@ -368,5 +405,5 @@ end
     output_level > 1 && println("    Total rank is $cur_offset.")
   end
 
-  return next_graph, offset_of_cc, matrix_of_cc, outgoing_link
+  return next_graph, offset_of_cc, matrix_of_cc, outgoing_link, normalization
 end

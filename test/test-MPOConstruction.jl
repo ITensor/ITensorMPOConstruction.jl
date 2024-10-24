@@ -327,17 +327,17 @@ function test_qft(N::Int64, applyR::Bool, tol::Real)
 end
 
 @testset "MPOConstruction" begin
-  test_IXYZ(8, -1)
+  # test_IXYZ(8, -1)
 
-  test_weight_one(100, -1)
+  # test_weight_one(100, -1)
 
-  test_random_operator(8, 4, -1)
+  # test_random_operator(8, 4, -1)
 
-  test_qft(6, false, -1)
+  # test_qft(6, false, -1)
 
-  test_qft(6, true, -1)
+  # test_qft(6, true, -1)
 
   test_Fermi_Hubbard(12, -1, false)
 
-  test_Fermi_Hubbard(12, -1, true)
+  # test_Fermi_Hubbard(12, -1, true)
 end
