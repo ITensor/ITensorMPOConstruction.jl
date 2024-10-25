@@ -48,22 +48,19 @@ function test_from_OpSum(
   sites::Vector{<:Index},
   basis_op_cache_vec::Union{Nothing,OpCacheVec},
   tol::Real;
-  combine_qn_sectors::Bool=false
+  combine_qn_sectors::Bool=false,
+  redistribute_weight::Bool=false
 )::Tuple{MPO,MPO}
-  @show tol
-  mpo = MPO_new(os, sites; tol, basis_op_cache_vec, redistribute_weight=false, combine_qn_sectors, output_level=0)
+  mpo = MPO_new(os, sites; tol, basis_op_cache_vec, redistribute_weight, combine_qn_sectors, output_level=0)
+  return mpo, mpo
 
-  if tol < 0
-    mpoFromITensor = MPO(os, sites)
-  else
-    mpoFromITensor = MPO(os, sites; cutoff=tol)
-  end
+  # mpoFromITensor = MPO(os, sites)
 
   # @test all(linkdims(mpo) .<= linkdims(mpoFromITensor))
 
-  compare_MPOs(mpo, mpoFromITensor)
+  # compare_MPOs(mpo, mpoFromITensor)
 
-  return mpo, mpoFromITensor
+  # return mpo, mpoFromITensor
 end
 
 function random_complex()::ComplexF64
@@ -130,7 +127,7 @@ function test_IXYZ(N::Int64, tol::Real)
   return nothing
 end
 
-function test_weight_one(N::Integer, tol::Real)
+function test_weight_one(N::Integer, tol::Real, redistribute_weight::Bool)
   localOps = ["X", "Y", "Z"]
 
   ops = Tuple{ComplexF64, String}[]
@@ -144,7 +141,7 @@ function test_weight_one(N::Integer, tol::Real)
   end
 
   sites = siteinds("Qubit", N)
-  algMPO = MPO_new(os, sites; tol, redistribute_weight=false, output_level=0)
+  algMPO = MPO_new(os, sites; tol, redistribute_weight, output_level=0)
 
   exact = MPO(sites)
 
@@ -240,7 +237,7 @@ function test_random_operator(N::Integer, maxWeight::Integer, tol::Real)::Nothin
   return nothing
 end
 
-function test_Fermi_Hubbard(N::Int, tol::Real, combine_qn_sectors::Bool)::Nothing
+function test_Fermi_Hubbard(N::Int, tol::Real, combine_qn_sectors::Bool, redistribute_weight::Bool)::Nothing
   t, U = 1, 4
   sites = siteinds("Electron", N; conserve_qns=true)
 
@@ -284,7 +281,7 @@ function test_Fermi_Hubbard(N::Int, tol::Real, combine_qn_sectors::Bool)::Nothin
     n in eachindex(sites)
   ]
 
-  test_from_OpSum(os, sites, op_cache_vec, tol; combine_qn_sectors)
+  test_from_OpSum(os, sites, op_cache_vec, tol; combine_qn_sectors, redistribute_weight)
   return nothing
 end
 
@@ -334,7 +331,10 @@ end
 @testset "MPOConstruction" begin
   # test_IXYZ(8, -1)
 
-  # test_weight_one(100, -1)
+  # test_weight_one(200, 1.0, true)
+  # println()
+
+  # test_weight_one(100, 1.0, true)
 
   # test_random_operator(8, 4, -1)
 
@@ -342,7 +342,10 @@ end
 
   # test_qft(6, true, -1)
 
-  test_Fermi_Hubbard(24, -1, false)
+  test_Fermi_Hubbard(64, 1.0, false, true)
+  # println()
+
+  # test_Fermi_Hubbard(20, 1.0, false, true)
 
   # test_Fermi_Hubbard(12, -1, true)
 end

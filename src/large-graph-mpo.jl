@@ -210,7 +210,7 @@ end
   op_cache_vec::OpCacheVec;
   combine_qn_sectors::Bool=false,
   redistribute_weight::Bool=false,
-  output_level::Int=0)::Tuple{MPOGraph{N, C, Ti},Vector{Int},Vector{BlockSparseMatrix{ValType}},Index, Float64} where {N, C, Ti}
+  output_level::Int=0)::Tuple{MPOGraph{N, C, Ti},Vector{Int},Vector{BlockSparseMatrix{ValType}},Index} where {N, C, Ti}
 
   has_qns = hasqns(sites)
   
@@ -243,7 +243,8 @@ end
         total_weight_of_cc[cc] = sum(abs2(weight) for (j, weight) in g.edges_from_left[lv_id])
       end
 
-      first_rv_id, l1_norm_of_cc[cc] = g.edges_from_left[lv_id][1]
+      first_rv_id, weight = g.edges_from_left[lv_id][1]
+      l1_norm_of_cc[cc] = abs(weight)
     else
       W, left_map, right_map = get_cc_matrix(g, ccs, cc; clear_edges=true)
 
@@ -259,9 +260,9 @@ end
       ## W is no longer needed.
       W = nothing
 
-      if redistribute_weight
+      # if redistribute_weight
         l1_norm_of_cc[cc] = sum(abs, diag(R))
-      end
+      # end
 
       first_rv_id = right_map[1]
     end
@@ -345,7 +346,7 @@ end
     next_edges_of_cc[cc] = next_edges
   end
 
-  if redistribute_weight
+  if redistribute_weight && n != length(sites)
     mean_abs_eigenvalue = sum(l1_norm_of_cc) / sum(rank_of_cc)
     mean_abs_eigenvalue = closest_power_of_2(mean_abs_eigenvalue)
 
@@ -374,14 +375,18 @@ end
     next_edges = next_edges_of_cc[cc]
     for op_id in 1:size(next_edges, 2)
       for m in 1:size(next_edges, 1)
-        isempty(next_edges[m, op_id]) && continue
+        cur_edges = next_edges[m, op_id]
+        isempty(cur_edges) && continue
 
-        first_rv_id = next_edges[m, op_id][1][1]
+        first_rv_id = cur_edges[1][1]
         needs_JW_string = is_fermionic(right_vertex(g, first_rv_id), n + 2, op_cache_vec)
         push!(next_graph.left_vertices, LeftVertex(m + cur_offset, op_id, needs_JW_string))
 
-        rv_id, weight = next_edges[m, op_id]
-        push!(next_graph.edges_from_left, (rv_id, weight / mean_abs_eigenvalue))
+        for (i, (rv_id, weight)) in enumerate(cur_edges)
+          cur_edges[i] = (rv_id, weight / mean_abs_eigenvalue)
+        end
+
+        push!(next_graph.edges_from_left, cur_edges)
       end
     end
 
@@ -402,5 +407,5 @@ end
     output_level > 1 && println("    Total rank is $cur_offset.")
   end
 
-  return next_graph, offset_of_cc, matrix_of_cc, outgoing_link, normalization
+  return next_graph, offset_of_cc, matrix_of_cc, outgoing_link
 end
