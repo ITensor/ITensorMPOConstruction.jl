@@ -35,6 +35,10 @@ function compare_MPOs(A::MPO, B::MPO; tol::Real=1e-7)::Nothing
   relativeDiff = (inner(A, A) + inner(B, B) - 2 * real(inner(A, B))) / inner(A, A)
   @show relativeDiff
 
+  AmB = add(A, -B; alg="directsum")
+  diff = inner(AmB, AmB) / inner(A, A)
+  @show diff
+
   @test abs(relativeDiff) < tol
   return nothing
 end
@@ -46,7 +50,8 @@ function test_from_OpSum(
   tol::Real;
   combine_qn_sectors::Bool=false
 )::Tuple{MPO,MPO}
-  mpo = MPO_new(os, sites; tol, basis_op_cache_vec, combine_qn_sectors, output_level=0)
+  @show tol
+  mpo = MPO_new(os, sites; tol, basis_op_cache_vec, redistribute_weight=false, combine_qn_sectors, output_level=0)
 
   if tol < 0
     mpoFromITensor = MPO(os, sites)
@@ -91,7 +96,7 @@ function test_IXYZ(N::Int64, tol::Real)
   end
 
   sites = siteinds("Qubit", N)
-  algMPO = MPO_new(os, sites; tol, output_level=0)
+  algMPO = MPO_new(os, sites; tol, redistribute_weight=true, output_level=0)
 
   exact = MPO(sites)
 
@@ -139,7 +144,7 @@ function test_weight_one(N::Integer, tol::Real)
   end
 
   sites = siteinds("Qubit", N)
-  algMPO = MPO_new(os, sites; tol, output_level=0)
+  algMPO = MPO_new(os, sites; tol, redistribute_weight=false, output_level=0)
 
   exact = MPO(sites)
 
@@ -337,7 +342,7 @@ end
 
   # test_qft(6, true, -1)
 
-  test_Fermi_Hubbard(12, -1, false)
+  test_Fermi_Hubbard(24, -1, false)
 
   # test_Fermi_Hubbard(12, -1, true)
 end
