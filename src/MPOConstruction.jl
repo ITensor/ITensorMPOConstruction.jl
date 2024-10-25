@@ -39,20 +39,21 @@ function resume_svd_MPO(
   llinks::Vector{<:Index},
   g::MPOGraph,
   op_cache_vec::OpCacheVec;
-  tol::Real=-1,
+  tol::Real=1,
+  absoluteTol::Bool=false,
   combine_qn_sectors::Bool=false,
   call_back::Function=(args...) -> nothing,
   output_level::Int=0
   )::MPO
-  # TODO: This should be fixed.
-  @assert !ITensors.using_auto_fermion()
+  @assert !ITensors.using_auto_fermion() # TODO: This should be fixed.
+  @assert tol >= 0
 
   N = length(sites)
 
   for n in n_init:N
     output_level > 0 && println("At site $n/$(length(sites)) the graph takes up $(Base.format_bytes(Base.summarysize(g)))")
     @time_if output_level 1 "at_site!" g, offsets, block_sparse_matrices, llinks[n + 1] = at_site!(
-      ValType, g, n, sites, tol, op_cache_vec; combine_qn_sectors, output_level
+      ValType, g, n, sites, tol, absoluteTol, op_cache_vec; combine_qn_sectors, output_level
     )
 
     # Constructing the tensor from an array is much faster than setting the components of the ITensor directly.
@@ -186,4 +187,21 @@ function sparsity(mpo::MPO)::Float64
   end
 
   return num_zeros / num_entries
+end
+
+function redistribute_norm!(H::MPO)::Nothing
+  norms = [norm(t) for t in H]
+
+  min, max = argmin(norms), argmax(norms)
+  while norms[max] > 2 * norms[min]
+    H[min] *= 2
+    norms[min] *= 2
+
+    H[max] /= 2
+    norms[max] /= 2
+
+    min, max = argmin(norms), argmax(norms)
+  end
+
+  return nothing
 end

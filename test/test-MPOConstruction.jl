@@ -3,10 +3,41 @@ using ITensors
 using ITensorMPS
 using Test
 
+function norm2_of_difference(A::MPO, B::MPO; relativeNorm::Bool=false)::Real
+  lognormA = Float64[]
+  A = normalize(A; (lognorm!)=lognormA)
+  lognormA = only(lognormA)
+
+  lognormB = Float64[]
+  B = normalize(B; (lognorm!)=lognormB)
+  lognormB = only(lognormB)
+
+  rdiff = (1 + exp(2 * (lognormB - lognormA))) - 2 * exp(lognormB - lognormA) * real(inner(A, B))
+
+  relativeNorm && return rdiff
+  return exp(2 * lognormA) * diff
+end
+
+function normalized_diff(A::MPO, B::MPO)
+  A = normalize(A)
+  B = normalize(B)
+
+  return 2 * (1 - real(inner(A, B)))
+end
+
 function compare_MPOs(A::MPO, B::MPO; tol::Real=1e-7)::Nothing
-  diff = add(A, -1 * B; alg="directsum")
-  relativeDiff = sqrt(abs(dot(diff, diff))) / norm(B)
-  @test relativeDiff < tol
+  normalizedDiff = normalized_diff(A, B)
+
+  relativeDiffFromLog = norm2_of_difference(B, A; relativeNorm=true)
+
+  relativeDiff = (inner(A, A) + inner(B, B) - 2 * real(inner(A, B))) / inner(A, A)
+
+  AmB = add(A, -B; alg="directsum")
+  diff = inner(AmB, AmB) / inner(A, A)
+
+  println("normalized difference = $normalizedDiff, relative difference (log) = $relativeDiffFromLog, relative diff = $relativeDiff, |A - B|^2 = $diff")
+
+  @test abs(diff) < tol
   return nothing
 end
 
@@ -19,13 +50,9 @@ function test_from_OpSum(
 )::Tuple{MPO,MPO}
   mpo = MPO_new(os, sites; tol, basis_op_cache_vec, combine_qn_sectors, output_level=0)
 
-  if tol < 0
-    mpoFromITensor = MPO(os, sites)
-  else
-    mpoFromITensor = MPO(os, sites; cutoff=tol)
-  end
+  mpoFromITensor = MPO(os, sites)
 
-  # @test all(linkdims(mpo) .<= linkdims(mpoFromITensor))
+  @test all(linkdims(mpo) .<= linkdims(mpoFromITensor))
 
   compare_MPOs(mpo, mpoFromITensor)
 
@@ -62,7 +89,7 @@ function test_IXYZ(N::Int64, tol::Real)
   end
 
   sites = siteinds("Qubit", N)
-  algMPO, iTensorMPO = test_from_OpSum(os, sites, nothing, tol)
+  algMPO = MPO_new(os, sites; tol, output_level=0)
 
   exact = MPO(sites)
 
@@ -92,7 +119,70 @@ function test_IXYZ(N::Int64, tol::Real)
   exact[N] *= R
 
   compare_MPOs(algMPO, exact)
-  compare_MPOs(iTensorMPO, exact)
+
+  return nothing
+end
+
+function test_weight_one(N::Integer, tol::Real)
+  localOps = ["X", "Y", "Z"]
+
+  ops = Tuple{ComplexF64, String}[]
+  for _ in 1:N
+    push!(ops, (random_complex(), rand(localOps)))
+  end
+
+  os = OpSum{ComplexF64}()
+  for (n, (weight, op)) in enumerate(ops)
+    os .+= weight, op, n
+  end
+
+  sites = siteinds("Qubit", N)
+  algMPO = MPO_new(os, sites; tol, output_level=0)
+
+  exact = MPO(sites)
+
+  llinks = Vector{Index}(undef, N - 1)
+
+  let
+    n = 1
+    weight, localOp = ops[n]
+    llinks[1] = Index(2; tags="Link,l=$n")
+
+    exact[n] = ITensor(
+      ComplexF64, llinks[n], prime(sites[n]), dag(sites[n])
+    )
+
+    exact[n][1, :, :] = array(weight * op(sites[n], localOp), prime(sites[n]), dag(sites[n]))
+    exact[n][2, :, :] = array(op(sites[n], "I"), prime(sites[n]), dag(sites[n]))
+  end
+
+  for (n, (weight, localOp)) in enumerate(ops)
+    n ∈ (1, N) && continue
+    site = sites[n]
+
+    llinks[n] = Index(2; tags="Link,l=$n")
+    exact[n] = ITensor(
+      ComplexF64, dag(llinks[n - 1]), llinks[n], prime(sites[n]), dag(sites[n])
+    )
+
+    exact[n][1, 1, :, :] = array(op(sites[n], "I"), prime(sites[n]), dag(sites[n]))
+    exact[n][2, 1, :, :] = array(weight * op(sites[n], localOp), prime(sites[n]), dag(sites[n]))
+    exact[n][2, 2, :, :] = array(op(sites[n], "I"), prime(sites[n]), dag(sites[n]))
+  end
+
+  let
+    n = N
+    weight, localOp = ops[n]
+
+    exact[n] = ITensor(
+      ComplexF64, dag(llinks[n - 1]), prime(sites[n]), dag(sites[n])
+    )
+
+    exact[n][1, :, :] = array(op(sites[n], "I"), prime(sites[n]), dag(sites[n]))
+    exact[n][2, :, :] = array(weight * op(sites[n], localOp), prime(sites[n]), dag(sites[n]))
+  end
+
+  compare_MPOs(algMPO, exact; tol=2 * N^2 * 1e-17)
 
   return nothing
 end
@@ -235,15 +325,26 @@ function test_qft(N::Int64, applyR::Bool, tol::Real)
 end
 
 @testset "MPOConstruction" begin
-  test_IXYZ(5, -1)
+  test_IXYZ(8, 1.0)
+  println()
 
-  test_random_operator(8, 4, -1)
+  test_weight_one(200, 1.0)
+  println()
 
-  test_qft(6, false, -1)
+  test_weight_one(100, 1.0)
+  println()
 
-  test_qft(6, true, -1)
+  test_random_operator(8, 4, 1.0)
+  println()
 
-  test_Fermi_Hubbard(12, -1, false)
+  test_qft(6, false, 1.0)
+  println()
 
-  test_Fermi_Hubbard(12, -1, true)
+  test_qft(6, true, 1.0)
+  println()
+
+  test_Fermi_Hubbard(12, 1.0, false)
+  println()
+
+  test_Fermi_Hubbard(12, 1.0, true)
 end

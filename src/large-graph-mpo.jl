@@ -95,11 +95,19 @@ function get_column!(Q::SparseArrays.SPQR.QRSparseQ, col::Int, res::Vector)
   return res
 end
 
-
 function sparse_qr(
-  A::SparseMatrixCSC, tol::Real
+  A::SparseMatrixCSC, tol::Real, absoluteTol::Bool
 )::Tuple{SparseArrays.SPQR.QRSparseQ,SparseMatrixCSC,Vector{Int},Vector{Int},Int}
-  ret = qr(A; tol=tol)
+  ret = nothing
+
+  if !absoluteTol
+    tol *= SparseArrays.SPQR._default_tol(A)
+  end
+
+  SparseArrays.CHOLMOD.@cholmod_param SPQR_nthreads = 1 begin
+    ret = qr(A; tol)
+  end
+
   return ret.Q, ret.R, ret.prow, ret.pcol, rank(ret)
 end
 
@@ -173,6 +181,7 @@ end
   n::Int,
   sites::Vector{<:Index},
   tol::Real,
+  absoluteTol::Bool,
   op_cache_vec::OpCacheVec;
   combine_qn_sectors::Bool=false,
   output_level::Int=0)::Tuple{MPOGraph{N, C, Ti},Vector{Int},Vector{BlockSparseMatrix{ValType}},Index} where {N, C, Ti}
@@ -187,8 +196,6 @@ end
   matrix_of_cc = [BlockSparseMatrix{ValType}() for _ in 1:nccs]
   qi_of_cc = Pair{QN,Int}[QN() => 0 for _ in 1:nccs]
   next_edges_of_cc = [Matrix{Vector{Tuple{Int, C}}}(undef, 0, 0) for _ in 1:nccs]
-
-  tol == -1 && (tol = get_default_tol(g, ccs))
 
   output_level > 0 && println("  The graph is $(left_size(g)) × $(right_size(g)) with $(num_edges(g)) edges and $(nccs) connected components. tol = $(@sprintf("%.2E", tol))")
 
@@ -206,7 +213,7 @@ end
       W, left_map, right_map = get_cc_matrix(g, ccs, cc; clear_edges=true)
 
       ## Compute the decomposition and then free W
-      Q, R, prow, pcol, rank = sparse_qr(W, tol)
+      Q, R, prow, pcol, rank = sparse_qr(W, tol, absoluteTol)
       W = nothing
 
       first_rv_id = right_map[1]
@@ -214,12 +221,13 @@ end
 
     rank_of_cc[cc] = rank
 
+    ## Compute and store the QN of this component
     if has_qns
       right_flux = flux(right_vertex(g, first_rv_id), n + 1, op_cache_vec)
       qi_of_cc[cc] = (QN() - right_flux) => rank
     end
 
-    # Form the local transformation tensor.
+    ## Form the local transformation tensor.
     for_non_zeros_batch(Q, rank) do weights, m
       for (i, weight) in enumerate(weights)
         weight == 0 && continue
@@ -235,12 +243,14 @@ end
       end
     end
 
+    ## Q and prow are no longer needed.
     Q = nothing
     prow = nothing
 
-    # If we are at the last site, then R will be a 1x1 matrix containing an overall scaling.
-    # We can also skip building the next graph.
+    ## If we are at the last site, then R will be a 1x1 matrix containing an overall scaling.
     if n == length(sites)
+      @assert nccs == 1
+      
       if left_size(ccs, cc) == 1
         scaling = only(g.edges_from_left[lv_id])[2]
       else
@@ -251,10 +261,11 @@ end
         block .*= scaling
       end
 
+      ## We can the also skip building the next graph.
       continue
     end
 
-    # Build the graph for the next site.
+    ## Build the graph for the next site out of this component.
     next_edges = Matrix{Vector{Tuple{Int, C}}}(undef, rank, length(op_cache_vec[n + 1]))
     for i in eachindex(next_edges)
       next_edges[i] = Vector{Tuple{Int, C}}()
@@ -275,7 +286,6 @@ end
       for_non_zeros_batch(R, length(right_map)) do weights, ms, j
         j = right_map[pcol[j]]
         op_id = get_onsite_op(right_vertex(g, j), n + 1)
-        
         rv_id = find_first_eq_rv(g, j, n + 2)
 
         for (weight, m) in zip(weights, ms)
@@ -293,6 +303,7 @@ end
     cc_order, qi_of_cc = merge_qn_sectors(qi_of_cc)
   end
 
+  ## Combine the graphs of each component together
   next_graph = MPOGraph{N, C, Ti}([], g.right_vertices, [])
   offset_of_cc = zeros(Int, nccs + 1)
 
@@ -303,12 +314,14 @@ end
     next_edges = next_edges_of_cc[cc]
     for op_id in 1:size(next_edges, 2)
       for m in 1:size(next_edges, 1)
-        isempty(next_edges[m, op_id]) && continue
+        cur_edges = next_edges[m, op_id]
+        isempty(cur_edges) && continue
 
-        first_rv_id = next_edges[m, op_id][1][1]
+        first_rv_id = cur_edges[1][1]
         needs_JW_string = is_fermionic(right_vertex(g, first_rv_id), n + 2, op_cache_vec)
         push!(next_graph.left_vertices, LeftVertex(m + cur_offset, op_id, needs_JW_string))
-        push!(next_graph.edges_from_left, next_edges[m, op_id])
+
+        push!(next_graph.edges_from_left, cur_edges)
       end
     end
 
