@@ -14,38 +14,6 @@ function num_edges(g::BipartiteGraph)::Int
   return sum(length(rvs) for rvs in g.edges_from_left)
 end
 
-"""
-The input graph's right vertices should be sorted.
-"""
-@timeit function combine_duplicate_adjacent_right_vertices!(g::BipartiteGraph, eq::Function)::Nothing
-  new_positions = zeros(Int, right_size(g))
-
-  cur, next = 1, 2
-  new_positions[cur] = 1
-  while next <= right_size(g)
-    if eq(right_vertex(g, cur), right_vertex(g, next))
-      new_positions[next] = cur
-    else
-      cur += 1
-      new_positions[next] = cur
-      g.right_vertices[cur] = g.right_vertices[next]
-    end
-
-    next += 1
-  end
-
-  resize!(g.right_vertices, cur)
-  sizehint!(g.right_vertices, cur)
-
-  for lv_id in 1:left_size(g)
-    for (i, (rv_id, weight)) in enumerate(g.edges_from_left[lv_id])
-      g.edges_from_left[lv_id][i] = new_positions[rv_id], weight
-    end
-  end
-
-  return nothing
-end
-
 struct BipartiteGraphConnectedComponents
   lvs_of_component::Vector{Vector{Int}}
   component_position_of_rvs::Vector{Int}
@@ -63,11 +31,13 @@ end
     for (rv_id, _) in g.edges_from_left[lv_id]
       min_lv_of_rv = min_lv_connected_to_rv[rv_id]
 
+      ## If the right vertex has not yet been reached...
       if min_lv_of_rv == typemax(Int)
         min_lv_connected_to_rv[rv_id] = lv_id
         continue
       end
 
+      ## Otherwise, merge the two components
       cur_min_lv, src_lv = minmax(cur_min_lv, min_lv_of_rv)
       cur_component = component_of_lv[cur_min_lv]
       src_component = component_of_lv[src_lv]
@@ -84,11 +54,13 @@ end
     end
   end
 
-  ## Mutate component_of_rvs which stores the component of each right right vertex
-  ## into the position of each right vertex within it's component.
+  ## Mutate min_lv_connected_to_rv which stores the first left vertex connected to each
+  ## right vertex into the position of each right vertex within it's component.
   rv_size_of_component = zeros(Int, length(lvs_of_component))
   for rv_id in 1:right_size(g)
     min_lv = min_lv_connected_to_rv[rv_id]
+    
+    ## This means the right vertex is not connected to anything and can be safely ignored.
     min_lv == typemax(Int) && continue
     
     component = component_of_lv[min_lv]
@@ -96,6 +68,7 @@ end
     min_lv_connected_to_rv[rv_id] = rv_size_of_component[component]
   end
 
+  ## Drop empty components.
   lvs_of_component_non_empty = Vector{Vector{Int}}()
   rv_size_of_component_non_empty = Vector{Int}()
   for (i, lvs) in enumerate(lvs_of_component)
@@ -113,7 +86,7 @@ num_connected_components(ccs::BipartiteGraphConnectedComponents) = length(ccs.lv
 left_size(ccs::BipartiteGraphConnectedComponents, cc::Int) = length(ccs.lvs_of_component[cc])
 
 function get_cc_matrix(g::BipartiteGraph{L, R, C}, ccs::BipartiteGraphConnectedComponents, cc::Int; clear_edges::Bool=false)::Tuple{SparseMatrixCSC{C, Int}, Vector{Int}, Vector{Int}} where {L, R, C}
-  num_edges = sum(length(g.edges_from_left[lv]) for lvs in ccs.lvs_of_component[cc] for lv in lvs)
+  num_edges = sum(length(g.edges_from_left[lv]) for lv in ccs.lvs_of_component[cc])
   
   edge_left_vertex = Vector{Int}(undef, num_edges)
   edge_right_vertex = Vector{Int}(undef, num_edges)

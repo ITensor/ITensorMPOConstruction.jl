@@ -144,9 +144,12 @@ function MPO_new(
   os::OpIDSum,
   sites::Vector{<:Index};
   basis_op_cache_vec::Union{OpCacheVec, Nothing}=nothing,
+  checkOpSumForErrors::Bool=true,
   kwargs...,
 )::MPO
   prepare_opID_sum!(os, basis_op_cache_vec)
+  checkOpSumForErrors && check_for_errors(os)
+
   return svdMPO_new(ValType, os, sites; kwargs...)
 end
 

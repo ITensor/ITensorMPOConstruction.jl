@@ -21,10 +21,61 @@ Base.setindex!(c::CoSorter, t::CoSorterElement, i...) = (setindex!(c.sortarray, 
 
 Base.isless(a::CoSorterElement, b::CoSorterElement) = isless(a.x, b.x)
 
+function find_first_eq_rv(g::MPOGraph, j::Int, n::Int)::Int
+  while j > 1 && are_equal(right_vertex(g, j), right_vertex(g, j - 1), n)
+    j -= 1
+  end
+
+  return j
+end
+
+function build_next_edges_specialization!(
+  next_edges::Matrix{Vector{Tuple{Int, C}}},
+  g::MPOGraph{N, C, Ti},
+  cur_site::Int,
+  edges
+)::Nothing where {N, C, Ti}
+  @assert size(next_edges, 1) == 1
+
+  for (rv_id, weight) in edges
+    op_id = get_onsite_op(right_vertex(g, rv_id), cur_site + 1)
+
+    rv_id = find_first_eq_rv(g, rv_id, cur_site + 2)
+
+    push!(next_edges[1, op_id], (rv_id, weight))
+  end
+
+  return nothing
+end
+
+function add_to_next_graph!(
+  next_graph::MPOGraph{N, C, Ti},
+  cur_graph::MPOGraph{N, C, Ti},
+  op_cache_vec::OpCacheVec,
+  cur_site::Int,
+  cur_offset::Int,
+  next_edges::Matrix{Vector{Tuple{Int, C}}}
+)::Nothing where {N, C, Ti}
+  for op_id in 1:size(next_edges, 2)
+    for m in 1:size(next_edges, 1)
+      cur_edges = next_edges[m, op_id]
+      isempty(cur_edges) && continue
+
+      first_rv_id = cur_edges[1][1]
+      needs_JW_string = is_fermionic(right_vertex(cur_graph, first_rv_id), cur_site + 2, op_cache_vec)
+      push!(next_graph.left_vertices, LeftVertex(m + cur_offset, op_id, needs_JW_string))
+      push!(next_graph.edges_from_left, cur_edges)
+    end
+  end
+
+  return nothing
+end
 
 @timeit function MPOGraph(os::OpIDSum{N, C, Ti})::MPOGraph{N, C, Ti} where {N, C, Ti}
+  ## Reverse the terms in the sum, ignoring trailing identity operators.
   for i in 1:length(os)
-    for j in size(os.terms, 1):-1:1
+    @assert size(os.terms, 1) == N
+    for j in N:-1:1
       if os.terms[j, i] != zero(os.terms[j, i])
         reverse!(view(os.terms, 1:j, i))
         break
@@ -32,6 +83,7 @@ Base.isless(a::CoSorterElement, b::CoSorterElement) = isless(a.x, b.x)
     end
   end
   
+  ## Sort the terms and scalars.
   @timeit "sorting" let
     resize!(os._data, length(os))
     resize!(os.scalars, length(os))
@@ -39,6 +91,7 @@ Base.isless(a::CoSorterElement, b::CoSorterElement) = isless(a.x, b.x)
     sort!(c; alg=QuickSort)
   end
 
+  ## Combine duplicate terms.
   for i in 1:(length(os) - 1)
     if os._data[i] == os._data[i + 1]
       os.scalars[i + 1] += os.scalars[i]
@@ -46,6 +99,7 @@ Base.isless(a::CoSorterElement, b::CoSorterElement) = isless(a.x, b.x)
     end
   end
 
+  ## Remove terms which are below the tolerance.
   nnz = 0
   for i in eachindex(os)
     if abs(os.scalars[i]) > os.abs_tol
@@ -61,38 +115,17 @@ Base.isless(a::CoSorterElement, b::CoSorterElement) = isless(a.x, b.x)
 
   g = MPOGraph{N, C, Ti}([], os._data, [])
 
-  ## TODO: Break this out into a function that is shared with at_site!
-  next_edges = [Vector{Tuple{Int, C}}() for _ in 1:length(os.op_cache_vec[1])]
-
-  for j in 1:right_size(g)
-    weight = os.scalars[j]
-    onsite_op = get_onsite_op(right_vertex(g, j), 1)
-    push!(next_edges[onsite_op], (j, weight))
+  next_edges = Matrix{Vector{Tuple{Int, C}}}(undef, 1, length(os.op_cache_vec[1]))
+  for i in eachindex(next_edges)
+    next_edges[i] = Vector{Tuple{Int, C}}()
   end
 
-  for op_id in 1:length(os.op_cache_vec[1])
-    isempty(next_edges[op_id]) && continue
 
-    first_rv_id = next_edges[op_id][1][1]
-    needs_JW_string = is_fermionic(right_vertex(g, first_rv_id), 2, os.op_cache_vec)
-    push!(g.left_vertices, LeftVertex(1, op_id, needs_JW_string))
-    push!(g.edges_from_left, next_edges[op_id])
-  end
+  build_next_edges_specialization!(next_edges, g, 0, enumerate(os.scalars))
+
+  add_to_next_graph!(g, g, os.op_cache_vec, 0, 0, next_edges)
 
   return g
-end
-
-function get_column!(Q::SparseArrays.SPQR.QRSparseQ, col::Int, res::Vector)
-  res .= 0
-  res[col] = 1
-
-  for l in size(Q.factors, 2):-1:1
-    τl = -Q.τ[l]
-    h = view(Q.factors, :, l)
-    axpy!(τl*dot(h, res), h, res)
-  end
-
-  return res
 end
 
 function sparse_qr(
@@ -125,6 +158,19 @@ end
 
 function for_non_zeros_batch(f::Function, Q::SparseArrays.SPQR.QRSparseQ, max_col::Int)::Nothing
   @assert max_col <= size(Q, 2) "$max_col, $(size(Q, 2))"
+
+  function get_column!(Q::SparseArrays.SPQR.QRSparseQ, col::Int, res::Vector)
+    res .= 0
+    res[col] = 1
+
+    for l in size(Q.factors, 2):-1:1
+      τl = -Q.τ[l]
+      h = view(Q.factors, :, l)
+      axpy!(τl*dot(h, res), h, res)
+    end
+
+    return res
+  end
 
   res = zeros(eltype(Q), size(Q, 1))
   for col in 1:max_col
@@ -167,14 +213,6 @@ function merge_qn_sectors(qi_of_cc::Vector{Pair{QN, Int}})::Tuple{Vector{Int}, V
   return new_order, new_qi
 end
 
-function find_first_eq_rv(g::MPOGraph, j::Int, n::Int)::Int
-  while j > 1 && are_equal(right_vertex(g, j), right_vertex(g, j - 1), n)
-    j -= 1
-  end
-
-  return j
-end
-
 @timeit function at_site!(
   ValType::Type{<:Number},
   g::MPOGraph{N, C, Ti},
@@ -188,18 +226,28 @@ end
 
   has_qns = hasqns(sites)
   
-  # combine_duplicate_adjacent_right_vertices!(g, terms_eq_from(n + 1))
   ccs = compute_connected_components(g)
   nccs = num_connected_components(ccs)
 
+  ## The rank of each connected component.
   rank_of_cc = zeros(Int, nccs)
-  matrix_of_cc = [BlockSparseMatrix{ValType}() for _ in 1:nccs]
+
+  ## The MPO tensor for each component.
+  matrix_of_cc = [BlockSparseMatrix{ValType}() for _ in 1:nccs] 
+
+  ## The QN of each component
   qi_of_cc = Pair{QN,Int}[QN() => 0 for _ in 1:nccs]
+
+  ## A map from the incoming link to the next site (outgoing link from this site) and the
+  ## operator on the next site (this uniquely specifies the left vertex of the next site)
+  ## to the right vertices it will connect to along with the weight.
   next_edges_of_cc = [Matrix{Vector{Tuple{Int, C}}}(undef, 0, 0) for _ in 1:nccs]
 
   output_level > 0 && println("  The graph is $(left_size(g)) × $(right_size(g)) with $(num_edges(g)) edges and $(nccs) connected components. tol = $(@sprintf("%.2E", tol))")
 
   @timeit "Threaded loop" Threads.@threads for cc in 1:nccs
+    ## A specialization for when there is only one vertex on the left. This is
+    ## a very common case that can be sped up significantly.
     if left_size(ccs, cc) == 1
       lv_id = only(ccs.lvs_of_component[cc])
 
@@ -271,23 +319,26 @@ end
       next_edges[i] = Vector{Tuple{Int, C}}()
     end
 
+    ## A specialization for when there is only one vertex on the left.
     if left_size(ccs, cc) == 1
-      for (j, weight) in g.edges_from_left[lv_id]
-        op_id = get_onsite_op(right_vertex(g, j), n + 1)
-
-        rv_id = find_first_eq_rv(g, j, n + 2)
-
-        push!(next_edges[1, op_id], (rv_id, weight))
-      end
+      build_next_edges_specialization!(next_edges, g, n, g.edges_from_left[lv_id])
 
       empty!(g.edges_from_left[lv_id])
       sizehint!(g.edges_from_left[lv_id], 0)
     else
       for_non_zeros_batch(R, length(right_map)) do weights, ms, j
-        j = right_map[pcol[j]]
-        op_id = get_onsite_op(right_vertex(g, j), n + 1)
-        rv_id = find_first_eq_rv(g, j, n + 2)
+        ## Convert j, which has been permuted first by the connected components
+        ## and then again by SPQR into a right vertex Id.
+        rv_id = right_map[pcol[j]]
 
+        ## Get the operator acting on site (n + 1) of this right vertex.
+        op_id = get_onsite_op(right_vertex(g, rv_id), n + 1)
+
+        ## Find the first equivalent right vertex from site (n + 2) and onward.
+        ## Going forward, this will be the active vertex.
+        rv_id = find_first_eq_rv(g, rv_id, n + 2)
+
+        ## Add the edges.
         for (weight, m) in zip(weights, ms)
           m > rank && return
           push!(next_edges[m, op_id], (rv_id, weight))
@@ -298,6 +349,7 @@ end
     next_edges_of_cc[cc] = next_edges
   end
 
+  ## If we are merging the connected components by the quantum numbers.
   cc_order = [i for i in 1:nccs]
   if combine_qn_sectors && has_qns
     cc_order, qi_of_cc = merge_qn_sectors(qi_of_cc)
@@ -308,23 +360,9 @@ end
   offset_of_cc = zeros(Int, nccs + 1)
 
   cur_offset = 0
-  for (i, cc) in enumerate(cc_order)
+  for cc in cc_order
     offset_of_cc[cc] = cur_offset
-
-    next_edges = next_edges_of_cc[cc]
-    for op_id in 1:size(next_edges, 2)
-      for m in 1:size(next_edges, 1)
-        cur_edges = next_edges[m, op_id]
-        isempty(cur_edges) && continue
-
-        first_rv_id = cur_edges[1][1]
-        needs_JW_string = is_fermionic(right_vertex(g, first_rv_id), n + 2, op_cache_vec)
-        push!(next_graph.left_vertices, LeftVertex(m + cur_offset, op_id, needs_JW_string))
-
-        push!(next_graph.edges_from_left, cur_edges)
-      end
-    end
-
+    add_to_next_graph!(next_graph, g, op_cache_vec, n, cur_offset, next_edges_of_cc[cc])
     cur_offset += rank_of_cc[cc]
   end
 

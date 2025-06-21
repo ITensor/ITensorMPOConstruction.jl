@@ -267,7 +267,7 @@ end
   return opID_sum
 end
 
-@timeit function check_for_errors(os::OpIDSum, op_cache_vec::OpCacheVec)::Nothing
+@timeit function check_for_errors(os::OpIDSum)::Nothing
   for i in eachindex(os)
     _, ops = os[i]
 
@@ -277,8 +277,8 @@ end
       opj = ops[j]
       opj == zero(opj) && continue
 
-      flux += op_cache_vec[opj.n][opj.id].qnFlux
-      fermion_parity += op_cache_vec[opj.n][opj.id].is_fermionic
+      flux += os.op_cache_vec[opj.n][opj.id].qnFlux
+      fermion_parity += os.op_cache_vec[opj.n][opj.id].is_fermionic
 
       if j < length(ops)
         ops[j + 1] == zero(ops[j + 1]) && continue
@@ -300,8 +300,6 @@ end
   if !isnothing(basis_op_cache_vec)
     rewrite_in_operator_basis!(os, basis_op_cache_vec)
   end
-
-  # check_for_errors(os, op_cache_vec)
 end
 
 function my_matrix(term::AbstractVector{<:OpID}, op_cache::Vector{OpInfo})::Matrix{ComplexF64}
