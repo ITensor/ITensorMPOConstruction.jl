@@ -103,13 +103,13 @@ function electronic_structure_OpIDSum(N::Int, complexBasisFunctions::Bool)::MPO
   ↓ = false
   ↑ = true
 
-  opC(k::Int, spin::Bool) = OpID(2 + spin, k)
-  opCdag(k::Int, spin::Bool) = OpID(4 + spin, k)
-  opN(k::Int, spin::Bool) = OpID(6 + spin, k)
+  opC(k::Int, spin::Bool) = OpID{UInt8}(2 + spin, k)
+  opCdag(k::Int, spin::Bool) = OpID{UInt8}(4 + spin, k)
+  opN(k::Int, spin::Bool) = OpID{UInt8}(6 + spin, k)
 
   coeff() = !complexBasisFunctions ? rand() : rand() + 1im * rand()
 
-  os = complexBasisFunctions ? OpIDSum{4, ComplexF64}(2 * N^4, op_cache_vec) : OpIDSum{4, Float64}(2 * N^4, op_cache_vec)
+  os = complexBasisFunctions ? OpIDSum{4, ComplexF64, UInt8}(2 * N^4, op_cache_vec) : OpIDSum{4, Float64, UInt8}(2 * N^4, op_cache_vec)
   @time "\tConstructing OpIDSum" let
     for a in 1:N
       for b in a:N
@@ -155,20 +155,25 @@ function electronic_structure_OpIDSum(N::Int, complexBasisFunctions::Bool)::MPO
   )
 end
 
-let
-  N = 10
-  useITensorsAlg = false
+# let
+#   for N in [10, 10, 20]
+#     println("Constructing the electronic structure MPO for $N sites using ITensorMPS")
+#     @time "Total construction time" mpo = electronic_structure(N, false; useITensorsAlg=true)
+#     println("The maximum bond dimension is $(maxlinkdim(mpo))")
+#     println("The sparsity is $(ITensorMPOConstruction.sparsity(mpo))")
+#     mpo = ITensors.splitblocks(ITensorMPS.linkinds, mpo)
+#     println("After splitting the sparsity is $(ITensorMPOConstruction.sparsity(mpo))")
+#     println()
+#   end
+# end
 
-  println("Constructing the Electronic Structure MPO for $N orbitals")
-  @time "Total" mpo = electronic_structure(N, false; useITensorsAlg=useITensorsAlg)
-  println("The maximum bond dimension is $(maxlinkdim(mpo))\n")
-end
-
 let
-  for N in [10, 10, 20, 30, 40, 50]
-    println("Constructing the Electronic Structure MPO for $N orbitals using OpIDSum")
-    @time "Total" mpo = electronic_structure_OpIDSum(N, false)
-    println("The maximum bond dimension is $(maxlinkdim(mpo))\n")
+  for N in [10, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    println("Constructing the electronic structure MPO for $N sites using ITensorMPOConstruction")
+    @time "Total construction time" mpo = electronic_structure_OpIDSum(N, false)
+    println("The maximum bond dimension is $(maxlinkdim(mpo))")
+    println("The sparsity is $(ITensorMPOConstruction.sparsity(mpo))")
+    println()
   end
 end
 

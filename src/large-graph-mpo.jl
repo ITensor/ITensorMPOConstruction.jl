@@ -129,11 +129,13 @@ end
 end
 
 function sparse_qr(
-  A::SparseMatrixCSC, tol::Real, absoluteTol::Bool
+  A::SparseMatrixCSC, tol::Real, absolute_tol::Bool
 )::Tuple{SparseArrays.SPQR.QRSparseQ,SparseMatrixCSC,Vector{Int},Vector{Int},Int}
   ret = nothing
 
-  if !absoluteTol
+  ## The tolerance is specified in Section 2.3
+  ## https://fossies.org/linux/SuiteSparse/SPQR/Doc/spqr_user_guide.pdf 
+  if !absolute_tol
     tol *= SparseArrays.SPQR._default_tol(A)
   end
 
@@ -219,9 +221,9 @@ end
   n::Int,
   sites::Vector{<:Index},
   tol::Real,
-  absoluteTol::Bool,
+  absolute_tol::Bool,
   op_cache_vec::OpCacheVec;
-  combine_qn_sectors::Bool=false,
+  combine_qn_sectors::Bool,
   output_level::Int=0)::Tuple{MPOGraph{N, C, Ti},Vector{Int},Vector{BlockSparseMatrix{ValType}},Index} where {N, C, Ti}
 
   has_qns = hasqns(sites)
@@ -261,7 +263,7 @@ end
       W, left_map, right_map = get_cc_matrix(g, ccs, cc; clear_edges=true)
 
       ## Compute the decomposition and then free W
-      Q, R, prow, pcol, rank = sparse_qr(W, tol, absoluteTol)
+      Q, R, prow, pcol, rank = sparse_qr(W, tol, absolute_tol)
       W = nothing
 
       first_rv_id = right_map[1]
@@ -271,8 +273,7 @@ end
 
     ## Compute and store the QN of this component
     if has_qns
-      right_flux = flux(right_vertex(g, first_rv_id), n + 1, op_cache_vec)
-      qi_of_cc[cc] = (QN() - right_flux) => rank
+      qi_of_cc[cc] = flux(right_vertex(g, first_rv_id), n + 1, op_cache_vec) => rank
     end
 
     ## Form the local transformation tensor.

@@ -93,8 +93,8 @@ function Base.getindex(os::OpIDSum, i::Integer)
   return os.scalars[i], view(os.terms, :, i)
 end
 
-function ITensorMPS.add!(os::OpIDSum, scalar::Number, ops)::OpIDSum
-  abs(scalar) <= os.abs_tol && return os
+function ITensorMPS.add!(os::OpIDSum, scalar::Number, ops)::Nothing
+  abs(scalar) <= os.abs_tol && return nothing
 
   num_terms = Threads.atomic_add!(os.num_terms, 1) + 1
   num_appended = 0
@@ -115,10 +115,10 @@ function ITensorMPS.add!(os::OpIDSum, scalar::Number, ops)::OpIDSum
 
   os.scalars[num_terms] = scalar * permutation_sign * scalar_modification
 
-  return os
+  return nothing
 end
 
-function ITensorMPS.add!(os::OpIDSum, scalar::Number, ops::OpID...)::OpIDSum
+function ITensorMPS.add!(os::OpIDSum, scalar::Number, ops::OpID...)::Nothing
   return add!(os, scalar, ops)
 end
 
@@ -267,7 +267,7 @@ end
   return opID_sum
 end
 
-@timeit function check_for_errors(os::OpIDSum)::Nothing
+@timeit function check_os_for_errors(os::OpIDSum)::Nothing
   for i in eachindex(os)
     _, ops = os[i]
 
