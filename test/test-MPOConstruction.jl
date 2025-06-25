@@ -12,7 +12,8 @@ function norm2_of_difference(A::MPO, B::MPO; relativeNorm::Bool=false)::Real
   B = normalize(B; (lognorm!)=lognormB)
   lognormB = only(lognormB)
 
-  rdiff = (1 + exp(2 * (lognormB - lognormA))) - 2 * exp(lognormB - lognormA) * real(inner(A, B))
+  rdiff =
+    (1 + exp(2 * (lognormB - lognormA))) - 2 * exp(lognormB - lognormA) * real(inner(A, B))
 
   relativeNorm && return rdiff
   return exp(2 * lognormA) * diff
@@ -35,7 +36,9 @@ function compare_MPOs(A::MPO, B::MPO; tol::Real=1e-7)::Nothing
   AmB = add(A, -B; alg="directsum")
   diff = inner(AmB, AmB) / inner(A, A)
 
-  println("normalized difference = $normalizedDiff, relative difference (log) = $relativeDiffFromLog, relative diff = $relativeDiff, |A - B|^2 = $diff")
+  println(
+    "normalized difference = $normalizedDiff, relative difference (log) = $relativeDiffFromLog, relative diff = $relativeDiff, |A - B|^2 = $diff",
+  )
 
   @test abs(diff) < tol
   return nothing
@@ -46,7 +49,7 @@ function test_from_OpSum(
   sites::Vector{<:Index},
   basis_op_cache_vec::Union{Nothing,OpCacheVec},
   tol::Real;
-  combine_qn_sectors::Bool=false
+  combine_qn_sectors::Bool=false,
 )::Tuple{MPO,MPO}
   mpo = MPO_new(os, sites; tol, basis_op_cache_vec, combine_qn_sectors, output_level=0)
 
@@ -126,7 +129,7 @@ end
 function test_weight_one(N::Integer, tol::Real)
   localOps = ["X", "Y", "Z"]
 
-  ops = Tuple{ComplexF64, String}[]
+  ops = Tuple{ComplexF64,String}[]
   for _ in 1:N
     push!(ops, (random_complex(), rand(localOps)))
   end
@@ -148,11 +151,11 @@ function test_weight_one(N::Integer, tol::Real)
     weight, localOp = ops[n]
     llinks[1] = Index(2; tags="Link,l=$n")
 
-    exact[n] = ITensor(
-      ComplexF64, llinks[n], prime(sites[n]), dag(sites[n])
-    )
+    exact[n] = ITensor(ComplexF64, llinks[n], prime(sites[n]), dag(sites[n]))
 
-    exact[n][1, :, :] = array(weight * op(sites[n], localOp), prime(sites[n]), dag(sites[n]))
+    exact[n][1, :, :] = array(
+      weight * op(sites[n], localOp), prime(sites[n]), dag(sites[n])
+    )
     exact[n][2, :, :] = array(op(sites[n], "I"), prime(sites[n]), dag(sites[n]))
   end
 
@@ -166,7 +169,9 @@ function test_weight_one(N::Integer, tol::Real)
     )
 
     exact[n][1, 1, :, :] = array(op(sites[n], "I"), prime(sites[n]), dag(sites[n]))
-    exact[n][2, 1, :, :] = array(weight * op(sites[n], localOp), prime(sites[n]), dag(sites[n]))
+    exact[n][2, 1, :, :] = array(
+      weight * op(sites[n], localOp), prime(sites[n]), dag(sites[n])
+    )
     exact[n][2, 2, :, :] = array(op(sites[n], "I"), prime(sites[n]), dag(sites[n]))
   end
 
@@ -174,12 +179,12 @@ function test_weight_one(N::Integer, tol::Real)
     n = N
     weight, localOp = ops[n]
 
-    exact[n] = ITensor(
-      ComplexF64, dag(llinks[n - 1]), prime(sites[n]), dag(sites[n])
-    )
+    exact[n] = ITensor(ComplexF64, dag(llinks[n - 1]), prime(sites[n]), dag(sites[n]))
 
     exact[n][1, :, :] = array(op(sites[n], "I"), prime(sites[n]), dag(sites[n]))
-    exact[n][2, :, :] = array(weight * op(sites[n], localOp), prime(sites[n]), dag(sites[n]))
+    exact[n][2, :, :] = array(
+      weight * op(sites[n], localOp), prime(sites[n]), dag(sites[n])
+    )
   end
 
   compare_MPOs(algMPO, exact; tol=2 * N^2 * 1e-17)
@@ -299,6 +304,7 @@ function test_qft(N::Int64, applyR::Bool, tol::Real)
   for qBits in CartesianIndex(0 * ones(Int64, N)...):CartesianIndex((ones(Int64, N))...)
     for qPrimeBits in
         CartesianIndex(0 * ones(Int64, N)...):CartesianIndex((ones(Int64, N))...)
+
       qBits = Tuple(qBits)
       qPrimeBits = Tuple(qPrimeBits)
 

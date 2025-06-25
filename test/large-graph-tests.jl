@@ -1,13 +1,13 @@
 using ITensorMPOConstruction:
-  BipartiteGraph,
-  compute_connected_components,
-  num_connected_components
+  BipartiteGraph, compute_connected_components, num_connected_components
 
 using Test
 using Graphs
 
 function test_get_connected_components(nl::Int, nr::Int, max_edges_from_left::Int)
-  g = BipartiteGraph{Int, Int, Float64}(zeros(Int, nl), zeros(Int, nr), [Vector{Tuple{Int, Float64}}() for _ in 1:nl])
+  g = BipartiteGraph{Int,Int,Float64}(
+    zeros(Int, nl), zeros(Int, nr), [Vector{Tuple{Int,Float64}}() for _ in 1:nl]
+  )
   g_ref = SimpleGraph{Int}(nl + nr)
 
   for lv_id in 1:nl

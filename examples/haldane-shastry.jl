@@ -3,7 +3,9 @@ using ITensorMPS
 using ITensors
 using Test
 
-function haldane_shastry_mpo(N::Int, J::Real, tol::Real, absolute_tol::Bool; useITensorsAlg::Bool=false)::MPO
+function haldane_shastry_mpo(
+  N::Int, J::Real, tol::Real, absolute_tol::Bool; useITensorsAlg::Bool=false
+)::MPO
   os = OpSum()
   @time "Constructing OpSum" for n in 1:N
     for m in (n + 1):N
@@ -28,13 +30,15 @@ function ground_state_energy(N::Int, J::Real, twoSz::Int)
   return J * π^2 * ((N - 1 / N) / 24 + M * ((M^2 - 1) / (3 * N^2) - 1 / 4))
 end
 
-function test_dmrg(H::MPO, twoSz::Int, noise::Vector{Float64}; maxdim::Int=0, compute_variance::Bool=false)::Nothing
+function test_dmrg(
+  H::MPO, twoSz::Int, noise::Vector{Float64}; maxdim::Int=0, compute_variance::Bool=false
+)::Nothing
   N = length(H)
   sites = noprime(siteinds(first, H))
 
   @assert abs(twoSz) <= N
   @assert mod(twoSz, 2) == mod(N, 2)
-  
+
   maxdim == 0 && (maxdim = 2^(N ÷ 2))
   nUp = (twoSz + N) ÷ 2
   psi = random_mps(sites, [i <= nUp ? "Up" : "Dn" for i in 1:N]; linkdims=maxdim)
@@ -64,7 +68,7 @@ end
 
   noise = [1e-5, 1e-6, 1e-7, 0, 0, 0, 0, 0, 0, 0]
 
-  for twoSz in -N:2:N
+  for twoSz in (-N):2:N
     test_dmrg(H, twoSz, noise)
     println()
   end

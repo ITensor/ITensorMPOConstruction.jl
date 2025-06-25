@@ -1,7 +1,7 @@
-struct BipartiteGraph{L, R, C}
+struct BipartiteGraph{L,R,C}
   left_vertices::Vector{L}
   right_vertices::Vector{R}
-  edges_from_left::Vector{Vector{Tuple{Int, C}}}
+  edges_from_left::Vector{Vector{Tuple{Int,C}}}
 end
 
 left_size(g::BipartiteGraph)::Int = length(g.left_vertices)
@@ -20,7 +20,9 @@ struct BipartiteGraphConnectedComponents
   rv_size_of_component::Vector{Int}
 end
 
-@timeit function compute_connected_components(g::BipartiteGraph)::BipartiteGraphConnectedComponents
+@timeit function compute_connected_components(
+  g::BipartiteGraph
+)::BipartiteGraphConnectedComponents
   min_lv_connected_to_rv = fill(typemax(Int), right_size(g))
   component_of_lv = Int[i for i in 1:left_size(g)]
   lvs_of_component = Vector{Int}[[i] for i in 1:left_size(g)]
@@ -59,10 +61,10 @@ end
   rv_size_of_component = zeros(Int, length(lvs_of_component))
   for rv_id in 1:right_size(g)
     min_lv = min_lv_connected_to_rv[rv_id]
-    
+
     ## This means the right vertex is not connected to anything and can be safely ignored.
     min_lv == typemax(Int) && continue
-    
+
     component = component_of_lv[min_lv]
     rv_size_of_component[component] += 1
     min_lv_connected_to_rv[rv_id] = rv_size_of_component[component]
@@ -78,16 +80,27 @@ end
     end
   end
 
-  return BipartiteGraphConnectedComponents(lvs_of_component_non_empty, min_lv_connected_to_rv, rv_size_of_component_non_empty)
+  return BipartiteGraphConnectedComponents(
+    lvs_of_component_non_empty, min_lv_connected_to_rv, rv_size_of_component_non_empty
+  )
 end
 
-num_connected_components(ccs::BipartiteGraphConnectedComponents) = length(ccs.lvs_of_component)
+function num_connected_components(ccs::BipartiteGraphConnectedComponents)
+  length(ccs.lvs_of_component)
+end
 
-left_size(ccs::BipartiteGraphConnectedComponents, cc::Int) = length(ccs.lvs_of_component[cc])
+function left_size(ccs::BipartiteGraphConnectedComponents, cc::Int)
+  length(ccs.lvs_of_component[cc])
+end
 
-function get_cc_matrix(g::BipartiteGraph{L, R, C}, ccs::BipartiteGraphConnectedComponents, cc::Int; clear_edges::Bool=false)::Tuple{SparseMatrixCSC{C, Int}, Vector{Int}, Vector{Int}} where {L, R, C}
+function get_cc_matrix(
+  g::BipartiteGraph{L,R,C},
+  ccs::BipartiteGraphConnectedComponents,
+  cc::Int;
+  clear_edges::Bool=false,
+)::Tuple{SparseMatrixCSC{C,Int},Vector{Int},Vector{Int}} where {L,R,C}
   num_edges = sum(length(g.edges_from_left[lv]) for lv in ccs.lvs_of_component[cc])
-  
+
   edge_left_vertex = Vector{Int}(undef, num_edges)
   edge_right_vertex = Vector{Int}(undef, num_edges)
   edge_weight = Vector{C}(undef, num_edges)
@@ -111,10 +124,14 @@ function get_cc_matrix(g::BipartiteGraph{L, R, C}, ccs::BipartiteGraphConnectedC
     end
   end
 
-  return sparse(edge_left_vertex, edge_right_vertex, edge_weight), ccs.lvs_of_component[cc], right_map
+  return sparse(edge_left_vertex, edge_right_vertex, edge_weight),
+  ccs.lvs_of_component[cc],
+  right_map
 end
 
-@timeit function get_default_tol(g::BipartiteGraph{L, R, C}, ccs::BipartiteGraphConnectedComponents)::Float64 where {L, R, C}
+@timeit function get_default_tol(
+  g::BipartiteGraph{L,R,C}, ccs::BipartiteGraphConnectedComponents
+)::Float64 where {L,R,C}
   column_norms = zeros(right_size(g))
   for edges in g.edges_from_left
     for (rv_id, weight) in edges

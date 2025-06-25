@@ -60,25 +60,67 @@ function sort_fermion_perm!(ops::AbstractVector{<:OpID}, op_cache_vec::OpCacheVe
   return sign
 end
 
-mutable struct OpIDSum{N, C, Ti}
-  _data::Vector{NTuple{N, OpID{Ti}}}
-  terms::Base.ReinterpretArray{OpID{Ti}, 2, NTuple{N, OpID{Ti}}, Vector{NTuple{N, OpID{Ti}}}, true}
+mutable struct OpIDSum{N,C,Ti}
+  _data::Vector{NTuple{N,OpID{Ti}}}
+  terms::Base.ReinterpretArray{
+    OpID{Ti},2,NTuple{N,OpID{Ti}},Vector{NTuple{N,OpID{Ti}}},true
+  }
   scalars::Vector{C}
   num_terms::Threads.Atomic{Int}
   op_cache_vec::OpCacheVec
   abs_tol::Float64
-  modify!::FunctionWrappers.FunctionWrapper{C, Tuple{SubArray{OpID{Ti}, 1, Base.ReinterpretArray{OpID{Ti}, 2, NTuple{N, OpID{Ti}}, Vector{NTuple{N, OpID{Ti}}}, true}, Tuple{UnitRange{Int64}, Int64}, false}}}
+  modify!::FunctionWrappers.FunctionWrapper{
+    C,
+    Tuple{
+      SubArray{
+        OpID{Ti},
+        1,
+        Base.ReinterpretArray{
+          OpID{Ti},2,NTuple{N,OpID{Ti}},Vector{NTuple{N,OpID{Ti}}},true
+        },
+        Tuple{UnitRange{Int64},Int64},
+        false,
+      },
+    },
+  }
 end
 
-function OpIDSum{N, C, Ti}(max_terms::Int, op_cache_vec::OpCacheVec, f::Function; abs_tol::Real=0)::OpIDSum{N, C, Ti} where {N, C, Ti}
-  data = Vector{NTuple{N, OpID{Ti}}}(undef, max_terms)
+function OpIDSum{N,C,Ti}(
+  max_terms::Int, op_cache_vec::OpCacheVec, f::Function; abs_tol::Real=0
+)::OpIDSum{N,C,Ti} where {N,C,Ti}
+  data = Vector{NTuple{N,OpID{Ti}}}(undef, max_terms)
   terms = reinterpret(reshape, OpID{Ti}, data)
-  f_wrapped = FunctionWrappers.FunctionWrapper{C, Tuple{SubArray{OpID{Ti}, 1, Base.ReinterpretArray{OpID{Ti}, 2, NTuple{N, OpID{Ti}}, Vector{NTuple{N, OpID{Ti}}}, true}, Tuple{UnitRange{Int64}, Int64}, false}}}(f)
-  return OpIDSum(data, terms, Vector{C}(undef, max_terms), Threads.Atomic{Int}(0), op_cache_vec, Float64(abs_tol), f_wrapped)
+  f_wrapped = FunctionWrappers.FunctionWrapper{
+    C,
+    Tuple{
+      SubArray{
+        OpID{Ti},
+        1,
+        Base.ReinterpretArray{
+          OpID{Ti},2,NTuple{N,OpID{Ti}},Vector{NTuple{N,OpID{Ti}}},true
+        },
+        Tuple{UnitRange{Int64},Int64},
+        false,
+      },
+    },
+  }(
+    f
+  )
+  return OpIDSum(
+    data,
+    terms,
+    Vector{C}(undef, max_terms),
+    Threads.Atomic{Int}(0),
+    op_cache_vec,
+    Float64(abs_tol),
+    f_wrapped,
+  )
 end
 
-function OpIDSum{N, C, Ti}(max_terms::Int, op_cache_vec::OpCacheVec; abs_tol::Real=0)::OpIDSum{N, C, Ti} where {N, C, Ti}
-  return OpIDSum{N, C, Ti}(max_terms, op_cache_vec, ops -> 1; abs_tol)
+function OpIDSum{N,C,Ti}(
+  max_terms::Int, op_cache_vec::OpCacheVec; abs_tol::Real=0
+)::OpIDSum{N,C,Ti} where {N,C,Ti}
+  return OpIDSum{N,C,Ti}(max_terms, op_cache_vec, ops -> 1; abs_tol)
 end
 
 function Base.length(os::OpIDSum)::Int
@@ -109,7 +151,9 @@ function ITensorMPS.add!(os::OpIDSum, scalar::Number, ops)::Nothing
     os.terms[i, num_terms] = zero(os.terms[i, num_terms])
   end
 
-  permutation_sign = sort_fermion_perm!(view(os.terms, 1:num_appended, num_terms), os.op_cache_vec)
+  permutation_sign = sort_fermion_perm!(
+    view(os.terms, 1:num_appended, num_terms), os.op_cache_vec
+  )
 
   scalar_modification = os.modify!(view(os.terms, 1:num_appended, num_terms))
 
@@ -146,10 +190,8 @@ function for_equal_sites(f::Function, ops::AbstractVector{<:OpID})::Nothing
 end
 
 @timeit function rewrite_in_operator_basis!(
-  os::OpIDSum{N, C, Ti},
-  basis_op_cache_vec::OpCacheVec
-) where {N, C, Ti}
-  
+  os::OpIDSum{N,C,Ti}, basis_op_cache_vec::OpCacheVec
+) where {N,C,Ti}
   op_cache_vec = os.op_cache_vec
 
   function scale_by_first_nz!(matrix::Matrix{ComplexF64})::ComplexF64
@@ -162,7 +204,9 @@ end
     end
   end
 
-  scaled_basis_ops = Vector{Tuple{ComplexF64, Matrix{ComplexF64}}}[Vector{Tuple{ComplexF64, Matrix{ComplexF64}}}() for _ in eachindex(basis_op_cache_vec)]
+  scaled_basis_ops = Vector{Tuple{ComplexF64,Matrix{ComplexF64}}}[
+    Vector{Tuple{ComplexF64,Matrix{ComplexF64}}}() for _ in eachindex(basis_op_cache_vec)
+  ]
   for n in eachindex(basis_op_cache_vec)
     for op_info in basis_op_cache_vec[n]
       m = Matrix{ComplexF64}(op_info.matrix)
@@ -171,9 +215,7 @@ end
     end
   end
 
-  function convert_to_basis_memoized(
-    ops::AbstractVector{OpID{Ti}}
-  )::Tuple{ComplexF64,Int}
+  function convert_to_basis_memoized(ops::AbstractVector{OpID{Ti}})::Tuple{ComplexF64,Int}
     n = ops[1].n
     local_matrix = my_matrix(ops, op_cache_vec[n])
     scale = scale_by_first_nz!(local_matrix)
@@ -185,7 +227,9 @@ end
     return 0, 0
   end
 
-  single_op_translation = Vector{Tuple{ComplexF64, Int}}[Vector{Tuple{ComplexF64, Int}}() for _ in eachindex(basis_op_cache_vec)]
+  single_op_translation = Vector{Tuple{ComplexF64,Int}}[
+    Vector{Tuple{ComplexF64,Int}}() for _ in eachindex(basis_op_cache_vec)
+  ]
   for n in eachindex(op_cache_vec)
     for id in eachindex(op_cache_vec[n])
       push!(single_op_translation[n], convert_to_basis_memoized([OpID{Ti}(id, n)]))
@@ -196,7 +240,7 @@ end
     scalar, ops = os[i]
 
     for_equal_sites(ops) do a, b
-      ops[a] == zero(ops[a]) && return
+      ops[a] == zero(ops[a]) && return nothing
 
       if a == b
         coeff, basis_id = single_op_translation[ops[a].n][ops[a].id]
@@ -228,10 +272,7 @@ end
   return os
 end
 
-@timeit function op_sum_to_opID_sum(
-  os::OpSum{C},
-  sites::Vector{<:Index}
-)::OpIDSum where {C}
+@timeit function op_sum_to_opID_sum(os::OpSum{C}, sites::Vector{<:Index})::OpIDSum where {C}
   N = length(sites)
 
   ops_on_each_site = [Dict{Op,Int}(Op("I", n) => 1) for n in 1:N]
@@ -241,7 +282,7 @@ end
   ## error when using reinterpret(reshape, ...) later on. This is the easiest way to fix it.
   max_ops_per_term = max(2, maximum(length, ITensors.terms(os)))
 
-  opID_sum = OpIDSum{max_ops_per_term, C, Int}(length(os), op_cache_vec)
+  opID_sum = OpIDSum{max_ops_per_term,C,Int}(length(os), op_cache_vec)
 
   opID_term = Vector{OpID{Int}}()
   ## TODO: Don't need $i$ here
@@ -260,7 +301,7 @@ end
       opID = ops_on_each_site[n][op]
       push!(opID_term, OpID(opID, n))
     end
-  
+
     add!(opID_sum, ITensors.coefficient(term), opID_term)
   end
 
@@ -294,15 +335,16 @@ end
 end
 
 @timeit function prepare_opID_sum!(
-  os::OpIDSum,
-  basis_op_cache_vec::Union{Nothing,OpCacheVec},
+  os::OpIDSum, basis_op_cache_vec::Union{Nothing,OpCacheVec}
 )
   if !isnothing(basis_op_cache_vec)
     rewrite_in_operator_basis!(os, basis_op_cache_vec)
   end
 end
 
-function my_matrix(term::AbstractVector{<:OpID}, op_cache::Vector{OpInfo})::Matrix{ComplexF64}
+function my_matrix(
+  term::AbstractVector{<:OpID}, op_cache::Vector{OpInfo}
+)::Matrix{ComplexF64}
   @assert all(op.n == term[1].n for op in term)
   @assert !isempty(term)
 

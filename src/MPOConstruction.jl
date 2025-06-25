@@ -15,7 +15,12 @@ function my_ITensor(
   return itensor(T)
 end
 
-function my_copyto_dropzeros!(T::ITensors.Tensor, offsets::Vector{Int}, block_sparse_matrices::Vector{<:BlockSparseMatrix}; tol)
+function my_copyto_dropzeros!(
+  T::ITensors.Tensor,
+  offsets::Vector{Int},
+  block_sparse_matrices::Vector{<:BlockSparseMatrix};
+  tol,
+)
   for (offset, matrix) in zip(offsets, block_sparse_matrices)
     for ((left_link, right_link), block) in matrix
       for i in 1:size(block, 1)
@@ -42,24 +47,35 @@ function resume_svd_MPO(
   tol::Real=1,
   absolute_tol::Bool=false,
   combine_qn_sectors::Bool=false,
-  call_back::Function=
-    (cur_site::Int,
-     H::MPO,
-     sites::Vector{<:Index},
-     llinks::Vector{<:Index},
-     cur_graph::MPOGraph,
-     op_cache_vec::OpCacheVec) -> nothing,
-  output_level::Int=0
-  )::MPO
+  call_back::Function=(
+    cur_site::Int,
+    H::MPO,
+    sites::Vector{<:Index},
+    llinks::Vector{<:Index},
+    cur_graph::MPOGraph,
+    op_cache_vec::OpCacheVec,
+  ) -> nothing,
+  output_level::Int=0,
+)::MPO
   @assert !ITensors.using_auto_fermion() # TODO: This should be fixed.
   @assert tol >= 0
 
   N = length(sites)
 
   for n in n_init:N
-    output_level > 0 && println("At site $n/$(length(sites)) the graph takes up $(Base.format_bytes(Base.summarysize(g)))")
+    output_level > 0 && println(
+      "At site $n/$(length(sites)) the graph takes up $(Base.format_bytes(Base.summarysize(g)))",
+    )
     @time_if output_level 1 "at_site!" g, offsets, block_sparse_matrices, llinks[n + 1] = at_site!(
-      ValType, g, n, sites, tol, absolute_tol, op_cache_vec; combine_qn_sectors, output_level
+      ValType,
+      g,
+      n,
+      sites,
+      tol,
+      absolute_tol,
+      op_cache_vec;
+      combine_qn_sectors,
+      output_level,
     )
 
     # Constructing the tensor from an array is much faster than setting the components of the ITensor directly.
@@ -124,7 +140,7 @@ end
   os::OpIDSum,
   sites::Vector{<:Index};
   output_level::Int=0,
-  kwargs...
+  kwargs...,
 )::MPO
   # TODO: This should be fixed.
   @assert !ITensors.using_auto_fermion()
@@ -142,7 +158,9 @@ end
     llinks[1] = Index(1; tags="Link,l=0")
   end
 
-  return resume_svd_MPO(ValType, 1, H, sites, llinks, g, os.op_cache_vec; output_level, kwargs...)
+  return resume_svd_MPO(
+    ValType, 1, H, sites, llinks, g, os.op_cache_vec; output_level, kwargs...
+  )
 end
 
 function MPO_new(
@@ -159,30 +177,17 @@ function MPO_new(
   return svdMPO_new(ValType, os, sites; kwargs...)
 end
 
-function MPO_new(
-  os::OpIDSum,
-  sites::Vector{<:Index};
-  kwargs...
-)::MPO
+function MPO_new(os::OpIDSum, sites::Vector{<:Index}; kwargs...)::MPO
   ValType = determine_val_type(os)
   return MPO_new(ValType, os, sites; kwargs...)
 end
 
-function MPO_new(
-  ValType::Type{<:Number},
-  os::OpSum,
-  sites::Vector{<:Index};
-  kwargs...
-)::MPO
+function MPO_new(ValType::Type{<:Number}, os::OpSum, sites::Vector{<:Index}; kwargs...)::MPO
   opID_sum = op_sum_to_opID_sum(os, sites)
   return MPO_new(ValType, opID_sum, sites; kwargs...)
 end
 
-function MPO_new(
-  os::OpSum,
-  sites::Vector{<:Index};
-  kwargs...
-)::MPO
+function MPO_new(os::OpSum, sites::Vector{<:Index}; kwargs...)::MPO
   opID_sum = op_sum_to_opID_sum(os, sites)
   return MPO_new(opID_sum, sites; kwargs...)
 end

@@ -1,6 +1,7 @@
 using ITensorMPOConstruction
 using ITensorMPOConstruction: terms_eq_from, get_onsite_op, is_fermionic, sort_fermion_perm!
 using ITensors
+using ITensorMPS
 using Test
 
 function test_terms_eq_from()
@@ -10,7 +11,7 @@ function test_terms_eq_from()
   @test !terms_eq_from(0)(op1, op2)
   @test !terms_eq_from(1)(op1, op2)
   @test !terms_eq_from(2)(op1, op2)
-  
+
   @test terms_eq_from(3)(op1, op2)
   @test terms_eq_from(4)(op1, op2)
   @test terms_eq_from(5)(op1, op2)
@@ -58,7 +59,6 @@ function test_is_fermionic()
   @test !is_fermionic((Cdag(1),), 2, op_cache_vec)
   @test !is_fermionic((N(1),), 2, op_cache_vec)
 
-
   @test !is_fermionic((C(5), Cdag(2)), 1, op_cache_vec)
   @test !is_fermionic((C(5), Cdag(2)), 2, op_cache_vec)
 
@@ -92,7 +92,7 @@ function test_sort_fermion_perm()
 
   ops = [Cdag(1), Cdag(2), C(2), C(1)]
   @test sort_fermion_perm!(ops, op_cache_vec) == +1
-  @test ops == [Cdag(1),  C(1), Cdag(2), C(2)]
+  @test ops == [Cdag(1), C(1), Cdag(2), C(2)]
 end
 
 @testset "Ops" begin

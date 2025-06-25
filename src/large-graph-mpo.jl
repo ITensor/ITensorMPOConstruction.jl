@@ -1,6 +1,6 @@
 BlockSparseMatrix{C} = Dict{Tuple{Int,Int},Matrix{C}}
 
-MPOGraph{N, C, Ti} = BipartiteGraph{LeftVertex, NTuple{N, OpID{Ti}}, C}
+MPOGraph{N,C,Ti} = BipartiteGraph{LeftVertex,NTuple{N,OpID{Ti}},C}
 
 ## Taken from https://discourse.julialang.org/t/how-to-sort-two-or-more-lists-at-once/12073/13
 struct CoSorterElement{T1,T2}
@@ -8,16 +8,21 @@ struct CoSorterElement{T1,T2}
   y::T2
 end
 
-struct CoSorter{T1,T2,S<:AbstractArray{T1},C<:AbstractArray{T2}} <: AbstractVector{CoSorterElement{T1,T2}}
+struct CoSorter{T1,T2,S<:AbstractArray{T1},C<:AbstractArray{T2}} <:
+       AbstractVector{CoSorterElement{T1,T2}}
   sortarray::S
   coarray::C
 end
 
 Base.size(c::CoSorter) = size(c.sortarray)
 
-Base.getindex(c::CoSorter, i...) = CoSorterElement(getindex(c.sortarray, i...), getindex(c.coarray, i...))
+function Base.getindex(c::CoSorter, i...)
+  CoSorterElement(getindex(c.sortarray, i...), getindex(c.coarray, i...))
+end
 
-Base.setindex!(c::CoSorter, t::CoSorterElement, i...) = (setindex!(c.sortarray, t.x, i...); setindex!(c.coarray, t.y, i...); c)
+function Base.setindex!(c::CoSorter, t::CoSorterElement, i...)
+  (setindex!(c.sortarray, t.x, i...); setindex!(c.coarray, t.y, i...); c)
+end
 
 Base.isless(a::CoSorterElement, b::CoSorterElement) = isless(a.x, b.x)
 
@@ -30,11 +35,8 @@ function find_first_eq_rv(g::MPOGraph, j::Int, n::Int)::Int
 end
 
 function build_next_edges_specialization!(
-  next_edges::Matrix{Vector{Tuple{Int, C}}},
-  g::MPOGraph{N, C, Ti},
-  cur_site::Int,
-  edges
-)::Nothing where {N, C, Ti}
+  next_edges::Matrix{Vector{Tuple{Int,C}}}, g::MPOGraph{N,C,Ti}, cur_site::Int, edges
+)::Nothing where {N,C,Ti}
   @assert size(next_edges, 1) == 1
 
   for (rv_id, weight) in edges
@@ -49,20 +51,22 @@ function build_next_edges_specialization!(
 end
 
 function add_to_next_graph!(
-  next_graph::MPOGraph{N, C, Ti},
-  cur_graph::MPOGraph{N, C, Ti},
+  next_graph::MPOGraph{N,C,Ti},
+  cur_graph::MPOGraph{N,C,Ti},
   op_cache_vec::OpCacheVec,
   cur_site::Int,
   cur_offset::Int,
-  next_edges::Matrix{Vector{Tuple{Int, C}}}
-)::Nothing where {N, C, Ti}
+  next_edges::Matrix{Vector{Tuple{Int,C}}},
+)::Nothing where {N,C,Ti}
   for op_id in 1:size(next_edges, 2)
     for m in 1:size(next_edges, 1)
       cur_edges = next_edges[m, op_id]
       isempty(cur_edges) && continue
 
       first_rv_id = cur_edges[1][1]
-      needs_JW_string = is_fermionic(right_vertex(cur_graph, first_rv_id), cur_site + 2, op_cache_vec)
+      needs_JW_string = is_fermionic(
+        right_vertex(cur_graph, first_rv_id), cur_site + 2, op_cache_vec
+      )
       push!(next_graph.left_vertices, LeftVertex(m + cur_offset, op_id, needs_JW_string))
       push!(next_graph.edges_from_left, cur_edges)
     end
@@ -71,7 +75,7 @@ function add_to_next_graph!(
   return nothing
 end
 
-@timeit function MPOGraph(os::OpIDSum{N, C, Ti})::MPOGraph{N, C, Ti} where {N, C, Ti}
+@timeit function MPOGraph(os::OpIDSum{N,C,Ti})::MPOGraph{N,C,Ti} where {N,C,Ti}
   ## Reverse the terms in the sum, ignoring trailing identity operators.
   for i in 1:length(os)
     @assert size(os.terms, 1) == N
@@ -82,7 +86,7 @@ end
       end
     end
   end
-  
+
   ## Sort the terms and scalars.
   @timeit "sorting" let
     resize!(os._data, length(os))
@@ -113,13 +117,12 @@ end
   resize!(os._data, nnz)
   resize!(os.scalars, nnz)
 
-  g = MPOGraph{N, C, Ti}([], os._data, [])
+  g = MPOGraph{N,C,Ti}([], os._data, [])
 
-  next_edges = Matrix{Vector{Tuple{Int, C}}}(undef, 1, length(os.op_cache_vec[1]))
+  next_edges = Matrix{Vector{Tuple{Int,C}}}(undef, 1, length(os.op_cache_vec[1]))
   for i in eachindex(next_edges)
-    next_edges[i] = Vector{Tuple{Int, C}}()
+    next_edges[i] = Vector{Tuple{Int,C}}()
   end
-
 
   build_next_edges_specialization!(next_edges, g, 0, enumerate(os.scalars))
 
@@ -158,7 +161,9 @@ function for_non_zeros_batch(f::Function, A::SparseMatrixCSC, max_col::Int)::Not
   end
 end
 
-function for_non_zeros_batch(f::Function, Q::SparseArrays.SPQR.QRSparseQ, max_col::Int)::Nothing
+function for_non_zeros_batch(
+  f::Function, Q::SparseArrays.SPQR.QRSparseQ, max_col::Int
+)::Nothing
   @assert max_col <= size(Q, 2) "$max_col, $(size(Q, 2))"
 
   function get_column!(Q::SparseArrays.SPQR.QRSparseQ, col::Int, res::Vector)
@@ -181,7 +186,9 @@ function for_non_zeros_batch(f::Function, Q::SparseArrays.SPQR.QRSparseQ, max_co
   end
 end
 
-function add_to_local_matrix!(a::Matrix, weight::Number, local_op::Matrix, needs_JW_string::Bool)::Nothing
+function add_to_local_matrix!(
+  a::Matrix, weight::Number, local_op::Matrix, needs_JW_string::Bool
+)::Nothing
   if !needs_JW_string
     a .+= weight * local_op
   elseif size(local_op, 1) == 2
@@ -199,11 +206,13 @@ function add_to_local_matrix!(a::Matrix, weight::Number, local_op::Matrix, needs
   return nothing
 end
 
-function merge_qn_sectors(qi_of_cc::Vector{Pair{QN, Int}})::Tuple{Vector{Int}, Vector{Pair{QN, Int}}}
-  new_order = sortperm(qi_of_cc, by = pair -> pair[1])
-  qi_of_cc = sort(qi_of_cc, by = pair -> pair[1])
-  
-  new_qi = Pair{QN, Int}[qi_of_cc[1]]
+function merge_qn_sectors(
+  qi_of_cc::Vector{Pair{QN,Int}}
+)::Tuple{Vector{Int},Vector{Pair{QN,Int}}}
+  new_order = sortperm(qi_of_cc; by=pair -> pair[1])
+  qi_of_cc = sort(qi_of_cc; by=pair -> pair[1])
+
+  new_qi = Pair{QN,Int}[qi_of_cc[1]]
   for qi in view(qi_of_cc, 2:length(qi_of_cc))
     if qi.first == new_qi[end].first
       new_qi[end] = qi.first => new_qi[end].second + qi.second
@@ -217,17 +226,19 @@ end
 
 @timeit function at_site!(
   ValType::Type{<:Number},
-  g::MPOGraph{N, C, Ti},
+  g::MPOGraph{N,C,Ti},
   n::Int,
   sites::Vector{<:Index},
   tol::Real,
   absolute_tol::Bool,
   op_cache_vec::OpCacheVec;
   combine_qn_sectors::Bool,
-  output_level::Int=0)::Tuple{MPOGraph{N, C, Ti},Vector{Int},Vector{BlockSparseMatrix{ValType}},Index} where {N, C, Ti}
-
+  output_level::Int=0,
+)::Tuple{
+  MPOGraph{N,C,Ti},Vector{Int},Vector{BlockSparseMatrix{ValType}},Index
+} where {N,C,Ti}
   has_qns = hasqns(sites)
-  
+
   ccs = compute_connected_components(g)
   nccs = num_connected_components(ccs)
 
@@ -235,7 +246,7 @@ end
   rank_of_cc = zeros(Int, nccs)
 
   ## The MPO tensor for each component.
-  matrix_of_cc = [BlockSparseMatrix{ValType}() for _ in 1:nccs] 
+  matrix_of_cc = [BlockSparseMatrix{ValType}() for _ in 1:nccs]
 
   ## The QN of each component
   qi_of_cc = Pair{QN,Int}[QN() => 0 for _ in 1:nccs]
@@ -243,9 +254,11 @@ end
   ## A map from the incoming link to the next site (outgoing link from this site) and the
   ## operator on the next site (this uniquely specifies the left vertex of the next site)
   ## to the right vertices it will connect to along with the weight.
-  next_edges_of_cc = [Matrix{Vector{Tuple{Int, C}}}(undef, 0, 0) for _ in 1:nccs]
+  next_edges_of_cc = [Matrix{Vector{Tuple{Int,C}}}(undef, 0, 0) for _ in 1:nccs]
 
-  output_level > 0 && println("  The graph is $(left_size(g)) × $(right_size(g)) with $(num_edges(g)) edges and $(nccs) connected components. tol = $(@sprintf("%.2E", tol))")
+  output_level > 0 && println(
+    "  The graph is $(left_size(g)) × $(right_size(g)) with $(num_edges(g)) edges and $(nccs) connected components. tol = $(@sprintf("%.2E", tol))",
+  )
 
   @timeit "Threaded loop" Threads.@threads for cc in 1:nccs
     ## A specialization for when there is only one vertex on the left. This is
@@ -299,7 +312,7 @@ end
     ## If we are at the last site, then R will be a 1x1 matrix containing an overall scaling.
     if n == length(sites)
       @assert nccs == 1
-      
+
       if left_size(ccs, cc) == 1
         scaling = only(g.edges_from_left[lv_id])[2]
       else
@@ -315,9 +328,9 @@ end
     end
 
     ## Build the graph for the next site out of this component.
-    next_edges = Matrix{Vector{Tuple{Int, C}}}(undef, rank, length(op_cache_vec[n + 1]))
+    next_edges = Matrix{Vector{Tuple{Int,C}}}(undef, rank, length(op_cache_vec[n + 1]))
     for i in eachindex(next_edges)
-      next_edges[i] = Vector{Tuple{Int, C}}()
+      next_edges[i] = Vector{Tuple{Int,C}}()
     end
 
     ## A specialization for when there is only one vertex on the left.
@@ -341,7 +354,7 @@ end
 
         ## Add the edges.
         for (weight, m) in zip(weights, ms)
-          m > rank && return
+          m > rank && return nothing
           push!(next_edges[m, op_id], (rv_id, weight))
         end
       end
@@ -357,7 +370,7 @@ end
   end
 
   ## Combine the graphs of each component together
-  next_graph = MPOGraph{N, C, Ti}([], g.right_vertices, [])
+  next_graph = MPOGraph{N,C,Ti}([], g.right_vertices, [])
   offset_of_cc = zeros(Int, nccs + 1)
 
   cur_offset = 0
@@ -369,7 +382,9 @@ end
 
   if has_qns
     outgoing_link = Index(qi_of_cc...; tags="Link,l=$n", dir=ITensors.Out)
-    output_level > 1 && println("    Total rank is $cur_offset with $(length(qi_of_cc)) different QN sectors.")
+    output_level > 1 && println(
+      "    Total rank is $cur_offset with $(length(qi_of_cc)) different QN sectors."
+    )
   else
     outgoing_link = Index(cur_offset; tags="Link,l=$n")
     output_level > 1 && println("    Total rank is $cur_offset.")
