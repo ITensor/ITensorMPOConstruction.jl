@@ -16,12 +16,18 @@ The three goals of this library are
 
 ITensorMPOConstruction is not designed to construct approximate compressed MPOs. If this is your workflow, use ITensorMPOConstruction to construct the exact MPO and call `ITensorMPS.truncate!`.
 
+All runtimes below are taken from a single sample on a 2021 MacBook Pro with the M1 Max CPU and 32GB of memory.
+
 ## Installation
 
 The package is currently not registered. Please install with the commands:
 ```julia
 julia> using Pkg; Pkg.add(url="https://github.com/ITensor/ITensorMPOConstruction.jl.git")
 ```
+
+## Citing
+
+If you use this library in your research, please cite the following preprint: https://doi.org/10.48550/arXiv.2506.07441
 
 ## Constraints
 
@@ -137,13 +143,11 @@ Starting with the MPO from ITensorMPOConstruction obtained with the standard `to
 
 ## Benchmarks: Fermi-Hubbard Hamiltonian in Momentum Space
 
-All runtimes below are taken from a single sample on a 2021 MacBook Pro with the M1 Max CPU and 32GB of memory.
-
 We constructed the momentum space Fermi-Hubbard Hamiltonian using ITensorMPS, ITensorMPOConstruction and [block2](https://github.com/block-hczhai/block2-preview) which has one of the most sophisticated MPO construction algorithms.
 
-TODO: Once block2 results are in fill in comments
+For block2, we used the `FastBlockedDisjointSVD` algorithm for MPO construction.
 
-<!-- For even $N$, the Hamiltonian can be represented exactly as an MPO of bond dimension $10 N - 4$, and all the algorithms achieve this minimal bond dimension. -->
+For even $N$, the Hamiltonian can be represented exactly as an MPO of bond dimension $10 N - 4$, and all the algorithms achieve this minimal bond dimension. ITensorMPOConstruction is also not only able to construct this particular MPO much faster than the competition, but the sparsity of the resulting MPO is much higher.
 
 ### Bond Dimension 
 | $N$ | ITensorMPS | block2 | ITensorMPOConstruction |
@@ -190,7 +194,13 @@ TODO: Once block2 results are in fill in comments
 
 ## Benchmarks: Electronic Structure Hamiltonian
 
-All runtimes below are taken from a single sample on a 2021 MacBook Pro with the M1 Max CPU and 32GB of memory.
+We also construct a particle number and spin preserving two-electron Hamiltonian with random coefficients, to mock the performance of our algorithm on constructing the electronic structure Hamiltonian. In this case we compare against the `FastBipartite` algorithm from block2. This bipartite algorithm essentially performs no compression of the resulting MPO, since it ignores the specific value of the coefficients, but it produces MPOs of high sparsity. In this case, since the coefficients are random, there is no underlying pattern to compress and so the bipartite algorithm works well.
+
+We see that for $N \geq 40$, where $N$ is the number of spin-orbitals, ITensorMPOConstruction constructs MPOs of bond dimension slightly larger than block2. This increase in bond dimension can be explained by the attempt to perform compression on an incompressible Hamiltonian. For $N \geq 70$, ITensorMPOConstruction is also slower than block2.
+
+By default, the MPO from ITensorMPOConstruction is also denser than the MPOs from ITensorMPS and block2. However, both ITensorMPS and block2 create blocks of size one, whereas ITensorMPOConstruction creates larger blocks. Using `ITensorMPS.splitblocks` we can split the larger blocks in the MPO from ITensorMPOConstruction up into blocks of size one. After this, the MPO from ITensorMPOConstruction is sparser than the competition.
+
+In some sense, this Hamiltonian is a poor match for ITensorMPOConstruction due to its relatively low sparsity and lack of compression. Nevertheless, ITensorMPOConstruction is competitive with the better suited bipartite algorithm. A more direct comparison would be with block2's `FastBlockedDisjointSVD` algorithm, which for $N = 70$ constucts an MPO of bond dimension 10117 that is 86% sparse in 1431 seconds. While the bond dimension is similar to the other methods, the sparsity and construction time are worse.
 
 ### Bond Dimension 
 | $N$ | ITensorMPS | block2 | ITensorMPOConstruction |
