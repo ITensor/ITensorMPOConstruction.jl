@@ -149,32 +149,32 @@ function transcorrelated_Fermi_Hubbard_momentum_space_OpIDSum(
 end
 
 
-# let
-#   for useITensorsAlg in [true, false]
-#     for N in [10, 1000]
-#       alg = useITensorsAlg ? "ITensorMPS" : "ITensorMPOConstruction"
+let
+  for useITensorsAlg in [true, false]
+    for N in [10]
+      alg = useITensorsAlg ? "ITensorMPS" : "ITensorMPOConstruction"
 
-#       println("Constructing the Fermi-Hubbard real space MPO for $N sites using $alg")
-#       @time "Total construction time" mpo = Fermi_Hubbard_real_space(N; useITensorsAlg=useITensorsAlg)
-#       println("The maximum bond dimension is $(maxlinkdim(mpo))")
-#       println("The sparsity is $(ITensorMPOConstruction.sparsity(mpo))")
-#       println()
-#     end
-#   end
-# end
-
-# let
-#   for N in [10, 10, 20, 30]
-#     println("Constructing the Fermi-Hubbard momentum space MPO for $N sites using ITensorMPS")
-#     @time "Total construction time" mpo = Fermi_Hubbard_momentum_space(N; useITensorsAlg=true)
-#     println("The maximum bond dimension is $(maxlinkdim(mpo))")
-#     println("The sparsity is $(ITensorMPOConstruction.sparsity(mpo))")
-#     println()
-#   end
-# end
+      println("Constructing the Fermi-Hubbard real space MPO for $N sites using $alg")
+      @time "Total construction time" mpo = Fermi_Hubbard_real_space(N; useITensorsAlg=useITensorsAlg)
+      println("The maximum bond dimension is $(maxlinkdim(mpo))")
+      println("The sparsity is $(ITensorMPOConstruction.sparsity(mpo))")
+      println()
+    end
+  end
+end
 
 let
-  for N in [10, 10, 20, 30, 40, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]
+  for N in [10]
+    println("Constructing the Fermi-Hubbard momentum space MPO for $N sites using ITensorMPS")
+    @time "Total construction time" mpo = Fermi_Hubbard_momentum_space(N; useITensorsAlg=true)
+    println("The maximum bond dimension is $(maxlinkdim(mpo))")
+    println("The sparsity is $(ITensorMPOConstruction.sparsity(mpo))")
+    println()
+  end
+end
+
+let
+  for N in [10]
     println("Constructing the Fermi-Hubbard momentum space MPO for $N sites using ITensorMPOConstruction")
     @time "Total construction time" mpo = transcorrelated_Fermi_Hubbard_momentum_space_OpIDSum(N)
     println("The maximum bond dimension is $(maxlinkdim(mpo))")

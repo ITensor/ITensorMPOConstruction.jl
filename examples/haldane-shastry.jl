@@ -1,6 +1,7 @@
 using ITensorMPOConstruction
 using ITensorMPS
 using ITensors
+using Test
 
 function haldane_shastry_mpo(N::Int, J::Real, tol::Real, absolute_tol::Bool; useITensorsAlg::Bool=false)::MPO
   os = OpSum()
@@ -23,44 +24,50 @@ function haldane_shastry_mpo(N::Int, J::Real, tol::Real, absolute_tol::Bool; use
 end
 
 function ground_state_energy(N::Int, J::Real, twoSz::Int)
-  M = (N - twoSz) / 2
+  M = (N - abs(twoSz)) / 2
   return J * π^2 * ((N - 1 / N) / 24 + M * ((M^2 - 1) / (3 * N^2) - 1 / 4))
 end
 
-let
-  N = 40
-  J = 1.0
-
-  useITensorsAlg = false
-  # tol = 1
-  absolute_tol = true
-  tol = 1.39e-3
-
-  # useITensorsAlg = true
-  # absolute_tol = false
-  # tol = 1e-15
-
-  maxdim = 2^10
-  nsweeps = 10
-  noise = [1e-4, 1e-5, 1e-6, 1e-7, 1e-8, 1e-9, 0, 0, 0, 0]
-
-  H = haldane_shastry_mpo(N, J, tol, absolute_tol; useITensorsAlg)
-  @show useITensorsAlg, tol, absolute_tol, maxlinkdim(H)
-  # # truncate!(H, maxdim=38)
-  # # @show "truncated dim", maxlinkdim(H)
-
+function test_dmrg(H::MPO, twoSz::Int, noise::Vector{Float64}; maxdim::Int=0, compute_variance::Bool=false)::Nothing
+  N = length(H)
   sites = noprime(siteinds(first, H))
-  psi = random_mps(sites, [mod(i, 2) == 0 ? "Up" : "Dn" for i in 1:N]; linkdims=maxdim)
 
-  E_gs = ground_state_energy(N, J, 0)
-  @show E_gs
+  @assert abs(twoSz) <= N
+  @assert mod(twoSz, 2) == mod(N, 2)
+  
+  maxdim == 0 && (maxdim = 2^(N ÷ 2))
+  nUp = (twoSz + N) ÷ 2
+  psi = random_mps(sites, [i <= nUp ? "Up" : "Dn" for i in 1:N]; linkdims=maxdim)
+  @show flux(psi)
 
-  E, psi = dmrg(H, psi; nsweeps, maxdim, noise, cutoff=0)
-  @show abs(E - E_gs)
-  HmE = add(H, -E * MPO(sites, "I"))
+  E_gs = ground_state_energy(N, 1, twoSz)
+  println("With N = $N, 2 * S_z = $twoSz, the exact ground state energy is: $E_gs")
 
-  variance = inner(HmE, psi, HmE, psi)
-  @show variance
+  E, psi = dmrg(H, psi; maxdim, cutoff=0, nsweeps=length(noise), noise)
+  energy_error = abs(E - E_gs)
+  println("The error in the energy from DMRG is: $energy_error")
+
+  @test energy_error < 1e-13
+
+  if compute_variance
+    HmE = add(H, -E * MPO(sites, "I"))
+    variance = inner(HmE, psi, HmE, psi)
+    println("The variance of the DMRG state is: $variance")
+  end
+
+  return nothing
+end
+
+@testset "HaldaneShastryDMRG" begin
+  N = 16
+  H = haldane_shastry_mpo(N, 1.0, 1.0, false)
+
+  noise = [1e-5, 1e-6, 1e-7, 0, 0, 0, 0, 0, 0, 0]
+
+  for twoSz in -N:2:N
+    test_dmrg(H, twoSz, noise)
+    println()
+  end
 end
 
 nothing;

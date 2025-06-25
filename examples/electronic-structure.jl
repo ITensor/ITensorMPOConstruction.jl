@@ -1,17 +1,34 @@
 using ITensorMPOConstruction
 using ITensorMPS
 using ITensors
+using PyCall
+
+function get_coefficients(N::Int)::Tuple{Array{Float64, 2}, Array{Float64, 8}}
+  py"""
+  import numpy as np
+
+  def get_coefficients(N):
+    rng = np.random.default_rng(0)
+    one_electron = rng.normal(size=(N, N))
+    two_electron = rng.normal(size=(N, 2, N, 2, N, 2, N, 2))
+
+    return one_electron, two_electron
+  """
+  return py"get_coefficients"(N)
+end
 
 function electronic_structure(
-  N::Int, complexBasisFunctions::Bool; useITensorsAlg::Bool=false
+  N::Int,
+  one_electron_coeffs::Array{Float64, 2},
+  two_electron_coeffs::Array{Float64, 8};
+  useITensorsAlg::Bool=false
 )::MPO
-  coeff() = !complexBasisFunctions ? rand() : rand() + 1im * rand()
 
-  os = complexBasisFunctions ? OpSum{ComplexF64}() : OpSum{Float64}()
+  os = OpSum{Float64}()
   @time "\tConstructing OpSum" let
     for a in 1:N
       for b in a:N
-        epsilon_ab = coeff()
+        epsilon_ab = one_electron_coeffs[a, b]
         os .+= epsilon_ab, "Cdagup", a, "Cup", b
         os .+= epsilon_ab, "Cdagdn", a, "Cdn", b
 
@@ -35,7 +52,7 @@ function electronic_structure(
                 s_m = s_l
                 (s_m, m) <= (s_k, k) && continue
 
-                value = coeff()
+                value = two_electron_coeffs[j, (s_j == "up") + 1, l, (s_l == "up") + 1, m, (s_m == "up") + 1, k, (s_k == "up") + 1]
                 os .+= value, "Cdag$s_j", j, "Cdag$s_l", l, "C$s_m", m, "C$s_k", k
                 os .+= conj(value), "Cdag$s_k", k, "Cdag$s_m", m, "C$s_l", l, "C$s_j", j
               end
@@ -76,7 +93,11 @@ function electronic_structure(
   end
 end
 
-function electronic_structure_OpIDSum(N::Int, complexBasisFunctions::Bool)::MPO
+function electronic_structure_OpIDSum(
+  N::Int,
+  one_electron_coeffs::Array{Float64, 2},
+  two_electron_coeffs::Array{Float64, 8}
+)::MPO
   sites = siteinds("Electron", N; conserve_qns=true)
 
   operatorNames = [[
@@ -107,13 +128,11 @@ function electronic_structure_OpIDSum(N::Int, complexBasisFunctions::Bool)::MPO
   opCdag(k::Int, spin::Bool) = OpID{UInt8}(4 + spin, k)
   opN(k::Int, spin::Bool) = OpID{UInt8}(6 + spin, k)
 
-  coeff() = !complexBasisFunctions ? rand() : rand() + 1im * rand()
-
-  os = complexBasisFunctions ? OpIDSum{4, ComplexF64, UInt8}(2 * N^4, op_cache_vec) : OpIDSum{4, Float64, UInt8}(2 * N^4, op_cache_vec)
+  os = OpIDSum{4, Float64, UInt8}(2 * N^4, op_cache_vec)
   @time "\tConstructing OpIDSum" let
     for a in 1:N
       for b in a:N
-        epsilon_ab = coeff()
+        epsilon_ab = one_electron_coeffs[a, b]
         add!(os, epsilon_ab, opCdag(a, ↑), opC(b, ↑))
         add!(os, epsilon_ab, opCdag(a, ↓), opC(b, ↓))
 
@@ -137,7 +156,7 @@ function electronic_structure_OpIDSum(N::Int, complexBasisFunctions::Bool)::MPO
                 s_m = s_l
                 (s_m, m) <= (s_k, k) && continue
 
-                value = coeff()
+                value = two_electron_coeffs[j, s_j + 1, l, s_l + 1, m, s_m + 1, k, s_k + 1]
                 add!(os, value, opCdag(j, s_j), opCdag(l, s_l), opC(m, s_m), opC(k, s_k))
                 add!(
                   os, conj(value), opCdag(k, s_k), opCdag(m, s_m), opC(l, s_l), opC(j, s_j)
@@ -155,24 +174,26 @@ function electronic_structure_OpIDSum(N::Int, complexBasisFunctions::Bool)::MPO
   )
 end
 
-# let
-#   for N in [10, 10, 20]
-#     println("Constructing the electronic structure MPO for $N sites using ITensorMPS")
-#     @time "Total construction time" mpo = electronic_structure(N, false; useITensorsAlg=true)
-#     println("The maximum bond dimension is $(maxlinkdim(mpo))")
-#     println("The sparsity is $(ITensorMPOConstruction.sparsity(mpo))")
-#     mpo = ITensors.splitblocks(ITensorMPS.linkinds, mpo)
-#     println("After splitting the sparsity is $(ITensorMPOConstruction.sparsity(mpo))")
-#     println()
-#   end
-# end
-
 let
-  for N in [10, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-    println("Constructing the electronic structure MPO for $N sites using ITensorMPOConstruction")
-    @time "Total construction time" mpo = electronic_structure_OpIDSum(N, false)
+  for N in [10]
+    println("Constructing the electronic structure MPO for $N sites using ITensorMPS")
+    one_electron_coeffs, two_electron_coeffs = get_coefficients(N)
+    @time "Total construction time" mpo = electronic_structure(N, one_electron_coeffs, two_electron_coeffs; useITensorsAlg=true)
     println("The maximum bond dimension is $(maxlinkdim(mpo))")
     println("The sparsity is $(ITensorMPOConstruction.sparsity(mpo))")
+    println()
+  end
+end
+
+let
+  for N in [10]
+    println("Constructing the electronic structure MPO for $N sites using ITensorMPOConstruction")
+    one_electron_coeffs, two_electron_coeffs = get_coefficients(N)
+    @time "Total construction time" mpo = electronic_structure_OpIDSum(N, one_electron_coeffs, two_electron_coeffs)
+    println("The maximum bond dimension is $(maxlinkdim(mpo))")
+    println("The sparsity is $(ITensorMPOConstruction.sparsity(mpo))")
+    # @time "splitblocks" mpo = ITensors.splitblocks(linkinds, mpo)
+    # println("After splitting the sparsity is $(ITensorMPOConstruction.sparsity(mpo))")
     println()
   end
 end

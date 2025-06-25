@@ -3,61 +3,6 @@ from timeit import default_timer as timer
 from pyblock2.driver.core import DMRGDriver, SymmetryTypes, MPOAlgorithmTypes
 import random
 
-
-def electronic_structure(N, alg):
-    coeff = lambda : random.random()
-
-    driver = DMRGDriver(scratch="./tmp", symm_type=SymmetryTypes.SZ, n_threads=8)
-    driver.initialize_system(n_sites=N, n_elec=N, spin=0, orb_sym=None)
-
-    builder = driver.expr_builder()
-
-    c = lambda spin : "c" if (spin == 0) else "C"
-    d = lambda spin : "d" if (spin == 0) else "D"
-
-    for a in range(N):
-        for b in range(a, N):
-            factor = coeff()
-            for spin in (0, 1):
-                sites = np.array([a, b])
-                builder.add_term(c(spin) + d(spin), sites, factor)
-
-                if a != b:
-                    sites = [b, a]
-                    builder.add_term(c(spin) + d(spin), sites, factor)
-
-
-    
-    for j in range(N):
-        for s_j in (0, 1):
-
-            for k in range(N):
-                s_k = s_j
-                if (s_k, k) <= (s_j, j):
-                    continue
-
-                for l in range(N):
-                    for s_l in (0, 1):
-                        if (s_l, l) <= (s_j, j):
-                            continue
-
-                        for m in range(N):
-                            s_m = s_l
-                            if (s_m, m) <= (s_k, k):
-                                continue
-
-                            value = coeff()
-                            sites = np.array([j, l, m, k])
-                            builder.add_term(c(s_j) + c(s_l) + d(s_m) + d(s_k), sites, value)
-                            
-                            sites = np.flip(sites)
-                            builder.add_term(c(s_k) + c(s_m) + d(s_l) + d(s_j), sites, value)
-
-    builder = builder.finalize()
-    mpo = driver.get_mpo(builder, iprint=1, algo_type=alg)
-    return mpo
-
-
 def fermi_hubbard(N, alg, t=1, U=4, J=0):
     start = timer()
     
@@ -105,6 +50,75 @@ def fermi_hubbard(N, alg, t=1, U=4, J=0):
     print(f"N = {N}, time = {stop - start}")
 
 
-for N in [10, 20, 30, 40, 50, 100, 200, 300, 400, 500]:
+def get_coefficients(N):
+    rng = np.random.default_rng(0)
+    one_electron = rng.normal(size=(N, N))
+    two_electron = rng.normal(size=(N, 2, N, 2, N, 2, N, 2))
+
+    return one_electron, two_electron
+
+def electronic_structure(N, alg):
+    one_electron_coeffs, two_electron_coeffs = get_coefficients(N)    
+
+    start = timer()
+    driver = DMRGDriver(scratch="./tmp", symm_type=SymmetryTypes.SZ, n_threads=8)
+    driver.initialize_system(n_sites=N, n_elec=N, spin=0, orb_sym=None)
+
+    builder = driver.expr_builder()
+
+    c = lambda spin : "c" if (spin == 0) else "C"
+    d = lambda spin : "d" if (spin == 0) else "D"
+
+    for a in range(N):
+        for b in range(a, N):
+            factor = one_electron_coeffs[a, b]
+            for spin in (0, 1):
+                sites = np.array([a, b])
+                builder.add_term(c(spin) + d(spin), sites, factor)
+
+                if a != b:
+                    sites = [b, a]
+                    builder.add_term(c(spin) + d(spin), sites, factor)
+
+    for j in range(N):
+        for s_j in (0, 1):
+
+            for k in range(N):
+                s_k = s_j
+                if (s_k, k) <= (s_j, j):
+                    continue
+
+                for l in range(N):
+                    for s_l in (0, 1):
+                        if (s_l, l) <= (s_j, j):
+                            continue
+
+                        for m in range(N):
+                            s_m = s_l
+                            if (s_m, m) <= (s_k, k):
+                                continue
+
+                            factor = two_electron_coeffs[j, s_j, l, s_l, m, s_m, k, s_k]
+                            sites = np.array([j, l, m, k])
+                            builder.add_term(c(s_j) + c(s_l) + d(s_m) + d(s_k), sites, factor)
+                            
+                            sites = np.flip(sites)
+                            builder.add_term(c(s_k) + c(s_m) + d(s_l) + d(s_j), sites, factor)
+
+    print("Done constructing representation.")
+
+    builder = builder.finalize()
+    print("Done finalizing representation.")
+
+    mpo = driver.get_mpo(builder, iprint=1, algo_type=alg)
+    stop = timer()
+    print(f"N = {N}, time = {stop - start}")
+
+
+for N in [10]:
     fermi_hubbard(N, MPOAlgorithmTypes.FastBlockedDisjointSVD)
+    print()
+
+for N in [10]:
+    electronic_structure(N, MPOAlgorithmTypes.FastBipartite)
     print()
