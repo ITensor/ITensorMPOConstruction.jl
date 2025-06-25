@@ -6,7 +6,17 @@
 [![Coverage](https://codecov.io/gh/ITensor/ITensorMPOConstruction.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/ITensor/ITensorMPOConstruction.jl)
 [![Code Style: Blue](https://img.shields.io/badge/code%20style-blue-4495d1.svg)](https://github.com/invenia/BlueStyle)
 
-A fast algorithm for constructing a Matrix Product Operator (MPO) from a sum of local operators. This is a replacement for `MPO(os::OpSum, sites::Vector{<:Index})`. In all cases examined so far this algorithm constructs an MPO with a smaller (or equal) bond dimension faster than the competition. All runtimes below are taken from a single sample on a 2021 MacBook Pro with the M1 Max CPU and 32GB of memory.
+A fast algorithm for constructing a Matrix Product Operator (MPO) from a sum of local operators. This is a replacement for `ITensorMPS.MPO(os::OpSum, sites::Vector{<:Index})`. If julia is started with multiple threads, they are used to transparently speed up the construction.
+
+The three goals of this library are
+
+1. Produce exact MPOs (up to floating point error) of the smallest possible bond dimension.
+2. Maximize the block sparsity of the resulting MPOs.
+3. Accomplish these goals as fast as possible.
+
+ITensorMPOConstruction is not designed to construct approximate compressed MPOs. If this is your workflow, use ITensorMPOConstruction to construct the exact MPO and call `ITensorMPS.truncate!`.
+
+All runtimes below are taken from a single sample on a 2021 MacBook Pro with the M1 Max CPU and 32GB of memory.
 
 ## Installation
 
@@ -15,17 +25,21 @@ The package is currently not registered. Please install with the commands:
 julia> using Pkg; Pkg.add(url="https://github.com/ITensor/ITensorMPOConstruction.jl.git")
 ```
 
+## Citing
+
+If you use this library in your research, please cite the following preprint: https://doi.org/10.48550/arXiv.2506.07441
+
 ## Constraints
 
-This algorithm shares the same constraints as ITensors' default algorithm.
+This algorithm shares the same constraints as the default algorithm from ITensorMPS.
 
 1. The operator must be expressed as a sum of products of single site operators. For example a CNOT could not appear in the sum since it is a two site operator.
-2. When dealing with Fermionic systems the parity of each term in the sum must be even. That is the combined number of creation and annihilation operators in each term in the sum must be even.
+2. When dealing with Fermionic systems the parity of each term in the sum must be even. That is the combined number of creation and annihilation operators in each term in the sum must be even. It should be possible to relax this constraint.
 
 There are also two additional constraints:
 
 3. Each term in the sum of products representation can only have a single operator acting on a site. For example a term such as $\mathbf{X}^{(1)} \mathbf{X}^{(1)}$ is not allowed. However, there is a pre-processing utility that can automatically replace $\mathbf{X}^{(1)} \mathbf{X}^{(1)}$ with $\mathbf{I}^{(1)}$. This is not a hard requirement for the algorithm but a simplification to improve performance.
-4. When constructing a quantum number conserving operator the total flux of the operator must be zero. It would be trivial to remove this constraint.
+4. When constructing a quantum number conserving operator the total flux of the operator must be zero. It would be easy to remove this constraint.
 
 ## `MPO_new`
 
@@ -37,7 +51,12 @@ function MPO_new(os::OpSum, sites::Vector{<:Index}; kwargs...)::MPO
 
 The optional keyword arguments are
 * `basis_op_cache_vec`: A list of operators to use as a basis for each site. The operators on each site are expressed as one of these basis operators.
-* `tol::Real`: The tolerance used in the sparse QR decomposition (which is done by SPQR). The default value is the SPQR default which is calculated separately for each QR decomposition. If you want a MPO that is accurate up to floating point errors the default tolerance should work well. If instead you  want to compress the MPO the value `tol` will differ from the `cutoff` passed to `ITensor.MPO` since the truncation method is completely different. If you want to replicate the same truncation behavior first construct the MPO with a suitably small (or default) `tol` and then use `ITensors.truncate!`.
+* `check_for_errors::Bool`: Check the input OpSum for errors, this can be expensive for larger problems.
+* `tol::Real=1`: A multiplicative modifier to the default tolerance used in the SPQR, see [SPQR user guide Section 2.3](https://fossies.org/linux/SuiteSparse/SPQR/Doc/spqr_user_guide.pdf). The value of the default tolerance depends on the input matrix, which means a different tolerance is used for each decomposition. In the cases we have examined, the default tolerance works great for producing accurate MPOs.
+* `absolute_tol::Bool=false`: Override the default adaptive tolerance scheme outlined above, and use the value of `tol` as the single tolerance for each decomposition.
+* `combine_qn_sectors::Bool=false`: When `true`, the blocks of the MPO corresponding to the same quantum numbers are merged together into a single block. This can decrease the resulting sparsity.
+* `call_back::Function=(cur_site::Int, H::MPO, sites::Vector{<:Index}, llinks::Vector{<:Index},cur_graph::MPOGraph, op_cache_vec::OpCacheVec) -> nothing`: A function that is called after constructing the MPO tensor at `cur_site`. Primarily used for writing checkpoints to disk for massive calculations.
+* `output_level::Int=0`: Specify the amount of output printed to standard out, larger values produce more output. 
 
 ## Examples: Fermi-Hubbard Hamiltonian in Real Space
 
@@ -51,7 +70,7 @@ where the periodic boundary conditions enforce that $c_k = c_{k + N}$. For this 
 
 https://github.com/ITensor/ITensorMPOConstruction.jl/blob/637dd2409f27ede41aa916822ea8acb4cd557a9e/examples/fermi-hubbard.jl#L4-L24
 
-For $N = 1000$ both ITensors and ITensorMPOConstruction can construct an MPO of bond dimension 10 in under two seconds. For a compelling reason to use ITensorMPOConstruction we need to look at a more complicated Hamiltonian.
+For $N = 1000$ both ITensorMPS and ITensorMPOConstruction can construct an MPO of bond dimension 10 in under two seconds. When quantum number conservation is enabled, ITensorMPS produces an MPO that is 93.4% block sparse, whereas ITensorMPOConstruction's MPO is 97.4% block sparse.
 
 ## Examples: Fermi-Hubbard Hamiltonian in Momentum Space
 
@@ -69,6 +88,8 @@ Unlike the previous example, some more involved changes will be required to use 
 
 https://github.com/ITensor/ITensorMPOConstruction.jl/blob/637dd2409f27ede41aa916822ea8acb4cd557a9e/examples/fermi-hubbard.jl#L51-L76
 
+With $N = 20$ and quantum number conservation turned on, ITensorMPS produces an MPO of bond dimension 196 which is 92.6% sparse in 30s, whereas ITensorMPOConstruction produces an MPO of equal bond dimension but which is 99.7% sparse in 0.1s.
+
 ### `OpIDSum`
 
 For $N = 200$ constructing the `OpSum` takes 42s and constructing the MPO from the `OpSum` with ITensorMPOConstruction takes another 306s. For some systems constructing the `OpSum` can actually be the bottleneck. In these cases you can construct an `OpIDSum` instead.
@@ -79,39 +100,143 @@ For $N = 200$ constructing an `OpIDSum` takes only 0.4s. Shown below is code to 
 
 https://github.com/ITensor/ITensorMPOConstruction.jl/blob/637dd2409f27ede41aa916822ea8acb4cd557a9e/examples/fermi-hubbard.jl#L79-L130
 
+Unlike `OpSum`, the `OpIDSum` constructor takes a few important arguments
+
+```julia
+function OpIDSum{N, C, Ti}(
+  max_terms::Int,
+  op_cache_vec::OpCacheVec;
+  abs_tol::Real=0
+)::OpIDSum{N, C, Ti} where {N, C, Ti}
+```
+* `N`: The maximum number of local operators appearing in any individual term. For the real space Fermi-Hubbard Hamiltonian `N = 2`, but in momentum space `N = 4`.
+* `C`: The scalar weight type.
+* `Ti`: The integer type used to index both the local operator basis and the number of sites. For example with `Ti = UInt8`, the local operator basis can have up to 255 elements and 255 sites can be used. Much of the memory consumption comes storing elements of type `Ti`.
+* `max_terms`: The maximum number of terms in the `OpIDSum`, space is pre-allocated.
+* `op_cache_vec`: Maps each `OpID` and site to a physical operator.
+* `abs_tol`: Drop terms that have a weight of absolute value less than this.
+
+An `OpIDSum` is constructed similarly to an `OpSum`, with support for the following two **threadsafe** functions for adding a term.
+
+```julia
+function ITensorMPS.add!(os::OpIDSum, scalar::Number, ops)::Nothing
+function ITensorMPS.add!(os::OpIDSum, scalar::Number, ops::OpID...)::Nothing
+```
+
+Additionally, a further constructor is provided which takes in a modifying `function modify!(ops)::C` which is called as each term is added to the sum. It accepts a list of the sorted `OpID`, which it can modify, and returns a scalar which multiplies the weight. This is for advanced usage only, but in certain cases can greatly speed up and or simplify construction.
+
+## Haldane-Shasty Hamiltonian and truncation
+
+The Haldane-Shasty Hamiltonian defined on $N$ spin-$\frac{1}{2}$ particles is
+
+$$
+H = \frac{J \pi^2}{N^2} \sum_{n = 1}^N \sum_{m = n + 1}^N \frac{\mathbf{S}_m \cdot \mathbf{S}_n}{\sin^2 \left( \pi \frac{n - m}{N} \right)} \ .
+$$
+
+With $N = 40$ and using the default arguments, ITensorMPOConstruction creates an MPO of bond dimension 62, whereas ITensorMPS creates an MPO of bond dimension 38. However, this does not necessarily mean that ITensorMPS produces a better MPO. Comparing MPOs directly is tricky, but since the Haldane-Shasty Hamiltonian is exactly solvable, we can compare the energies and variances of the ground states obtained with DMRG for each MPO.
+
+Using the MPO from ITensorMPOConstruction we obtain an error of $\delta = E_\text{DMRG} - E_\text{gs} = 3 \times 10^{-12}$ and a variance of $\sigma^2 = \braket{\psi_\text{DMRG} | (H - E_\text{DMRG})^2 | \psi_\text{DMRG}} = 2 \times 10^{-11}$, whereas with the MPO from ITensors the error increases to $\delta = 10^{-8}$ while the variance remains unchanged. The fact that the error in the energy increased while the variance remained constant suggests that ITensorMPS is performing a slightly lossy compression the Hamiltonian.
+
+ITensorMPOConstruction is designed to construct exact MPOs (up to numerical precision), nevertheless, we can abuse it to perform approximate MPO construction. By setting `tol = 2E10` we obtain an MPO of bond dimension 38, equal to that produced by TensorMPS. However, using this approximate MPO we obtain poor results, with errors of $\delta = 10^{-3}$ and $\sigma^2 = 8 \times 10^{-9}$. The fact that such a high tolerance was required to reduce the bond dimension is a sign that this is not a good way of doing things. Setting `absolute_tol = true` to use a uniform cutoff across QR decompositions does not help either.
+
+Starting with the MPO from ITensorMPOConstruction obtained with the standard `tol = 1` and then truncating down to a bond dimension of 38 using `ITensorMPS.truncate` yields DMRG errors of $\delta = 4 \times 10^{-9}$ and $\sigma^2 = 2 \times 10^{-11}$, better than those obtained with the MPO from ITensorMPS.
+
 ## Benchmarks: Fermi-Hubbard Hamiltonian in Momentum Space
 
-Below is a plot of the bond dimension of the MPO produced by ITensors' default algorithm, [Renormalizer](https://github.com/shuaigroup/Renormalizer) which uses the [bipartite-graph algorithm](https://doi.org/10.1063/5.0018149), and ITensorMPOConstruction.
+We constructed the momentum space Fermi-Hubbard Hamiltonian using ITensorMPS, ITensorMPOConstruction and [block2](https://github.com/block-hczhai/block2-preview) which has one of the most sophisticated MPO construction algorithms.
 
-![](./docs/plot-generators/fh.png)
+For block2, we used the `FastBlockedDisjointSVD` algorithm for MPO construction.
 
-Of note is that the bond dimension of the MPO produced by Renormalizer scales as $O(N^2)$, both ITensors and ITensorMPOConstruction however produce an MPO with a bond dimension that scales as $O(N)$. 
+For even $N$, the Hamiltonian can be represented exactly as an MPO of bond dimension $10 N - 4$, and all the algorithms achieve this minimal bond dimension. ITensorMPOConstruction is also not only able to construct this particular MPO much faster than the competition, but the sparsity of the resulting MPO is much higher.
 
-Below is a table of the time it took to construct the MPO (including the time it took to specify the Hamiltonian) for various number of sites. For ITensorMPOConstruction an `OpIDSum` was used. Some warm up was done for the Julia calculations to avoid measuring compilation overhead.
+### Bond Dimension 
+| $N$ | ITensorMPS | block2 | ITensorMPOConstruction |
+|-----|------------|--------|------------------------|
+| 10  | 96         | 96     | 96                     |
+| 20  | 196        | 196    | 196                    |
+| 30  | 296        | 296    | 296                    |
+| 40  | N/A        | 396    | 396                    |
+| 50  | N/A        | 496    | 496                    |
+| 100 | N/A        | 996    | 996                    |
+| 200 | N/A        | 1996   | 1996                   |
+| 300 | N/A        | 2996   | 2996                   |
+| 400 | N/A        | 3996   | 3996                   |
+| 500 | N/A        | ????   | 4996                   |
 
-| $N$ | ITensors | Renormalizer | ITensorMPOConstruction |
-|-----|----------|--------------|------------------------|
-| 10  | 0.35s    | 0.26         | 0.04s                  |
-| 20  | 27s      | 3.4s         | 0.10s                  |
-| 30  | N/A      | 17s          | 0.24s                  |
-| 40  | N/A      | 59s          | 0.59s                  |
-| 50  | N/A      | 244s         | 1.2s                   |
-| 100 | N/A      | N/A          | 16s                    |
-| 200 | N/A      | N/A          | 283s                   |
+### Sparsity 
+| $N$ | ITensorMPS | block2 | ITensorMPOConstruction |
+|-----|------------|--------|------------------------|
+| 10  | 92.7%      | 96.7%  | 99.32%                 |
+| 20  | 92.6%      | 98.4%  | 99.70%                 |
+| 30  | 92.6%      | 99.0%  | 99.81%                 |
+| 40  | N/A        | 99.2%  | 99.86%                 |
+| 50  | N/A        | 99.4%  | 99.89%                 |
+| 100 | N/A        | 99.7%  | 99.94%                 |
+| 200 | N/A        | 99.85% | 99.97%                 |
+| 300 | N/A        | 99.90% | 99.982%                |
+| 400 | N/A        | 99.92% | 99.986%                |
+| 500 | N/A        | N/A    | 99.999%                |
+
+### Runtime 
+| $N$ | ITensorMPS | block2 | ITensorMPOConstruction |
+|-----|------------|--------|------------------------|
+| 10  | 0.32s      | 0.016s | 0.009s                 |
+| 20  | 30.6s      | 0.089s | 0.052s                 |
+| 30  | 792s       | 0.30s  | 0.14s                  |
+| 40  | N/A        | 0.72s  | 0.38s                  |
+| 50  | N/A        | 1.5s   | 0.63s                  |
+| 100 | N/A        | 20s    | 7.7s                   |
+| 200 | N/A        | 489s   | 103s                   |
+| 300 | N/A        | 3711s  | 500s                   |
+| 400 | N/A        | 18373s | 1554s                  |
+| 500 | N/A        | N/A    | 3802s                  |
+
 
 ## Benchmarks: Electronic Structure Hamiltonian
 
-After looking at the previous example you might assume that the relative speed of ITensorMPOConstruction over Renormalizer might be due to the fact that for the Fermi-Hubbard Hamiltonian ITensorMPOConstruction is able to construct a more compact MPO. In the case of the electronic structure Hamiltonian all algorithms produce MPOs of similar bond dimensions.
+We also construct a particle number and spin preserving two-electron Hamiltonian with random coefficients, to mock the performance of our algorithm on constructing the electronic structure Hamiltonian. In this case we compare against the `FastBipartite` algorithm from block2. This bipartite algorithm essentially performs no compression of the resulting MPO, since it ignores the specific value of the coefficients, but it produces MPOs of high sparsity. In this case, since the coefficients are random, there is no underlying pattern to compress and so the bipartite algorithm works well.
 
-![](./docs/plot-generators/es.png)
+We see that for $N \geq 40$, where $N$ is the number of spin-orbitals, ITensorMPOConstruction constructs MPOs of bond dimension slightly larger than block2. This increase in bond dimension can be explained by the attempt to perform compression on an incompressible Hamiltonian. For $N \geq 70$, ITensorMPOConstruction is also slower than block2.
 
-However, ITensorMPOConstruction is still an order of magnitude faster than Renormalizer. The code for this example can be found in [examples/electronic-structure.jl](https://github.com/ITensor/ITensorMPOConstruction.jl/blob/main/examples/electronic-structure.jl). The run time to generate these MPOs (including the time it took to specify the Hamiltonian) are shown below. For ITensorMPOConstruction an `OpIDSum` was used.
+By default, the MPO from ITensorMPOConstruction is also denser than the MPOs from ITensorMPS and block2. However, both ITensorMPS and block2 create blocks of size one, whereas ITensorMPOConstruction creates larger blocks. Using `ITensorMPS.splitblocks` we can split the larger blocks in the MPO from ITensorMPOConstruction up into blocks of size one. After this, the MPO from ITensorMPOConstruction is sparser than the competition.
 
-| $N$ | ITensors | Renormalizer | ITensorMPOConstruction |
-|-----|----------|--------------|------------------------|
-| 10  | 3.0s     | 2.1s         | 0.31s                  |
-| 20  | 498s     | 61s          | 5.9s                   |
-| 30  | N/A      | 458s         | 36s                    |
-| 40  | N/A      | 2250s        | 162s                   |
-| 50  | N/A      | N/A          | 504s                   |
-| 60  | N/A      | N/A          | 1323s                  |
+In some sense, this Hamiltonian is a poor match for ITensorMPOConstruction due to its relatively low sparsity and lack of compression. Nevertheless, ITensorMPOConstruction is competitive with the better suited bipartite algorithm. A more direct comparison would be with block2's `FastBlockedDisjointSVD` algorithm, which for $N = 70$ constucts an MPO of bond dimension 10117 that is 86% sparse in 1431 seconds. While the bond dimension is similar to the other methods, the sparsity and construction time are worse.
+
+### Bond Dimension 
+| $N$ | ITensorMPS | block2 | ITensorMPOConstruction |
+|-----|------------|--------|------------------------|
+| 10  | 227        | 227    | 227                    |
+| 20  | 852        | 852    | 852                    |
+| 30  | N/A        | 1877   | 1877                   |
+| 40  | N/A        | 3302   | 3355                   |
+| 50  | N/A        | 5127   | 5134                   |
+| 60  | N/A        | 7352   | 7364                   |
+| 70  | N/A        | 9977   | 9985                   |
+| 80  | N/A        | 13002  | 13006                  |
+| 90  | N/A        | 16427  | 16473                  |
+
+### Sparsity 
+| $N$ | ITensorMPS | block2 | ITensorMPOConstruction | After `splitblocks` |
+|-----|------------|--------|------------------------|---------------------|
+| 10  | 94.5%      | 89.2%  | 93.4%                  | 95.7%               |
+| 20  | 95.4%      | 93.1%  | 94.1%                  | 97.1%               |
+| 30  | N/A        | 95.0%  | 94.4%                  | 97.6%               |
+| 40  | N/A        | 96.0%  | 94.4%                  | 97.8%               |
+| 50  | N/A        | 96.7%  | 94.6%                  | 97.9%               |
+| 60  | N/A        | 97.2%  | 94.6%                  | 97.9%               |
+| 70  | N/A        | 97.6%  | 94.7%                  | N/A                 |
+| 80  | N/A        | 97.8%  | 94.7%                  | N/A                 |
+| 90  | N/A        | 98.1%  | 94.7%                  | N/A                 |
+
+### Runtime 
+| $N$ | ITensorMPS | block2 | ITensorMPOConstruction |
+|-----|------------|--------|------------------------|
+| 10  | 3.65s      | 0.166s | 0.052s                 |
+| 20  | 605s       | 2.67s  | 1.21s                  |
+| 30  | N/A        | 15.0s  | 7.00s                  |
+| 40  | N/A        | 50.4s  | 29.5s                  |
+| 50  | N/A        | 137s   | 104s                   |
+| 60  | N/A        | 332s   | 284s                   |
+| 70  | N/A        | 619s   | 625s                   |
+| 80  | N/A        | 1220s  | 1545s                  |
+| 90  | N/A        | 1944s  | 3968s                  |

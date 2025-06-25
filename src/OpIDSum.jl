@@ -34,23 +34,97 @@ function to_OpCacheVec(sites::Vector{<:Index}, ::Nothing)::Nothing
   return nothing
 end
 
-struct OpID
-  id::Int16
-  n::Int16
+struct OpID{Ti}
+  id::Ti
+  n::Ti
 end
 
-struct OpIDSum{C}
-  terms::Vector{OpID}
-  offsets::Vector{Int}
+Base.zero(::OpID{Ti}) where {Ti} = OpID{Ti}(0, 0)
+
+Base.isless(op1::OpID, op2::OpID) = (op1.n, op1.id) < (op2.n, op2.id)
+
+function sort_fermion_perm!(ops::AbstractVector{<:OpID}, op_cache_vec::OpCacheVec)::Int
+  sign = +1
+  for i in 2:length(ops)
+    cur_op_is_fermionic = op_cache_vec[ops[i].n][ops[i].id].is_fermionic
+    while i > 1 && ops[i].n < ops[i - 1].n
+      if cur_op_is_fermionic && op_cache_vec[ops[i - 1].n][ops[i - 1].id].is_fermionic
+        sign = -sign
+      end
+
+      ops[i - 1], ops[i] = ops[i], ops[i - 1]
+      i -= 1
+    end
+  end
+
+  return sign
+end
+
+mutable struct OpIDSum{N,C,Ti}
+  _data::Vector{NTuple{N,OpID{Ti}}}
+  terms::Base.ReinterpretArray{
+    OpID{Ti},2,NTuple{N,OpID{Ti}},Vector{NTuple{N,OpID{Ti}}},true
+  }
   scalars::Vector{C}
+  num_terms::Threads.Atomic{Int}
+  op_cache_vec::OpCacheVec
+  abs_tol::Float64
+  modify!::FunctionWrappers.FunctionWrapper{
+    C,
+    Tuple{
+      SubArray{
+        OpID{Ti},
+        1,
+        Base.ReinterpretArray{
+          OpID{Ti},2,NTuple{N,OpID{Ti}},Vector{NTuple{N,OpID{Ti}}},true
+        },
+        Tuple{UnitRange{Int64},Int64},
+        false,
+      },
+    },
+  }
 end
 
-function OpIDSum{C}()::OpIDSum{C} where {C}
-  return OpIDSum(OpID[], Int[1], C[])
+function OpIDSum{N,C,Ti}(
+  max_terms::Int, op_cache_vec::OpCacheVec, f::Function; abs_tol::Real=0
+)::OpIDSum{N,C,Ti} where {N,C,Ti}
+  data = Vector{NTuple{N,OpID{Ti}}}(undef, max_terms)
+  terms = reinterpret(reshape, OpID{Ti}, data)
+  f_wrapped = FunctionWrappers.FunctionWrapper{
+    C,
+    Tuple{
+      SubArray{
+        OpID{Ti},
+        1,
+        Base.ReinterpretArray{
+          OpID{Ti},2,NTuple{N,OpID{Ti}},Vector{NTuple{N,OpID{Ti}}},true
+        },
+        Tuple{UnitRange{Int64},Int64},
+        false,
+      },
+    },
+  }(
+    f
+  )
+  return OpIDSum(
+    data,
+    terms,
+    Vector{C}(undef, max_terms),
+    Threads.Atomic{Int}(0),
+    op_cache_vec,
+    Float64(abs_tol),
+    f_wrapped,
+  )
+end
+
+function OpIDSum{N,C,Ti}(
+  max_terms::Int, op_cache_vec::OpCacheVec; abs_tol::Real=0
+)::OpIDSum{N,C,Ti} where {N,C,Ti}
+  return OpIDSum{N,C,Ti}(max_terms, op_cache_vec, ops -> 1; abs_tol)
 end
 
 function Base.length(os::OpIDSum)::Int
-  return length(os.scalars)
+  return os.num_terms[]
 end
 
 function Base.eachindex(os::OpIDSum)::UnitRange{Int}
@@ -58,130 +132,48 @@ function Base.eachindex(os::OpIDSum)::UnitRange{Int}
 end
 
 function Base.getindex(os::OpIDSum, i::Integer)
-  return os.scalars[i], @view os.terms[os.offsets[i]:(os.offsets[i + 1] - 1)]
+  return os.scalars[i], view(os.terms, :, i)
 end
 
-function Base.push!(os::OpIDSum{C}, scalar::C, ops)::OpIDSum{C} where {C}
-  append!(os.terms, ops)
-  push!(os.offsets, os.offsets[end] + length(ops))
-  push!(os.scalars, scalar)
+function ITensorMPS.add!(os::OpIDSum, scalar::Number, ops)::Nothing
+  abs(scalar) <= os.abs_tol && return nothing
 
-  return os
-end
+  num_terms = Threads.atomic_add!(os.num_terms, 1) + 1
+  num_appended = 0
+  for op in ops
+    op.id == 1 && continue ## Filter out identity ops
 
-function Base.push!(os::OpIDSum{C}, scalar::C, ops::OpID...)::OpIDSum{C} where {C}
-  return push!(os, scalar, ops)
-end
+    num_appended += 1
+    os.terms[num_appended, num_terms] = op
+  end
 
-function Base.push!(os::OpIDSum{C}, scalar::C, op::OpID)::OpIDSum{C} where {C}
-  push!(os.terms, op)
-  push!(os.offsets, os.offsets[end] + 1)
-  push!(os.scalars, scalar)
+  for i in (num_appended + 1):size(os.terms, 1)
+    os.terms[i, num_terms] = zero(os.terms[i, num_terms])
+  end
 
-  return os
-end
+  permutation_sign = sort_fermion_perm!(
+    view(os.terms, 1:num_appended, num_terms), os.op_cache_vec
+  )
 
-function set_scalar!(os::OpIDSum{C}, i::Integer, scalar::C)::Nothing where {C}
-  os.scalars[i] = scalar
+  scalar_modification = os.modify!(view(os.terms, 1:num_appended, num_terms))
+
+  os.scalars[num_terms] = scalar * permutation_sign * scalar_modification
+
   return nothing
 end
 
-function add_to_scalar!(os::OpIDSum{C}, i::Integer, scalar::C)::Nothing where {C}
-  os.scalars[i] += scalar
-  return nothing
+function ITensorMPS.add!(os::OpIDSum, scalar::Number, ops::OpID...)::Nothing
+  return add!(os, scalar, ops)
 end
 
-function determine_val_type(os::OpIDSum{C}, op_cache_vec::OpCacheVec) where {C}
+function determine_val_type(os::OpIDSum)
   !all(isreal(scalar) for scalar in os.scalars) && return ComplexF64
-  !all(isreal(op.matrix) for ops_of_site in op_cache_vec for op in ops_of_site) &&
+  !all(isreal(op.matrix) for ops_of_site in os.op_cache_vec for op in ops_of_site) &&
     return ComplexF64
   return Float64
 end
 
-@timeit function sort_each_term!(
-  os::OpIDSum, op_cache_vec::OpCacheVec, sites::Vector{<:Index}
-)::Nothing
-  isless_site(o1::OpID, o2::OpID) = o1.n < o2.n
-
-  perm = Vector{Int}()
-  for j in eachindex(os)
-    scalar, ops = os[j]
-    Nt = length(ops)
-
-    # Sort operators by site order,
-    # and keep the permutation used, perm, for analysis below
-    resize!(perm, Nt)
-    sortperm!(perm, ops; alg=InsertionSort, lt=isless_site)
-    ops .= ops[perm]
-
-    # Identify fermionic operators,
-    # zeroing perm for bosonic operators,
-    parity = +1
-    for (i, op) in enumerate(ops)
-      op.n > length(sites) && error(
-        "The OpSum contains an operator acting on site $(op.n) that extends beyond the number of sites $(length(sites)).",
-      )
-
-      if op_cache_vec[op.n][op.id].is_fermionic
-        parity = -parity
-      else
-        # Ignore bosonic operators in perm
-        # by zeroing corresponding entries
-        perm[i] = 0
-      end
-    end
-
-    if parity == -1
-      error("Parity-odd fermionic terms not yet supported by AutoMPO")
-    end
-
-    # Keep only fermionic op positions (non-zero entries)
-    filter!(!iszero, perm)
-
-    # and account for anti-commuting, fermionic operators
-    # during above sort; put resulting sign into coef
-    set_scalar!(os, j, ITensors.parity_sign(perm) * scalar)
-  end
-end
-
-@timeit function merge_terms!(os::OpIDSum{C})::Nothing where {C}
-  unique_location = Dict{SubArray{OpID,1,Vector{OpID},Tuple{UnitRange{Int64}},true},Int}()
-  for i in eachindex(os)
-    scalar, ops = os[i]
-
-    loc = get!(unique_location, ops, i)
-    loc == i && continue
-
-    add_to_scalar!(os, loc, scalar)
-    set_scalar!(os, i, zero(C))
-  end
-
-  return nothing
-end
-
-function convert_to_basis(op::Matrix, basis_cache::Vector{OpInfo})::Tuple{ComplexF64,Int}
-  function check_ratios_are_equal(a1::Number, b1::Number, ai::Number, bi::Number)::Bool
-    # TODO: Add a tolerance param here
-    return abs(a1 * bi - b1 * ai) <= 1e-10
-  end
-
-  for i in eachindex(basis_cache)
-    basis_op = basis_cache[i].matrix
-
-    j = findfirst(val -> val != 0, basis_op)
-
-    if all(
-      check_ratios_are_equal(basis_op[j], op[j], basis_op[k], op[k]) for
-      k in CartesianIndices(op)
-    )
-      return op[j] / basis_op[j], i
-    end
-  end
-
-  return 0, 0
-end
-
-function for_equal_sites(f::Function, ops::AbstractVector{OpID})::Nothing
+function for_equal_sites(f::Function, ops::AbstractVector{<:OpID})::Nothing
   i = 1
   while i <= length(ops)
     j = i
@@ -197,55 +189,102 @@ function for_equal_sites(f::Function, ops::AbstractVector{OpID})::Nothing
   return nothing
 end
 
-@timeit function rewrite_in_operator_basis(
-  os::OpIDSum{C}, op_cache_vec::OpCacheVec, basis_op_cache_vec::OpCacheVec
-)::OpIDSum{C} where {C}
-  @memoize Dict function convert_to_basis_memoized(
-    ops::AbstractVector{OpID}
-  )::Tuple{ComplexF64,Int}
-    n = ops[1].n
-    local_op = my_matrix(ops, op_cache_vec[n])
-    return convert_to_basis(local_op, basis_op_cache_vec[n])
+@timeit function rewrite_in_operator_basis!(
+  os::OpIDSum{N,C,Ti}, basis_op_cache_vec::OpCacheVec
+) where {N,C,Ti}
+  op_cache_vec = os.op_cache_vec
+
+  function scale_by_first_nz!(matrix::Matrix{ComplexF64})::ComplexF64
+    for i in eachindex(matrix)
+      entry = matrix[i]
+      if entry != 0
+        matrix ./= entry
+        return entry
+      end
+    end
   end
 
-  new_os = OpIDSum{C}()
+  scaled_basis_ops = Vector{Tuple{ComplexF64,Matrix{ComplexF64}}}[
+    Vector{Tuple{ComplexF64,Matrix{ComplexF64}}}() for _ in eachindex(basis_op_cache_vec)
+  ]
+  for n in eachindex(basis_op_cache_vec)
+    for op_info in basis_op_cache_vec[n]
+      m = Matrix{ComplexF64}(op_info.matrix)
+      scale = scale_by_first_nz!(m)
+      push!(scaled_basis_ops[n], (scale, m))
+    end
+  end
 
-  ops_in_basis = Vector{OpID}()
+  function convert_to_basis_memoized(ops::AbstractVector{OpID{Ti}})::Tuple{ComplexF64,Int}
+    n = ops[1].n
+    local_matrix = my_matrix(ops, op_cache_vec[n])
+    scale = scale_by_first_nz!(local_matrix)
+
+    for (i, (basis_scale, basis_matrix)) in enumerate(scaled_basis_ops[n])
+      basis_matrix == local_matrix && return scale / basis_scale, i
+    end
+
+    return 0, 0
+  end
+
+  single_op_translation = Vector{Tuple{ComplexF64,Int}}[
+    Vector{Tuple{ComplexF64,Int}}() for _ in eachindex(basis_op_cache_vec)
+  ]
+  for n in eachindex(op_cache_vec)
+    for id in eachindex(op_cache_vec[n])
+      push!(single_op_translation[n], convert_to_basis_memoized([OpID{Ti}(id, n)]))
+    end
+  end
+
   for i in eachindex(os)
     scalar, ops = os[i]
 
-    empty!(ops_in_basis)
-
     for_equal_sites(ops) do a, b
-      coeff, basis_id = convert_to_basis_memoized(@view ops[a:b])
+      ops[a] == zero(ops[a]) && return nothing
+
+      if a == b
+        coeff, basis_id = single_op_translation[ops[a].n][ops[a].id]
+      else
+        coeff, basis_id = convert_to_basis_memoized(view(ops, a:b))
+      end
 
       if basis_id == 0
         error(
           "The following operator product cannot be simplified into a single basis operator.\n" *
-          "\tOperator product = $(ops[a:b])\n",
+          "\tOperator product = $(ops[a:b]), $ops\n",
         )
       end
 
       scalar *= coeff
-      push!(ops_in_basis, OpID(basis_id, ops[a].n))
+
+      ops[a] = OpID{Ti}(basis_id, ops[a].n)
+      for k in (a + 1):b
+        ops[k] = zero(ops[k])
+      end
     end
 
-    push!(new_os, C(scalar), ops_in_basis)
+    os.scalars[i] = scalar
   end
 
-  return new_os
+  sort!(os.terms; dims=1, by=op -> op.n)
+  os.op_cache_vec = basis_op_cache_vec
+
+  return os
 end
 
-@timeit function op_sum_to_opID_sum(
-  os::OpSum{C}, sites::Vector{<:Index}
-)::Tuple{OpIDSum{C},OpCacheVec} where {C}
+@timeit function op_sum_to_opID_sum(os::OpSum{C}, sites::Vector{<:Index})::OpIDSum where {C}
   N = length(sites)
 
   ops_on_each_site = [Dict{Op,Int}(Op("I", n) => 1) for n in 1:N]
+  op_cache_vec = [[OpInfo(Op("I", n), sites[n])] for n in 1:N]
 
-  opID_sum = OpIDSum{C}()
+  ## If there is only a single op per term then there actually winds up being a weird
+  ## error when using reinterpret(reshape, ...) later on. This is the easiest way to fix it.
+  max_ops_per_term = max(2, maximum(length, ITensors.terms(os)))
 
-  opID_term = Vector{OpID}()
+  opID_sum = OpIDSum{max_ops_per_term,C,Int}(length(os), op_cache_vec)
+
+  opID_term = Vector{OpID{Int}}()
   ## TODO: Don't need $i$ here
   for (i, term) in enumerate(os)
     resize!(opID_term, 0)
@@ -253,29 +292,23 @@ end
       op.which_op == "I" && continue
 
       n = ITensors.site(op)
-      opID = get!(ops_on_each_site[n], op, length(ops_on_each_site[n]) + 1)
+
+      if op ∉ keys(ops_on_each_site[n])
+        ops_on_each_site[n][op] = length(ops_on_each_site[n]) + 1
+        push!(op_cache_vec[n], OpInfo(op, sites[n]))
+      end
+
+      opID = ops_on_each_site[n][op]
       push!(opID_term, OpID(opID, n))
     end
 
-    push!(opID_sum, ITensors.coefficient(term), opID_term)
+    add!(opID_sum, ITensors.coefficient(term), opID_term)
   end
 
-  op_cache_vec = OpCacheVec()
-  for (n, ops_on_site) in enumerate(ops_on_each_site)
-    op_cache = Vector{OpInfo}(undef, length(ops_on_site))
-
-    for (op, id) in ops_on_site
-      @assert ITensors.site(op) == n
-      op_cache[id] = OpInfo(op, sites[n])
-    end
-
-    push!(op_cache_vec, op_cache)
-  end
-
-  return opID_sum, op_cache_vec
+  return opID_sum
 end
 
-@timeit function check_for_errors(os::OpIDSum, op_cache_vec::OpCacheVec)::Nothing
+@timeit function check_os_for_errors(os::OpIDSum)::Nothing
   for i in eachindex(os)
     _, ops = os[i]
 
@@ -283,70 +316,41 @@ end
     fermion_parity = 0
     for j in eachindex(ops)
       opj = ops[j]
-      flux += op_cache_vec[opj.n][opj.id].qnFlux
-      fermion_parity += op_cache_vec[opj.n][opj.id].is_fermionic
+      opj == zero(opj) && continue
+
+      flux += os.op_cache_vec[opj.n][opj.id].qnFlux
+      fermion_parity += os.op_cache_vec[opj.n][opj.id].is_fermionic
 
       if j < length(ops)
-        ops[j].n > ops[j + 1].n && error("The operators are not sorted by site.")
+        ops[j + 1] == zero(ops[j + 1]) && continue
+        ops[j].n > ops[j + 1].n && error("The operators are not sorted by site: $ops")
         ops[j].n == ops[j + 1].n &&
-          error("A site has more than one operator acting on it in a term.")
+          error("A site has more than one operator acting on it in a term: $ops")
       end
     end
 
-    flux != QN() && error("The term does not have zero flux.")
-    mod(fermion_parity, 2) != 0 && error("Odd parity fermion terms not supported.")
+    flux != QN() && error("The term does not have zero flux: $ops")
+    mod(fermion_parity, 2) != 0 && error("Odd parity fermion terms not supported: $ops")
   end
 end
 
 @timeit function prepare_opID_sum!(
-  os::OpIDSum,
-  sites::Vector{<:Index},
-  op_cache_vec::OpCacheVec,
-  basis_op_cache_vec::Union{Nothing,OpCacheVec},
-)::Tuple{OpIDSum,OpCacheVec}
-  sort_each_term!(os, op_cache_vec, sites)
-  merge_terms!(os)
-
+  os::OpIDSum, basis_op_cache_vec::Union{Nothing,OpCacheVec}
+)
   if !isnothing(basis_op_cache_vec)
-    os, op_cache_vec = rewrite_in_operator_basis(os, op_cache_vec, basis_op_cache_vec),
-    basis_op_cache_vec
-    merge_terms!(os)
+    rewrite_in_operator_basis!(os, basis_op_cache_vec)
   end
-
-  check_for_errors(os, op_cache_vec)
-
-  # This is to account for the dummy site at the end
-  push!(op_cache_vec, OpInfo[])
-
-  return os, op_cache_vec
 end
 
 function my_matrix(
-  term::AbstractVector{OpID}, op_cache::Vector{OpInfo}; needs_JW_string::Bool=false
-)
+  term::AbstractVector{<:OpID}, op_cache::Vector{OpInfo}
+)::Matrix{ComplexF64}
   @assert all(op.n == term[1].n for op in term)
+  @assert !isempty(term)
 
-  if isempty(term)
-    local_matrix = Matrix{Float64}(I, size(op_cache[begin].matrix)...)
-  else
-    local_matrix = prod(op_cache[op.id].matrix for op in term)
+  if length(term) == 1
+    return copy(op_cache[term[1].id].matrix)
   end
 
-  if needs_JW_string
-    # local_matrix can be returned directly from the op_cache, and in this case we need to copy it
-    # before modification.
-    local_matrix = copy(local_matrix)
-
-    # This is a weird way of applying the Jordan-Wigner string it but op("F", sites[n]) is very slow.
-    if size(local_matrix, 1) == 2
-      local_matrix[:, 2] *= -1
-    elseif size(local_matrix, 1) == 4
-      local_matrix[:, 2] *= -1
-      local_matrix[:, 3] *= -1
-    else
-      error("Unknown fermionic site.")
-    end
-  end
-
-  return local_matrix
+  return prod(op_cache[op.id].matrix for op in term)
 end
