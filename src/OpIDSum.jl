@@ -309,6 +309,7 @@ end
 end
 
 @timeit function check_os_for_errors(os::OpIDSum)::Nothing
+  flux_of_first_term = nothing
   for i in eachindex(os)
     _, ops = os[i]
 
@@ -329,7 +330,16 @@ end
       end
     end
 
-    flux != QN() && error("The term does not have zero flux: $ops")
+    if isnothing(flux_of_first_term)
+      flux_of_first_term = flux
+    else
+      flux != flux_of_first_term && error(
+        "Inconsistent flux found!\n" *
+        "  Term 1 has a flux of $flux_of_first_term\n" *
+        "  Term $i has a flux of $flux"
+      )
+    end
+
     mod(fermion_parity, 2) != 0 && error("Odd parity fermion terms not supported: $ops")
   end
 end
