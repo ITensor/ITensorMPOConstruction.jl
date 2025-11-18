@@ -238,6 +238,29 @@ function test_random_operator(N::Integer, maxWeight::Integer, tol::Real)::Nothin
   return nothing
 end
 
+function test_non_zero_flux()::Nothing
+  sites = siteinds("Qubit", 4; conserve_number=true)
+
+  os = OpSum()
+  os .+= 1.0, "S-", 1, "S-", 4
+  os .+= 1.0, "S-", 2, "S-", 3
+  O = MPO_new(os, sites)
+  
+  @test flux(O) == QN(("Number", 2))
+  
+  mpoFromITensor = MPO(os, sites)
+  compare_MPOs(O, mpoFromITensor)
+
+  let
+    os = OpSum()
+    os .+= 1.0, "S-", 1
+    os .+= 1.0, "S-", 2, "S-", 3
+    @test_throws "Inconsistent flux found!" MPO_new(os, sites)
+  end
+
+  return nothing
+end
+
 function test_Fermi_Hubbard(N::Int, tol::Real, combine_qn_sectors::Bool)::Nothing
   t, U = 1, 4
   sites = siteinds("Electron", N; conserve_qns=true)
@@ -341,6 +364,9 @@ end
   println()
 
   test_random_operator(8, 4, 1.0)
+  println()
+
+  test_non_zero_flux()
   println()
 
   test_qft(6, false, 1.0)

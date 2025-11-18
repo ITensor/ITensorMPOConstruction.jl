@@ -28,7 +28,7 @@ julia> using Pkg; Pkg.add(url="https://github.com/ITensor/ITensorMPOConstruction
 
 ## Citing
 
-If you use this library in your research, please cite the following preprint: https://doi.org/10.48550/arXiv.2506.07441
+If you use this library in your research, please cite the following article https://doi.org/10.1103/nzrt-l2j1
 
 ## Constraints
 
@@ -37,10 +37,9 @@ This algorithm shares the same constraints as the default algorithm from ITensor
 1. The operator must be expressed as a sum of products of single site operators. For example a CNOT could not appear in the sum since it is a two site operator.
 2. When dealing with Fermionic systems the parity of each term in the sum must be even. That is the combined number of creation and annihilation operators in each term in the sum must be even. It should be possible to relax this constraint.
 
-There are also two additional constraints:
+There is also one additional constraint:
 
 3. Each term in the sum of products representation can only have a single operator acting on a site. For example a term such as $\mathbf{X}^{(1)} \mathbf{X}^{(1)}$ is not allowed. However, there is a pre-processing utility that can automatically replace $\mathbf{X}^{(1)} \mathbf{X}^{(1)}$ with $\mathbf{I}^{(1)}$. This is not a hard requirement for the algorithm but a simplification to improve performance.
-4. When constructing a quantum number conserving operator the total flux of the operator must be zero. It would be easy to remove this constraint.
 
 ## `MPO_new`
 
@@ -51,7 +50,7 @@ function MPO_new(os::OpSum, sites::Vector{<:Index}; kwargs...)::MPO
 ```
 
 The optional keyword arguments are
-* `basis_op_cache_vec`: A list of operators to use as a basis for each site. The operators on each site are expressed as one of these basis operators.
+* `basis_op_cache_vec=nothing`: A list of operators to use as a basis for each site. The operators on each site are expressed as one of these basis operators.
 * `check_for_errors::Bool`: Check the input OpSum for errors, this can be expensive for larger problems.
 * `tol::Real=1`: A multiplicative modifier to the default tolerance used in the SPQR, see [SPQR user guide Section 2.3](https://fossies.org/linux/SuiteSparse/SPQR/Doc/spqr_user_guide.pdf). The value of the default tolerance depends on the input matrix, which means a different tolerance is used for each decomposition. In the cases we have examined, the default tolerance works great for producing accurate MPOs.
 * `absolute_tol::Bool=false`: Override the default adaptive tolerance scheme outlined above, and use the value of `tol` as the single tolerance for each decomposition.
