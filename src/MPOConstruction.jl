@@ -89,7 +89,7 @@ function resume_svd_MPO(
           llinks[n + 1],
           prime(sites[n]),
           dag(sites[n]);
-          tol=1e-10,
+          tol=0.0,
           checkflux=false,
         )
       else
@@ -113,7 +113,7 @@ function resume_svd_MPO(
           llinks[n + 1],
           prime(sites[n]),
           dag(sites[n]);
-          tol=1e-10,
+          tol=0.0,
           checkflux=false,
         )
       end
