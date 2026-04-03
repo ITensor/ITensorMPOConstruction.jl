@@ -49,6 +49,8 @@ function test_get_connected_components(nl::Int, nr::Int, max_edges_from_left::In
   @test isempty(ref_verts)
 end
 
+## TODO: Add test for get_cc_matrix
+
 @testset "BipartiteGraph" begin
   test_get_connected_components(4, 4, 2)
   test_get_connected_components(10, 10, 4)

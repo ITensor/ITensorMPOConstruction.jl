@@ -142,9 +142,6 @@ end
   output_level::Int=0,
   kwargs...,
 )::MPO
-  # TODO: This should be fixed.
-  @assert !ITensors.using_auto_fermion()
-
   N = length(sites)
 
   @time_if output_level 0 "Constructing MPOGraph" g = MPOGraph(os)

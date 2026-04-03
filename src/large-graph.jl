@@ -1,25 +1,90 @@
+"""
+  BipartiteGraph{L,R,C}
+
+Weighted bipartite graph with typed left and right vertices.
+
+Type Parameters
+- `L`: The type of the left vertices.
+- `R`: The type of the right vertices.
+- `C`: The scalar edge weight type.
+
+Fields:
+- `left_vertices`: metadata stored for each left vertex.
+- `right_vertices`: metadata stored for each right vertex.
+- `edges_from_left`: adjacency list from each left vertex to right vertices,
+  stored as `(right_vertex_id, weight)` pairs.
+"""
 struct BipartiteGraph{L,R,C}
   left_vertices::Vector{L}
   right_vertices::Vector{R}
   edges_from_left::Vector{Vector{Tuple{Int,C}}}
 end
 
+"""
+  left_size(g::BipartiteGraph) -> Int
+
+Return the number of left vertices in `g`.
+"""
 left_size(g::BipartiteGraph)::Int = length(g.left_vertices)
+
+"""
+  right_size(g::BipartiteGraph) -> Int
+
+Return the number of right vertices in `g`.
+"""
 right_size(g::BipartiteGraph)::Int = length(g.right_vertices)
 
+"""
+  left_vertex(g::BipartiteGraph, lv_id::Integer)
+
+Return the data associated with the left vertex `lv_id`.
+"""
 left_vertex(g::BipartiteGraph, lv_id::Integer) = g.left_vertices[lv_id]
+
+"""
+  right_vertex(g::BipartiteGraph, rv_id::Integer)
+
+Return the data associated with the right vertex `rv_id`.
+"""
 right_vertex(g::BipartiteGraph, rv_id::Integer) = g.right_vertices[rv_id]
 
+"""
+  num_edges(g::BipartiteGraph) -> Int
+
+Return the total number of edges in `g`.
+"""
 function num_edges(g::BipartiteGraph)::Int
   return sum(length(rvs) for rvs in g.edges_from_left)
 end
 
+"""
+  BipartiteGraphConnectedComponents
+
+Struct containing the connected components of a `BipartiteGraph`.
+
+Fields:
+- `lvs_of_component`: for each connected component, the global ids of its left
+  vertices.
+- `component_position_of_rvs`: for each global right vertex id, its local id
+  (position) within its connected component, or an unused sentinel for isolated
+  right vertices.
+- `rv_size_of_component`: number of right vertices in each component.
+"""
 struct BipartiteGraphConnectedComponents
   lvs_of_component::Vector{Vector{Int}}
   component_position_of_rvs::Vector{Int}
   rv_size_of_component::Vector{Int}
 end
 
+"""
+  compute_connected_components(g::BipartiteGraph) -> BipartiteGraphConnectedComponents
+
+Compute the connected components of `g`, keeping only components which connect
+the left and right sides of the bipartite graph (i.e. discarding isolated vertices).
+
+The returned object records, for each retained component, which left vertices it
+contains and how global right-vertex ids map into local positions within their component.
+"""
 @timeit function compute_connected_components(
   g::BipartiteGraph
 )::BipartiteGraphConnectedComponents
@@ -85,14 +150,40 @@ end
   )
 end
 
+"""
+  num_connected_components(ccs::BipartiteGraphConnectedComponents)
+
+Return the number of connected components.
+"""
 function num_connected_components(ccs::BipartiteGraphConnectedComponents)
   length(ccs.lvs_of_component)
 end
 
+"""
+  left_size(ccs::BipartiteGraphConnectedComponents, cc::Int)
+
+Return the number of left vertices in connected component `cc`.
+"""
 function left_size(ccs::BipartiteGraphConnectedComponents, cc::Int)
   length(ccs.lvs_of_component[cc])
 end
 
+"""
+  get_cc_matrix(g::BipartiteGraph, ccs::BipartiteGraphConnectedComponents, cc::Int; clear_edges=false)
+      -> Tuple{SparseMatrixCSC,Vector{Int},Vector{Int}}
+
+Extract the subgraph corresponding to connected component `cc` as a sparse
+matrix.
+
+The returned tuple contains:
+- the sparse weighted adjacency matrix of the component, with local left/right
+  numbering,
+- the map from local row indices back to global left-vertex ids,
+- the map from local column indices back to global right-vertex ids.
+
+If `clear_edges=true`, the consumed adjacency lists are emptied from `g` as the
+matrix is assembled.
+"""
 function get_cc_matrix(
   g::BipartiteGraph{L,R,C},
   ccs::BipartiteGraphConnectedComponents,
@@ -127,23 +218,4 @@ function get_cc_matrix(
   return sparse(edge_left_vertex, edge_right_vertex, edge_weight),
   ccs.lvs_of_component[cc],
   right_map
-end
-
-@timeit function get_default_tol(
-  g::BipartiteGraph{L,R,C}, ccs::BipartiteGraphConnectedComponents
-)::Float64 where {L,R,C}
-  column_norms = zeros(right_size(g))
-  for edges in g.edges_from_left
-    for (rv_id, weight) in edges
-      column_norms[rv_id] += abs2(weight)
-    end
-  end
-
-  # Taken from https://fossies.org/linux/SuiteSparse/SPQR/Doc/spqr_user_guide.pdf Section 2.3: The opts parameter
-  # It is possible that there are right vertices that are not connected to anything on the left. This corresponds
-  # to the truncation dropping terms wholesale.
-  num_rows = left_size(g)
-  num_columns = sum(ccs.rv_size_of_component)
-
-  return 20 * (num_rows + num_columns) * eps() * sqrt(maximum(column_norms))
 end

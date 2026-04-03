@@ -135,7 +135,7 @@ end
 Compact representation of an operator sum whose terms are stored as fixed-width
 tuples of `OpID` values together with scalar coefficients.
 
-Type Parameters
+Type Parameters:
 - `N`: The maximum number of onsite operators per term, i.e. the weight of the operator.
 - `C`: The scalar coefficient type.
 - `Ti`: The integer type used to identify both an operator and the sites.
