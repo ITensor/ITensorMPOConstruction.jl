@@ -1,5 +1,5 @@
 """
-  LeftVertex
+    LeftVertex
 
 Represents a left vertex of the bipartite MPO graph.
 Fields:
@@ -15,7 +15,7 @@ struct LeftVertex
 end
 
 """
-  are_equal(op1::NTuple{N,OpID}, op2::NTuple{N,OpID}, n::Int) where {N} -> Bool
+    are_equal(op1::NTuple{N,OpID}, op2::NTuple{N,OpID}, n::Int) where {N} -> Bool
 
 Check whether two products of OpID are equal from site `n` onward.
 The tuples must be sorted by decreasing site.
@@ -34,7 +34,7 @@ function are_equal(op1::NTuple{N,OpID}, op2::NTuple{N,OpID}, n::Int)::Bool where
 end
 
 """
-  get_onsite_op(ops::NTuple{N,OpID{Ti}}, n::Int) where {N, Ti} -> Ti
+    get_onsite_op(ops::NTuple{N,OpID{Ti}}, n::Int) where {N, Ti} -> Ti
 
 Return the operator id in `ops` acting on site `n`.
 
@@ -49,7 +49,7 @@ function get_onsite_op(ops::NTuple{N,OpID{Ti}}, n::Int)::Ti where {N, Ti}
 end
 
 """
-  is_fermionic(ops::NTuple{N,OpID}, n::Int, op_cache_vec::OpCacheVec) where {N} -> Bool
+    is_fermionic(ops::NTuple{N,OpID}, n::Int, op_cache_vec::OpCacheVec) where {N} -> Bool
 
 Compute the fermionic parity of the part of `ops` acting on sites `>= n`.
 
@@ -66,7 +66,7 @@ function is_fermionic(ops::NTuple{N,OpID}, n::Int, op_cache_vec::OpCacheVec)::Bo
 end
 
 """
-  ITensors.flux(ops::NTuple{N,OpID}, n::Int, op_cache_vec::OpCacheVec) where {N} -> QN
+    ITensors.flux(ops::NTuple{N,OpID}, n::Int, op_cache_vec::OpCacheVec) where {N} -> QN
 
 Return the total quantum-number flux contributed by operators in `ops` on sites
 `>= n`, using the cached operator metadata in `op_cache_vec`.

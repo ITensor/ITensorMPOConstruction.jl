@@ -1,5 +1,5 @@
 """
-  @time_if output_level min_output_level msg ex
+    @time_if output_level min_output_level msg ex
 
 Conditionally time and print the execution of `ex` depending on the current
 verbosity level.

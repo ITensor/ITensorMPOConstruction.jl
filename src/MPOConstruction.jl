@@ -1,3 +1,12 @@
+"""
+    my_ITensor(offsets, block_sparse_matrices, inds...; tol=0.0, checkflux=true) -> ITensor
+
+Assemble an `ITensor` from component-local block-sparse MPO data.
+
+`offsets` gives the starting outgoing-link offset for each connected component,
+and `block_sparse_matrices` stores the dense local blocks keyed by link-index
+pairs. Entries with magnitude at most `tol` are dropped during the copy.
+"""
 function my_ITensor(
   offsets::Vector{Int},
   block_sparse_matrices::Vector{BlockSparseMatrix{C}},
@@ -5,22 +14,8 @@ function my_ITensor(
   tol=0.0,
   checkflux=true,
 )::ITensor where {C}
-  is = Tuple(ITensors.indices(inds))
-  blocks = Block{length(is)}[]
-  T = ITensors.BlockSparseTensor(C, blocks, inds)
-  my_copyto_dropzeros!(T, offsets, block_sparse_matrices; tol)
-  if checkflux
-    ITensors.checkflux(T)
-  end
-  return itensor(T)
-end
-
-function my_copyto_dropzeros!(
-  T::ITensors.Tensor,
-  offsets::Vector{Int},
-  block_sparse_matrices::Vector{<:BlockSparseMatrix};
-  tol,
-)
+  T = ITensors.BlockSparseTensor(C, Block{length(inds)}[], inds)
+  
   for (offset, matrix) in zip(offsets, block_sparse_matrices)
     for ((left_link, right_link), block) in matrix
       for i in 1:size(block, 1)
@@ -33,10 +28,37 @@ function my_copyto_dropzeros!(
     end
   end
 
-  return T
+  if checkflux
+    ITensors.checkflux(T)
+  end
+
+  return itensor(T)
 end
 
-function resume_svd_MPO(
+_resume_MPO_kwargs = """
+Keyword arguments:
+- `tol`: truncation threshold passed to the sparse QR step.
+- `absolute_tol`: if `true`, interpret `tol` as an absolute QR tolerance.
+- `combine_qn_sectors`: if `true`, merge QN sectors with the same total QN in the links.
+- `call_back`: hook called as `call_back(cur_site, H, sites, llinks, cur_graph, op_cache_vec)`
+  with the progress at each site.
+- `output_level`: controls progress and timing output.
+"""
+
+@doc """
+    resume_MPO_construction(ValType, n_init, H, sites, llinks, g, op_cache_vec;
+      tol=1, absolute_tol=false, combine_qn_sectors=false, call_back=..., output_level=0) -> MPO
+
+Continue MPO construction starting from site `n_init` using the current graph
+state `g`.
+
+This is the low-level driver underlying `MPO_new`. At each site it factors the
+current graph with `at_site!`, builds the local MPO tensor, stores it into `H`, 
+and advances to the next-site graph. The callback is invoked after each site is completed.
+
+$_resume_MPO_kwargs
+"""
+function resume_MPO_construction(
   ValType::Type{<:Number},
   n_init::Int,
   H::MPO,
@@ -90,7 +112,7 @@ function resume_svd_MPO(
           prime(sites[n]),
           dag(sites[n]);
           tol=0.0,
-          checkflux=false,
+          checkflux=true,
         )
       else
         tensor = zeros(
@@ -114,7 +136,7 @@ function resume_svd_MPO(
           prime(sites[n]),
           dag(sites[n]);
           tol=0.0,
-          checkflux=false,
+          checkflux=true,
         )
       end
     end
@@ -135,60 +157,88 @@ function resume_svd_MPO(
   return H
 end
 
-@timeit function svdMPO_new(
-  ValType::Type{<:Number},
-  os::OpIDSum,
-  sites::Vector{<:Index};
-  output_level::Int=0,
-  kwargs...,
-)::MPO
-  N = length(sites)
+@doc """
+    MPO_new(ValType, os::OpIDSum, sites; basis_op_cache_vec=nothing,
+      check_for_errors=true, output_level=0, kwargs...) -> MPO
 
-  @time_if output_level 0 "Constructing MPOGraph" g = MPOGraph(os)
+Construct an MPO from a precomputed `OpIDSum`.
 
-  H = MPO(sites)
+Before construction, `os` can optionally be rewritten into `basis_op_cache_vec`,
+and basic consistency checks can be run with `check_for_errors=true`. Remaining
+keyword arguments are forwarded to `resume_MPO_construction`.
 
-  llinks = Vector{Index}(undef, N + 1)
-  if hasqns(sites)
-    llinks[1] = Index(QN() => 1; tags="Link,l=0", dir=ITensors.Out)
-  else
-    llinks[1] = Index(1; tags="Link,l=0")
-  end
-
-  return resume_svd_MPO(
-    ValType, 1, H, sites, llinks, g, os.op_cache_vec; output_level, kwargs...
-  )
-end
-
+$_resume_MPO_kwargs
+"""
 function MPO_new(
   ValType::Type{<:Number},
   os::OpIDSum,
   sites::Vector{<:Index};
   basis_op_cache_vec=nothing,
   check_for_errors::Bool=true,
-  kwargs...,
+  output_level::Int=0,
+  kwargs...
 )::MPO
   prepare_opID_sum!(os, to_OpCacheVec(sites, basis_op_cache_vec))
   check_for_errors && check_os_for_errors(os)
 
-  return svdMPO_new(ValType, os, sites; kwargs...)
+  @time_if output_level 0 "Constructing MPOGraph" g = MPOGraph(os)
+
+  H = MPO(sites)
+
+  llinks = Vector{Index}(undef, length(sites) + 1)
+  if hasqns(sites)
+    llinks[1] = Index(QN() => 1; tags="Link,l=0", dir=ITensors.Out)
+  else
+    llinks[1] = Index(1; tags="Link,l=0")
+  end
+
+  return resume_MPO_construction(
+    ValType,
+    1,
+    H,
+    sites,
+    llinks,
+    g,
+    os.op_cache_vec;
+    output_level,
+    kwargs...
+  )
 end
 
+"""
+    MPO_new(os::OpIDSum, sites; kwargs...) -> MPO
+
+Construct an MPO from `os`, automatically choosing `Float64` or `ComplexF64`.
+"""
 function MPO_new(os::OpIDSum, sites::Vector{<:Index}; kwargs...)::MPO
-  ValType = determine_val_type(os)
-  return MPO_new(ValType, os, sites; kwargs...)
+  return MPO_new(determine_val_type(os), os, sites; kwargs...)
 end
 
+"""
+    MPO_new(ValType, os::OpSum, sites; kwargs...) -> MPO
+
+Convert an ITensor `OpSum` to `OpIDSum` form and construct an MPO with element
+type `ValType`.
+"""
 function MPO_new(ValType::Type{<:Number}, os::OpSum, sites::Vector{<:Index}; kwargs...)::MPO
-  opID_sum = op_sum_to_opID_sum(os, sites)
-  return MPO_new(ValType, opID_sum, sites; kwargs...)
+  return MPO_new(ValType, op_sum_to_opID_sum(os, sites), sites; kwargs...)
 end
 
+"""
+    MPO_new(os::OpSum, sites; kwargs...) -> MPO
+
+Convert an ITensor `OpSum` to `OpIDSum` form and construct an MPO, inferring the
+numeric element type automatically.
+"""
 function MPO_new(os::OpSum, sites::Vector{<:Index}; kwargs...)::MPO
-  opID_sum = op_sum_to_opID_sum(os, sites)
-  return MPO_new(opID_sum, sites; kwargs...)
+  return MPO_new(op_sum_to_opID_sum(os, sites), sites; kwargs...)
 end
 
+"""
+    sparsity(mpo::MPO) -> Float64
+
+Return the fraction of tensor entries in `mpo` that are structural zeros.
+"""
 function sparsity(mpo::MPO)::Float64
   num_entries = 0
   num_zeros = 0
@@ -200,6 +250,16 @@ function sparsity(mpo::MPO)::Float64
   return num_zeros / num_entries
 end
 
+"""
+    block2_nnz(mpo::MPO) -> Tuple{Int,Int}
+
+Count link-space blocks in `mpo` that are structural zeros.
+
+When the MPO tensors are viewed as a matrix-op-operators, this
+returns the total number of entries in the MPO and the total number
+of structural non-zeros. This can be used to directly compare sparsities
+with the `block2` storage format.
+"""
 function block2_nnz(mpo::MPO)::Tuple{Int, Int}
   total_blocks = 0
   nnz_blocks = 0

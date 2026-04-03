@@ -1,5 +1,5 @@
 """
-  BipartiteGraph{L,R,C}
+    BipartiteGraph{L,R,C}
 
 Weighted bipartite graph with typed left and right vertices.
 
@@ -21,35 +21,35 @@ struct BipartiteGraph{L,R,C}
 end
 
 """
-  left_size(g::BipartiteGraph) -> Int
+    left_size(g::BipartiteGraph) -> Int
 
 Return the number of left vertices in `g`.
 """
 left_size(g::BipartiteGraph)::Int = length(g.left_vertices)
 
 """
-  right_size(g::BipartiteGraph) -> Int
+    right_size(g::BipartiteGraph) -> Int
 
 Return the number of right vertices in `g`.
 """
 right_size(g::BipartiteGraph)::Int = length(g.right_vertices)
 
 """
-  left_vertex(g::BipartiteGraph, lv_id::Integer)
+    left_vertex(g::BipartiteGraph, lv_id::Integer)
 
 Return the data associated with the left vertex `lv_id`.
 """
 left_vertex(g::BipartiteGraph, lv_id::Integer) = g.left_vertices[lv_id]
 
 """
-  right_vertex(g::BipartiteGraph, rv_id::Integer)
+    right_vertex(g::BipartiteGraph, rv_id::Integer)
 
 Return the data associated with the right vertex `rv_id`.
 """
 right_vertex(g::BipartiteGraph, rv_id::Integer) = g.right_vertices[rv_id]
 
 """
-  num_edges(g::BipartiteGraph) -> Int
+    num_edges(g::BipartiteGraph) -> Int
 
 Return the total number of edges in `g`.
 """
@@ -58,7 +58,7 @@ function num_edges(g::BipartiteGraph)::Int
 end
 
 """
-  BipartiteGraphConnectedComponents
+    BipartiteGraphConnectedComponents
 
 Struct containing the connected components of a `BipartiteGraph`.
 
@@ -77,7 +77,7 @@ struct BipartiteGraphConnectedComponents
 end
 
 """
-  compute_connected_components(g::BipartiteGraph) -> BipartiteGraphConnectedComponents
+    compute_connected_components(g::BipartiteGraph) -> BipartiteGraphConnectedComponents
 
 Compute the connected components of `g`, keeping only components which connect
 the left and right sides of the bipartite graph (i.e. discarding isolated vertices).
@@ -151,7 +151,7 @@ contains and how global right-vertex ids map into local positions within their c
 end
 
 """
-  num_connected_components(ccs::BipartiteGraphConnectedComponents)
+    num_connected_components(ccs::BipartiteGraphConnectedComponents)
 
 Return the number of connected components.
 """
@@ -160,7 +160,7 @@ function num_connected_components(ccs::BipartiteGraphConnectedComponents)
 end
 
 """
-  left_size(ccs::BipartiteGraphConnectedComponents, cc::Int)
+    left_size(ccs::BipartiteGraphConnectedComponents, cc::Int)
 
 Return the number of left vertices in connected component `cc`.
 """
@@ -169,8 +169,8 @@ function left_size(ccs::BipartiteGraphConnectedComponents, cc::Int)
 end
 
 """
-  get_cc_matrix(g::BipartiteGraph, ccs::BipartiteGraphConnectedComponents, cc::Int; clear_edges=false)
-      -> Tuple{SparseMatrixCSC,Vector{Int},Vector{Int}}
+    get_cc_matrix(g::BipartiteGraph, ccs::BipartiteGraphConnectedComponents, cc::Int; clear_edges=false)
+        -> Tuple{SparseMatrixCSC,Vector{Int},Vector{Int}}
 
 Extract the subgraph corresponding to connected component `cc` as a sparse
 matrix.

@@ -1,5 +1,5 @@
 """
-  BlockSparseMatrix{C}
+    BlockSparseMatrix{C}
 
 Dictionary-backed block-sparse matrix representation used for intermediate MPO tensor storage.
 
@@ -9,7 +9,7 @@ matrices for that block.
 BlockSparseMatrix{C} = Dict{Tuple{Int,Int},Matrix{C}}
 
 """
-  MPOGraph{N,C,Ti}
+    MPOGraph{N,C,Ti}
 
 Type alias for the bipartite graph representation used during MPO construction.
 
@@ -19,7 +19,7 @@ remaining operator content of a term, and edge weights carry the scalar coeffici
 MPOGraph{N,C,Ti} = BipartiteGraph{LeftVertex,NTuple{N,OpID{Ti}},C}
 
 """
-  CoSorterElement{T1,T2}
+    CoSorterElement{T1,T2}
 
 Pair-like element used by `CoSorter` so that sorting one array carries along a
 second array with the same permutation.
@@ -32,7 +32,7 @@ struct CoSorterElement{T1,T2}
 end
 
 """
-  CoSorter{T1,T2,S,C}
+    CoSorter{T1,T2,S,C}
 
 Lightweight view that exposes two arrays as a single sortable collection,
 ordering by `sortarray` and applying the same swaps to `coarray`.
@@ -56,7 +56,7 @@ end
 Base.isless(a::CoSorterElement, b::CoSorterElement) = isless(a.x, b.x)
 
 """
-  find_first_eq_rv(g::MPOGraph, j::Int, n::Int) -> Int
+    find_first_eq_rv(g::MPOGraph, j::Int, n::Int) -> Int
 
 Walk backward from right-vertex index `j` to the first earlier right vertex
 whose operator tuple is equivalent from site `n` onward.
@@ -73,7 +73,7 @@ function find_first_eq_rv(g::MPOGraph, j::Int, n::Int)::Int
 end
 
 """
-  build_next_edges_specialization!(next_edges, g, cur_site, edges) -> Nothing
+    build_next_edges_specialization!(next_edges, g, cur_site, edges) -> Nothing
 
 Fast path for building outgoing edges when a connected component has only
 a single left vertex.
@@ -102,7 +102,7 @@ function build_next_edges_specialization!(
 end
 
 """
-  add_to_next_graph!(next_graph, cur_graph, op_cache_vec, cur_site, cur_offset, next_edges) -> Nothing
+    add_to_next_graph!(next_graph, cur_graph, op_cache_vec, cur_site, cur_offset, next_edges) -> Nothing
 
 Append the left vertices and adjacency lists described by `next_edges` to `next_graph`.
 
@@ -136,7 +136,7 @@ function add_to_next_graph!(
 end
 
 """
-  MPOGraph(os::OpIDSum{N,C,Ti}) -> MPOGraph{N,C,Ti}
+    MPOGraph(os::OpIDSum{N,C,Ti}) -> MPOGraph{N,C,Ti}
 
 Convert an `OpIDSum` into the initial bipartite graph used by the
 MPO construction algorithm.
@@ -204,8 +204,8 @@ the `os.abs_tol` are dropped. The returned graph is split about the first site.
 end
 
 """
-  sparse_qr(A::SparseMatrixCSC, tol::Real, absolute_tol::Bool)
-      -> Tuple{Q,R,prow,pcol,rank}
+    sparse_qr(A::SparseMatrixCSC, tol::Real, absolute_tol::Bool)
+        -> Tuple{Q,R,prow,pcol,rank}
 
 Compute a sparse QR factorization of `A` using SuiteSparse SPQR with a single
 thread.
@@ -235,7 +235,7 @@ function sparse_qr(
 end
 
 """
-  for_non_zeros_batch(f::Function, A::SparseMatrixCSC, max_col::Int) -> Nothing
+    for_non_zeros_batch(f::Function, A::SparseMatrixCSC, max_col::Int) -> Nothing
 
 Iterate over the nonzero entries of the first `max_col` columns of `A`, calling
 `f(values, rows, col)` once per nonempty column.
@@ -255,7 +255,7 @@ function for_non_zeros_batch(f::Function, A::SparseMatrixCSC, max_col::Int)::Not
 end
 
 """
-  for_non_zeros_batch(f::Function, Q::SparseArrays.SPQR.QRSparseQ, max_col::Int) -> Nothing
+    for_non_zeros_batch(f::Function, Q::SparseArrays.SPQR.QRSparseQ, max_col::Int) -> Nothing
 
 Iterate over the first `max_col` columns of a sparse SPQR `Q` factor, forming
 each column explicitly and calling `f(column, col)`.
@@ -286,7 +286,7 @@ function for_non_zeros_batch(
 end
 
 """
-  add_to_local_matrix!(a, weight, local_op, needs_JW_string) -> Nothing
+    add_to_local_matrix!(a, weight, local_op, needs_JW_string) -> Nothing
 
 Accumulate a weighted local operator matrix into `a`.
 
@@ -317,8 +317,8 @@ function add_to_local_matrix!(
 end
 
 """
-  merge_qn_sectors(qi_of_cc::Vector{Pair{QN,Int}})
-      -> Tuple{Vector{Int},Vector{Pair{QN,Int}}}
+    merge_qn_sectors(qi_of_cc::Vector{Pair{QN,Int}})
+        -> Tuple{Vector{Int},Vector{Pair{QN,Int}}}
 
 Sort connected components by QN sector and merge adjacent entries with the same
 QN by summing their dimensions.
@@ -345,15 +345,15 @@ function merge_qn_sectors(
 end
 
 """
-  at_site!(ValType, g, n, sites, tol, absolute_tol, op_cache_vec; combine_qn_sectors, output_level=0)
-      -> Tuple{MPOGraph,Vector{Int},Vector{BlockSparseMatrix{ValType}},Index}
+    at_site!(ValType, g, n, sites, tol, absolute_tol, op_cache_vec; combine_qn_sectors, output_level=0)
+        -> Tuple{MPOGraph,Vector{Int},Vector{BlockSparseMatrix{ValType}},Index}
 
 Process one site of the MPO construction algorithm.
 
 For each connected component of `g`, this routine forms the sparse adjacency
 matrix, computes a sparse QR factorization, assembles the local MPO tensor
-blocks for site `n`, and builds the graph passed to the next site. The returned
-tuple contains:
+blocks for site `n`, and builds the graph passed to the next site. The connected
+components are iterated over using threads. The returned tuple contains:
 - the graph for site `n + 1`,
 - offsets locating each connected component inside the outgoing bond space,
 - the block-sparse local MPO tensors for each component,
