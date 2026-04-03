@@ -74,7 +74,7 @@ Return the total quantum-number flux contributed by operators in `ops` on sites
 function ITensors.flux(ops::NTuple{N,OpID}, n::Int, op_cache_vec::OpCacheVec)::QN where {N}
   flux = QN()
   for op in ops
-    op.n >= n && (flux += op_cache_vec[op.n][op.id].qnFlux)
+    op.n >= n && (flux += op_cache_vec[op.n][op.id].qn_flux)
   end
 
   return flux
