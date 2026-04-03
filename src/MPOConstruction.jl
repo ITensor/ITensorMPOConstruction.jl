@@ -78,8 +78,8 @@ function resume_svd_MPO(
       output_level,
     )
 
-    # Constructing the tensor from an array is much faster than setting the components of the ITensor directly.
-    # Especially for sparse tensors, and works for both sparse and dense tensors.
+    ## Constructing the tensor from an array is faster than setting the components of the ITensor directly.
+    ## Especially truenfor sparse tensors, but in that case you might run out of memory, so we specialize.
     @timeit "Constructing ITensor" let
       if hasqns(sites)
         H[n] = my_ITensor(

@@ -1,13 +1,42 @@
+"""
+  BlockSparseMatrix{C}
+
+Dictionary-backed block-sparse matrix representation used for intermediate MPO tensor storage.
+
+Keys are `(left_link, right_link)` pairs and values are dense local operator
+matrices for that block.
+"""
 BlockSparseMatrix{C} = Dict{Tuple{Int,Int},Matrix{C}}
 
+"""
+  MPOGraph{N,C,Ti}
+
+Type alias for the bipartite graph representation used during MPO construction.
+
+Left vertices store `LeftVertex` metadata, right vertices store fixed-width tuples of `OpID`s describing the
+remaining operator content of a term, and edge weights carry the scalar coefficients.
+"""
 MPOGraph{N,C,Ti} = BipartiteGraph{LeftVertex,NTuple{N,OpID{Ti}},C}
 
-## Taken from https://discourse.julialang.org/t/how-to-sort-two-or-more-lists-at-once/12073/13
+"""
+  CoSorterElement{T1,T2}
+
+Pair-like element used by `CoSorter` so that sorting one array carries along a
+second array with the same permutation.
+
+Taken from https://discourse.julialang.org/t/how-to-sort-two-or-more-lists-at-once/12073/13
+"""
 struct CoSorterElement{T1,T2}
   x::T1
   y::T2
 end
 
+"""
+  CoSorter{T1,T2,S,C}
+
+Lightweight view that exposes two arrays as a single sortable collection,
+ordering by `sortarray` and applying the same swaps to `coarray`.
+"""
 struct CoSorter{T1,T2,S<:AbstractArray{T1},C<:AbstractArray{T2}} <:
        AbstractVector{CoSorterElement{T1,T2}}
   sortarray::S
@@ -26,6 +55,15 @@ end
 
 Base.isless(a::CoSorterElement, b::CoSorterElement) = isless(a.x, b.x)
 
+"""
+  find_first_eq_rv(g::MPOGraph, j::Int, n::Int) -> Int
+
+Walk backward from right-vertex index `j` to the first earlier right vertex
+whose operator tuple is equivalent from site `n` onward.
+
+This is used to "merge" equivalent right vertices after peeling off the
+operator acting on the current site.
+"""
 function find_first_eq_rv(g::MPOGraph, j::Int, n::Int)::Int
   while j > 1 && are_equal(right_vertex(g, j), right_vertex(g, j - 1), n)
     j -= 1
@@ -34,8 +72,21 @@ function find_first_eq_rv(g::MPOGraph, j::Int, n::Int)::Int
   return j
 end
 
+"""
+  build_next_edges_specialization!(next_edges, g, cur_site, edges) -> Nothing
+
+Fast path for building outgoing edges when a connected component has only
+a single left vertex.
+
+For each current edge, this extracts the operator acting on `cur_site + 1`,
+finds the unique right vertex from `cur_site + 2` onward, and
+stores the resulting weight in `next_edges`.
+"""
 function build_next_edges_specialization!(
-  next_edges::Matrix{Vector{Tuple{Int,C}}}, g::MPOGraph{N,C,Ti}, cur_site::Int, edges
+  next_edges::Matrix{Vector{Tuple{Int,C}}},
+  g::MPOGraph{N,C,Ti},
+  cur_site::Int,
+  edges
 )::Nothing where {N,C,Ti}
   @assert size(next_edges, 1) == 1
 
@@ -50,6 +101,15 @@ function build_next_edges_specialization!(
   return nothing
 end
 
+"""
+  add_to_next_graph!(next_graph, cur_graph, op_cache_vec, cur_site, cur_offset, next_edges) -> Nothing
+
+Append the left vertices and adjacency lists described by `next_edges` to `next_graph`.
+
+Each nonempty `(bond_index, op_id)` entry in `next_edges` creates one `LeftVertex` with edges
+to right vertices given by the value of the entry. The stored `needs_JW_string` flag is inferred
+from the fermionic parity of the connected right vertices connected.
+"""
 function add_to_next_graph!(
   next_graph::MPOGraph{N,C,Ti},
   cur_graph::MPOGraph{N,C,Ti},
@@ -75,6 +135,18 @@ function add_to_next_graph!(
   return nothing
 end
 
+"""
+  MPOGraph(os::OpIDSum{N,C,Ti}) -> MPOGraph{N,C,Ti}
+
+Convert an `OpIDSum` into the initial bipartite graph used by the
+MPO construction algorithm.
+
+Operators with each term are put in reverse order (by decreasing site), then
+the terms are sorted along with the scalars. This sorting puts terms which share
+a terminating sequence of operators (which is now at the front of the term) nearby.
+Duplicate terms are then combined, and resulting terms with a weight below
+the `os.abs_tol` are dropped. The returned graph is split about the first site.
+"""
 @timeit function MPOGraph(os::OpIDSum{N,C,Ti})::MPOGraph{N,C,Ti} where {N,C,Ti}
   ## Reverse the terms in the sum, ignoring trailing identity operators.
   for i in 1:length(os)
@@ -131,8 +203,21 @@ end
   return g
 end
 
+"""
+  sparse_qr(A::SparseMatrixCSC, tol::Real, absolute_tol::Bool)
+      -> Tuple{Q,R,prow,pcol,rank}
+
+Compute a sparse QR factorization of `A` using SuiteSparse SPQR with a single
+thread.
+
+If `absolute_tol` is `false`, `tol` is interpreted relative to SPQR's default
+tolerance scale. The return values are the orthogonal factor `Q`, upper-triangular
+factor `R`, row and column permutations, and the numerical rank.
+"""
 function sparse_qr(
-  A::SparseMatrixCSC, tol::Real, absolute_tol::Bool
+  A::SparseMatrixCSC,
+  tol::Real,
+  absolute_tol::Bool
 )::Tuple{SparseArrays.SPQR.QRSparseQ,SparseMatrixCSC,Vector{Int},Vector{Int},Int}
   ret = nothing
 
@@ -149,6 +234,14 @@ function sparse_qr(
   return ret.Q, ret.R, ret.prow, ret.pcol, rank(ret)
 end
 
+"""
+  for_non_zeros_batch(f::Function, A::SparseMatrixCSC, max_col::Int) -> Nothing
+
+Iterate over the nonzero entries of the first `max_col` columns of `A`, calling
+`f(values, rows, col)` once per nonempty column.
+
+`values` and `rows` are views into the storage of `A` for that column.
+"""
 function for_non_zeros_batch(f::Function, A::SparseMatrixCSC, max_col::Int)::Nothing
   @assert max_col <= size(A, 2) "$max_col, $(size(A, 2))"
 
@@ -161,6 +254,12 @@ function for_non_zeros_batch(f::Function, A::SparseMatrixCSC, max_col::Int)::Not
   end
 end
 
+"""
+  for_non_zeros_batch(f::Function, Q::SparseArrays.SPQR.QRSparseQ, max_col::Int) -> Nothing
+
+Iterate over the first `max_col` columns of a sparse SPQR `Q` factor, forming
+each column explicitly and calling `f(column, col)`.
+"""
 function for_non_zeros_batch(
   f::Function, Q::SparseArrays.SPQR.QRSparseQ, max_col::Int
 )::Nothing
@@ -186,8 +285,19 @@ function for_non_zeros_batch(
   end
 end
 
+"""
+  add_to_local_matrix!(a, weight, local_op, needs_JW_string) -> Nothing
+
+Accumulate a weighted local operator matrix into `a`.
+
+If `needs_JW_string` is `true`, the contribution is multiplied by the diagonal
+Jordan-Wigner sign pattern expected for 2-state or 4-state fermionic sites.
+"""
 function add_to_local_matrix!(
-  a::Matrix, weight::Number, local_op::Matrix, needs_JW_string::Bool
+  a::Matrix,
+  weight::Number,
+  local_op::Matrix,
+  needs_JW_string::Bool
 )::Nothing
   if !needs_JW_string
     a .+= weight * local_op
@@ -206,6 +316,16 @@ function add_to_local_matrix!(
   return nothing
 end
 
+"""
+  merge_qn_sectors(qi_of_cc::Vector{Pair{QN,Int}})
+      -> Tuple{Vector{Int},Vector{Pair{QN,Int}}}
+
+Sort connected components by QN sector and merge adjacent entries with the same
+QN by summing their dimensions.
+
+The first returned vector is the permutation that reorders components, and the
+second is the merged QN-sector description.
+"""
 function merge_qn_sectors(
   qi_of_cc::Vector{Pair{QN,Int}}
 )::Tuple{Vector{Int},Vector{Pair{QN,Int}}}
@@ -224,6 +344,21 @@ function merge_qn_sectors(
   return new_order, new_qi
 end
 
+"""
+  at_site!(ValType, g, n, sites, tol, absolute_tol, op_cache_vec; combine_qn_sectors, output_level=0)
+      -> Tuple{MPOGraph,Vector{Int},Vector{BlockSparseMatrix{ValType}},Index}
+
+Process one site of the MPO construction algorithm.
+
+For each connected component of `g`, this routine forms the sparse adjacency
+matrix, computes a sparse QR factorization, assembles the local MPO tensor
+blocks for site `n`, and builds the graph passed to the next site. The returned
+tuple contains:
+- the graph for site `n + 1`,
+- offsets locating each connected component inside the outgoing bond space,
+- the block-sparse local MPO tensors for each component,
+- the outgoing link `Index`, optionally grouped into merged QN sectors.
+"""
 @timeit function at_site!(
   ValType::Type{<:Number},
   g::MPOGraph{N,C,Ti},
