@@ -1,5 +1,5 @@
 using ITensorMPOConstruction:
-  BipartiteGraph, compute_connected_components, num_connected_components
+  BipartiteGraph, compute_connected_components, get_cc_matrix, num_connected_components
 
 using Test
 using Graphs
@@ -49,11 +49,42 @@ function test_get_connected_components(nl::Int, nr::Int, max_edges_from_left::In
   @test isempty(ref_verts)
 end
 
-## TODO: Add test for get_cc_matrix
+function test_get_cc_matrix()
+  g = BipartiteGraph{Int,Int,Float64}(
+    zeros(Int, 4),
+    zeros(Int, 5),
+    [
+      [(2, 1.5), (5, -2.0)],
+      [(2, 3.0)],
+      [(1, 4.0)],
+      Tuple{Int,Float64}[],
+    ],
+  )
+
+  ccs = compute_connected_components(g)
+
+  @test num_connected_components(ccs) == 2
+
+  W, left_map, right_map = get_cc_matrix(g, ccs, 1)
+  @test left_map == [1, 2]
+  @test right_map == [2, 5]
+  @test Matrix(W) == [1.5 -2.0; 3.0 0.0]
+  @test g.edges_from_left[1] == [(2, 1.5), (5, -2.0)]
+  @test g.edges_from_left[2] == [(2, 3.0)]
+
+  W, left_map, right_map = get_cc_matrix(g, ccs, 2; clear_edges=true)
+  @test left_map == [3]
+  @test right_map == [1]
+  @test Matrix(W) == [4.0;;]
+  @test isempty(g.edges_from_left[3])
+  @test !isempty(g.edges_from_left[1])
+  @test !isempty(g.edges_from_left[2])
+end
 
 @testset "BipartiteGraph" begin
   test_get_connected_components(4, 4, 2)
   test_get_connected_components(10, 10, 4)
   test_get_connected_components(187, 294, 18)
   test_get_connected_components(8 * 10^3, 3 * 10^6, 9 * 10^2)
+  test_get_cc_matrix()
 end
