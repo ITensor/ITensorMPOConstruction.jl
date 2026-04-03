@@ -83,10 +83,7 @@ finds the unique right vertex from `cur_site + 2` onward, and
 stores the resulting weight in `next_edges`.
 """
 function build_next_edges_specialization!(
-  next_edges::Matrix{Vector{Tuple{Int,C}}},
-  g::MPOGraph{N,C,Ti},
-  cur_site::Int,
-  edges
+  next_edges::Matrix{Vector{Tuple{Int,C}}}, g::MPOGraph{N,C,Ti}, cur_site::Int, edges
 )::Nothing where {N,C,Ti}
   @assert size(next_edges, 1) == 1
 
@@ -215,9 +212,7 @@ tolerance scale. The return values are the orthogonal factor `Q`, upper-triangul
 factor `R`, row and column permutations, and the numerical rank.
 """
 function sparse_qr(
-  A::SparseMatrixCSC,
-  tol::Real,
-  absolute_tol::Bool
+  A::SparseMatrixCSC, tol::Real, absolute_tol::Bool
 )::Tuple{SparseArrays.SPQR.QRSparseQ,SparseMatrixCSC,Vector{Int},Vector{Int},Int}
   ret = nothing
 
@@ -294,10 +289,7 @@ If `needs_JW_string` is `true`, the contribution is multiplied by the diagonal
 Jordan-Wigner sign pattern expected for 2-state or 4-state fermionic sites.
 """
 function add_to_local_matrix!(
-  a::Matrix,
-  weight::Number,
-  local_op::Matrix,
-  needs_JW_string::Bool
+  a::Matrix, weight::Number, local_op::Matrix, needs_JW_string::Bool
 )::Nothing
   if !needs_JW_string
     a .+= weight * local_op

@@ -245,9 +245,9 @@ function test_non_zero_flux()::Nothing
   os .+= 1.0, "S-", 1, "S-", 4
   os .+= 1.0, "S-", 2, "S-", 3
   O = MPO_new(os, sites)
-  
+
   @test flux(O) == QN(("Number", 2))
-  
+
   mpoFromITensor = MPO(os, sites)
   compare_MPOs(O, mpoFromITensor)
 

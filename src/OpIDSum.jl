@@ -398,7 +398,7 @@ product cannot be represented by a single basis operator.
     else
       local_matrix = prod(op_cache_vec[n][op.id].matrix for op in ops)
     end
-    
+
     scale = scale_by_first_nz!(local_matrix)
     for (i, (basis_scale, basis_matrix)) in enumerate(scaled_basis_ops[n])
       basis_matrix == local_matrix && return scale / basis_scale, i
@@ -533,7 +533,7 @@ every term has even fermion parity.
       flux != flux_of_first_term && error(
         "Inconsistent flux found!\n" *
         "  Term 1 has a flux of $flux_of_first_term\n" *
-        "  Term $i has a flux of $flux"
+        "  Term $i has a flux of $flux",
       )
     end
 

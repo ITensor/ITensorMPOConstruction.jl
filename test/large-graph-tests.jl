@@ -53,12 +53,7 @@ function test_get_cc_matrix()
   g = BipartiteGraph{Int,Int,Float64}(
     zeros(Int, 4),
     zeros(Int, 5),
-    [
-      [(2, 1.5), (5, -2.0)],
-      [(2, 3.0)],
-      [(1, 4.0)],
-      Tuple{Int,Float64}[],
-    ],
+    [[(2, 1.5), (5, -2.0)], [(2, 3.0)], [(1, 4.0)], Tuple{Int,Float64}[]],
   )
 
   ccs = compute_connected_components(g)

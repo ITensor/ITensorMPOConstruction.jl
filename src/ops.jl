@@ -40,7 +40,7 @@ Return the operator id in `ops` acting on site `n`.
 
 If no operator acts on site `n`, this returns `1` a.k.a the identity operator.
 """
-function get_onsite_op(ops::NTuple{N,OpID{Ti}}, n::Int)::Ti where {N, Ti}
+function get_onsite_op(ops::NTuple{N,OpID{Ti}}, n::Int)::Ti where {N,Ti}
   for i in 1:N
     ops[i].n == n && return ops[i].id
   end

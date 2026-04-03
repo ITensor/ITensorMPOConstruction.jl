@@ -15,7 +15,7 @@ function my_ITensor(
   checkflux=true,
 )::ITensor where {C}
   T = ITensors.BlockSparseTensor(C, Block{length(inds)}[], inds)
-  
+
   for (offset, matrix) in zip(offsets, block_sparse_matrices)
     for ((left_link, right_link), block) in matrix
       for i in 1:size(block, 1)
@@ -176,7 +176,7 @@ function MPO_new(
   basis_op_cache_vec=nothing,
   check_for_errors::Bool=true,
   output_level::Int=0,
-  kwargs...
+  kwargs...,
 )::MPO
   prepare_opID_sum!(os, to_OpCacheVec(sites, basis_op_cache_vec))
   check_for_errors && check_os_for_errors(os)
@@ -193,15 +193,7 @@ function MPO_new(
   end
 
   return resume_MPO_construction(
-    ValType,
-    1,
-    H,
-    sites,
-    llinks,
-    g,
-    os.op_cache_vec;
-    output_level,
-    kwargs...
+    ValType, 1, H, sites, llinks, g, os.op_cache_vec; output_level, kwargs...
   )
 end
 
@@ -260,18 +252,18 @@ returns the total number of entries in the MPO and the total number
 of structural non-zeros. This can be used to directly compare sparsities
 with the `block2` storage format.
 """
-function block2_nnz(mpo::MPO)::Tuple{Int, Int}
+function block2_nnz(mpo::MPO)::Tuple{Int,Int}
   total_blocks = 0
   nnz_blocks = 0
   sites = noprime(siteinds(first, mpo))
   for (i, t) in enumerate(mpo)
     t = t.tensor
     total_blocks += prod(size(t)) ÷ dim(sites[i])^2
-    
+
     link_locs = [j for j in 1:ndims(t) if inds(t)[j] ∉ (dag(sites[i]), sites[i]')]
     @assert length(link_locs) ∈ (1, 2)
 
-    nz_link_coords = Set{Tuple{Int, Int}}()
+    nz_link_coords = Set{Tuple{Int,Int}}()
 
     for b in ITensors.eachnzblock(t)
       block = ITensors.blockview(t, b)
