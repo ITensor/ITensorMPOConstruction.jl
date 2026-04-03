@@ -1,3 +1,3 @@
 var documenterSearchIndex = {"docs":
-[{"location":"#ITensorMPOConstruction","page":"Home","title":"ITensorMPOConstruction","text":"Documentation for ITensorMPOConstruction.\n\n","category":"section"}]
+[{"category":"section","location":"#ITensorMPOConstruction","page":"Home","text":"Documentation for ITensorMPOConstruction.\n\n","title":"ITensorMPOConstruction"}]
 }
