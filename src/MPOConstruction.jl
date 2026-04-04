@@ -36,13 +36,19 @@ function my_ITensor(
 end
 
 _resume_MPO_kwargs = """
-Keyword arguments:
-- `tol`: truncation threshold passed to the sparse QR step.
-- `absolute_tol`: if `true`, interpret `tol` as an absolute QR tolerance.
-- `combine_qn_sectors`: if `true`, merge QN sectors with the same total QN in the links.
-- `call_back`: hook called as `call_back(cur_site, H, sites, llinks, cur_graph, op_cache_vec)`
-  with the progress at each site.
-- `output_level`: controls progress and timing output.
+- `tol=1`: A multiplicative modifier to the default tolerance used in the SPQR,
+  see [SPQR user guide Section 2.3](https://fossies.org/linux/SuiteSparse/SPQR/Doc/spqr_user_guide.pdf).
+  The value of the default tolerance depends on the input matrix, which means a different
+  tolerance is used for each decomposition. In the cases we have examined, the default 
+  tolerance works great for producing accurate MPOs.
+- `absolute_tol=false`: If true, override the default adaptive tolerance scheme outlined above,
+  and use the value of `tol` as the single tolerance for each decomposition.
+- `combine_qn_sectors=false`: When `true`, the blocks of the MPO corresponding to the same
+  quantum numbers are merged together into a single block. This can decrease the resulting sparsity.
+- `call_back`: A function that is called after constructing the MPO tensor at `cur_site`.
+  Called as `call_back(cur_site, H, sites, llinks, cur_graph, op_cache_vec)`.
+  Primarily used for writing checkpoints to disk for large calculations.
+- `output_level=0`: Controls progress and timing output.
 """
 
 @doc """
@@ -56,6 +62,7 @@ This is the low-level driver underlying `MPO_new`. At each site it factors the
 current graph with `at_site!`, builds the local MPO tensor, stores it into `H`, 
 and advances to the next-site graph. The callback is invoked after each site is completed.
 
+Keyword arguments:
 $_resume_MPO_kwargs
 """
 function resume_MPO_construction(
@@ -161,12 +168,17 @@ end
     MPO_new(ValType, os::OpIDSum, sites; basis_op_cache_vec=nothing,
       check_for_errors=true, output_level=0, kwargs...) -> MPO
 
-Construct an MPO from a precomputed `OpIDSum`.
+Construct an MPO from a `OpIDSum`.
 
-Before construction, `os` can optionally be rewritten into `basis_op_cache_vec`,
-and basic consistency checks can be run with `check_for_errors=true`. Remaining
-keyword arguments are forwarded to `resume_MPO_construction`.
+Before construction, `os` can optionally be rewritten into the basis defined by
+`basis_op_cache_vec`, and basic consistency checks can be run with `check_for_errors=true`.
 
+Keyword arguments:
+- `basis_op_cache_vec=nothing`: A list of operators to use as a basis for each site.
+  The operators on each site are expressed as one of these basis operators. If `nothing`
+  a basis is inferred from the input and no basis transformation occurs.
+- `check_for_errors=true`: Check the input OpSum for errors, this can be expensive
+  for larger problems.
 $_resume_MPO_kwargs
 """
 function MPO_new(
