@@ -76,6 +76,7 @@ struct BipartiteGraphConnectedComponents
   rv_size_of_component::Vector{Int}
 end
 
+## TODO: document
 @timeit function combine_duplicate_adjacent_right_vertices!(g::BipartiteGraph, eq::Function)::Vector{Int}
   new_positions = zeros(Int, right_size(g))
 
@@ -95,7 +96,6 @@ end
 
   resize!(g.right_vertices, cur)
 
-  ## Re-label the left edges. TODO: Think if there may be a better place to do this, my initial guess is no.
   Threads.@threads for lv_id in 1:left_size(g)
     for (i, (rv_id, weight)) in enumerate(g.edges_from_left[lv_id])
       g.edges_from_left[lv_id][i] = new_positions[rv_id], weight
@@ -223,29 +223,47 @@ The returned tuple contains:
 If `clear_edges=true`, the consumed adjacency lists are emptied from `g` as the
 matrix is assembled.
 """
-@timeit function get_cc_matrix(
+function get_cc_matrix(
   g::BipartiteGraph{L,R,C},
   ccs::BipartiteGraphConnectedComponents,
   cc::Int;
   clear_edges::Bool=false,
 )::Tuple{SparseMatrixCSC{C,Int},Vector{Int},Vector{Int}} where {L,R,C}
-  num_edges = sum(length(g.edges_from_left[lv]) for lv in ccs.lvs_of_component[cc])
+  left_map = ccs.lvs_of_component[cc]
+  num_left = length(left_map)
+  num_right = ccs.rv_size_of_component[cc]
+  component_position_of_rvs = ccs.component_position_of_rvs
 
-  edge_left_vertex = Vector{Int}(undef, num_edges)
-  edge_right_vertex = Vector{Int}(undef, num_edges)
-  edge_weight = Vector{C}(undef, num_edges)
-  right_map = Vector{Int}(undef, ccs.rv_size_of_component[cc])
-
-  pos = 1
-  for (i, lv_id) in enumerate(ccs.lvs_of_component[cc])
-    for (rv_id, weight) in g.edges_from_left[lv_id]
-      j = ccs.component_position_of_rvs[rv_id]
+  ## Count entries in each column and record the local-to-global right-vertex map.
+  colptr = zeros(Int, num_right + 1)
+  right_map = Vector{Int}(undef, num_right)
+  @inbounds for lv_id in left_map
+    for (rv_id, _) in g.edges_from_left[lv_id]
+      j = component_position_of_rvs[rv_id]
+      colptr[j + 1] += 1
       right_map[j] = rv_id
+    end
+  end
 
-      edge_left_vertex[pos] = i
-      edge_right_vertex[pos] = j
-      edge_weight[pos] = weight
-      pos += 1
+  colptr[1] = 1
+  @inbounds for j in 1:num_right
+    colptr[j + 1] += colptr[j]
+  end
+
+  num_edges = colptr[end] - 1
+  rowvals = Vector{Int}(undef, num_edges)
+  nzvals = Vector{C}(undef, num_edges)
+  next_position = copy(colptr)
+
+  ## Fill the CSC backing storage directly. Since the rows are traversed in
+  ## increasing order, each column is already row-sorted.
+  @inbounds for (i, lv_id) in enumerate(left_map)
+    for (rv_id, weight) in g.edges_from_left[lv_id]
+      j = component_position_of_rvs[rv_id]
+      pos = next_position[j]
+      rowvals[pos] = i
+      nzvals[pos] = weight
+      next_position[j] = pos + 1
     end
 
     if clear_edges
@@ -254,7 +272,36 @@ matrix is assembled.
     end
   end
 
-  return sparse(edge_left_vertex, edge_right_vertex, edge_weight),
-  ccs.lvs_of_component[cc],
-  right_map
+  ## Merge duplicate structural entries so repeated edges keep the same
+  ## semantics as `sparse(row, col, val)`.
+  write_pos = 1
+  @inbounds for j in 1:num_right
+    start = colptr[j]
+    stop = colptr[j + 1] - 1
+    colptr[j] = write_pos
+    start > stop && continue
+
+    row = rowvals[start]
+    val = nzvals[start]
+    for pos in (start + 1):stop
+      if rowvals[pos] == row
+        val += nzvals[pos]
+      else
+        rowvals[write_pos] = row
+        nzvals[write_pos] = val
+        write_pos += 1
+        row = rowvals[pos]
+        val = nzvals[pos]
+      end
+    end
+
+    rowvals[write_pos] = row
+    nzvals[write_pos] = val
+    write_pos += 1
+  end
+  colptr[end] = write_pos
+  resize!(rowvals, write_pos - 1)
+  resize!(nzvals, write_pos - 1)
+
+  return SparseMatrixCSC(num_left, num_right, colptr, rowvals, nzvals), left_map, right_map
 end

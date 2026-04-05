@@ -30,53 +30,6 @@ julia> using Pkg; Pkg.add(url="https://github.com/ITensor/ITensorMPOConstruction
 
 If you use this library in your research, please cite the following article https://doi.org/10.1103/nzrt-l2j1
 
-## Reporting Issues: TODO
+## Questions or Issues
 
-## Benchmarks: Fermi-Hubbard Hamiltonian in Momentum Space
-
-We constructed the momentum space Fermi-Hubbard Hamiltonian using ITensorMPS and ITensorMPOConstruction. For even $N$, the Hamiltonian can be represented exactly as an MPO of bond dimension $10 N - 4$, and both algorithms achieve this minimal bond dimension. ITensorMPOConstruction is also not only able to construct this particular MPO much faster, but the sparsity of the resulting MPO is much higher.
-
-### Bond Dimension 
-| $N$ | ITensorMPS | ITensorMPOConstruction |
-|-----|------------|------------------------|
-| 10  | 96         | 96                     |
-| 20  | 196        | 196                    |
-| 30  | 296        | 296                    |
-| 40  | N/A        | 396                    |
-| 50  | N/A        | 496                    |
-| 100 | N/A        | 996                    |
-| 200 | N/A        | 1996                   |
-| 300 | N/A        | 2996                   |
-| 400 | N/A        | 3996                   |
-| 500 | N/A        | 4996                   |
-
-### Sparsity 
-
-Sparsity of the `ITensorMPS` MPO with the default `splitblocks=true`, and the `ITensorMPOConstruction` MPO with the less aggressive `combine_qn_sectors::Bool=false`.
-
-| $N$ | ITensorMPS | ITensorMPOConstruction |
-|-----|------------|------------------------|
-| 10  | 92.7%      | 99.32%                 |
-| 20  | 92.6%      | 99.70%                 |
-| 30  | 92.6%      | 99.81%                 |
-| 40  | N/A        | 99.86%                 |
-| 50  | N/A        | 99.89%                 |
-| 100 | N/A        | 99.94%                 |
-| 200 | N/A        | 99.97%                 |
-| 300 | N/A        | 99.982%                |
-| 400 | N/A        | 99.986%                |
-| 500 | N/A        | 99.999%                |
-
-### Runtime 
-| $N$ | ITensorMPS | ITensorMPOConstruction |
-|-----|------------|------------------------|
-| 10  | 0.32s      | 0.009s                 |
-| 20  | 30.6s      | 0.052s                 |
-| 30  | 792s       | 0.14s                  |
-| 40  | N/A        | 0.38s                  |
-| 50  | N/A        | 0.63s                  |
-| 100 | N/A        | 7.7s                   |
-| 200 | N/A        | 103s                   |
-| 300 | N/A        | 500s                   |
-| 400 | N/A        | 1554s                  |
-| 500 | N/A        | 3802s                  |
+In addition to GitHub issues, you can ask question on the [ITensors discourse](https://itensor.discourse.group/).

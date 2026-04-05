@@ -29,6 +29,7 @@ for example in examples
   )
 end
 
+cp("./README.md", "./docs/src/index.md"; force=true)
 
 makedocs(;
   modules=[ITensorMPOConstruction],

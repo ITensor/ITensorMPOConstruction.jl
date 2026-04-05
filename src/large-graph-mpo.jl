@@ -209,7 +209,7 @@ If `absolute_tol` is `false`, `tol` is interpreted relative to SPQR's default
 tolerance scale. The return values are the orthogonal factor `Q`, upper-triangular
 factor `R`, row and column permutations, and the numerical rank.
 """
-@timeit function sparse_qr(
+function sparse_qr(
   A::SparseMatrixCSC, tol::Real, absolute_tol::Bool
 )::Tuple{SparseArrays.SPQR.QRSparseQ,SparseMatrixCSC,Vector{Int},Vector{Int},Int}
   ret = nothing
@@ -442,6 +442,7 @@ components are iterated over using threads. The returned tuple contains:
   workspace = combine_duplicate_adjacent_right_vertices!(g, terms_eq_from(n + 1))
   ccs = compute_connected_components(g, workspace)
   nccs = num_connected_components(ccs)
+  workspace = nothing
 
   ## The rank of each connected component.
   rank_of_cc = zeros(Int, nccs)
@@ -461,7 +462,7 @@ components are iterated over using threads. The returned tuple contains:
     "  The graph is $(left_size(g)) × $(right_size(g)) with $(num_edges(g)) edges and $(nccs) connected components. tol = $(@sprintf("%.2E", tol))",
   )
 
-  @timeit "Threaded loop" for cc in 1:nccs
+  @timeit "Threaded loop" Threads.@threads for cc in 1:nccs
     ## A specialization for when there is only one vertex on the left. This is
     ## a very common case that can be sped up significantly.
     if left_size(ccs, cc) == 1
@@ -529,13 +530,11 @@ components are iterated over using threads. The returned tuple contains:
       continue
     end
 
-    ## Build the graph for the next site out of this component.
-    next_edges = Matrix{Vector{Tuple{Int,C}}}(undef, rank, length(op_cache_vec[n + 1]))
-    for i in eachindex(next_edges)
-      next_edges[i] = Vector{Tuple{Int,C}}()
-    end
+    next_edges_size = zeros(Int, rank, length(op_cache_vec[n + 1]))
+    rv_id_lookup = Vector{Int}(undef, size(R, 2))
+    op_id_lookup = Vector{Ti}(undef, size(R, 2))
 
-    for_non_zeros_batch(R, length(right_map)) do weights::AbstractVector{C}, ms::AbstractVector{Int}, j::Int
+    for_non_zeros_batch(R, length(right_map)) do _::AbstractVector{C}, ms::AbstractVector{Int}, j::Int
       ## Convert j, which has been permuted first by the connected components
       ## and then again by SPQR into a right vertex Id.
       rv_id = right_map[pcol[j]]
@@ -543,9 +542,27 @@ components are iterated over using threads. The returned tuple contains:
       ## Get the operator acting on site (n + 1) of this right vertex.
       op_id = get_onsite_op(right_vertex(g, rv_id), n + 1)
 
+      rv_id_lookup[j] = rv_id
+      op_id_lookup[j] = op_id
+
+      for m in ms
+        next_edges_size[m, op_id] += 1
+      end
+    end
+
+    ## Build the graph for the next site out of this component.
+    next_edges = Matrix{Vector{Tuple{Int,C}}}(undef, rank, length(op_cache_vec[n + 1]))
+    for i in eachindex(next_edges)
+      next_edges[i] = Vector{Tuple{Int,C}}()
+      sizehint!(next_edges[i], next_edges_size[i])
+    end
+
+    for_non_zeros_batch(R, length(right_map)) do weights::AbstractVector{C}, ms::AbstractVector{Int}, j::Int
+      rv_id = rv_id_lookup[j]
+      op_id = op_id_lookup[j]
+
       ## Add the edges.
       for (weight, m) in zip(weights, ms)
-        m > rank && return nothing
         push!(next_edges[m, op_id], (rv_id, weight))
       end
     end

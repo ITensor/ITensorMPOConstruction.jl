@@ -76,10 +76,28 @@ function test_get_cc_matrix()
   @test !isempty(g.edges_from_left[2])
 end
 
+function test_get_cc_matrix_duplicate_edges()
+  g = BipartiteGraph{Int,Int,Float64}(
+    zeros(Int, 2),
+    zeros(Int, 2),
+    [[(1, 1.5), (1, -0.5), (2, 3.0)], [(2, 4.0), (2, -1.0)]],
+  )
+
+  ccs = compute_connected_components(g)
+
+  @test num_connected_components(ccs) == 1
+
+  W, left_map, right_map = get_cc_matrix(g, ccs, 1)
+  @test left_map == [1, 2]
+  @test right_map == [1, 2]
+  @test Matrix(W) == [1.0 3.0; 0.0 3.0]
+end
+
 @testset "BipartiteGraph" begin
   test_get_connected_components(4, 4, 2)
   test_get_connected_components(10, 10, 4)
   test_get_connected_components(187, 294, 18)
   test_get_connected_components(8 * 10^3, 3 * 10^6, 9 * 10^2)
   test_get_cc_matrix()
+  test_get_cc_matrix_duplicate_edges()
 end

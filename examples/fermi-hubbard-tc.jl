@@ -184,7 +184,7 @@ function transcorrelated_fermi_hubbard(t::Real, U::Real, J::Real, mapping::Array
 
   sites = sites_from_grid(mapping)
   os = OpIDSum{6, Float64, UInt8}(
-    (J == 0) ? N^3 : N^5 ÷ 2,
+    (J == 0) ? N^3 + 2 * N : N^5 ÷ 2,
     create_op_cache_vec(sites), 
     merge_sorted_ops;
     abs_tol=1e-14
@@ -208,7 +208,7 @@ function transcorrelated_fermi_hubbard(t::Real, U::Real, J::Real, mapping::Array
     end
   end
 
-  J == 0 && return os
+  J == 0 && return sites, os
 
   ## The transcorrelated two electron terms
   for p in CartesianIndices(mapping)
@@ -327,7 +327,7 @@ end
 
 # ## Constructing the MPO
 #
-# Now that we got that out of the way, we can finally construct the MPO. To illustrate the threading performance we constructed the MPO for the ``6 \times 6`` system with a single thread and eight threads on a 2021 MacBook Pro with the M1 Max CPU and 32GB of memory. With a single thread constructing the `OpIDSum` took 7.8s and constructing the MPO another 141s. With eight threads constructing the `OpIDSum` took 2.8s and constructing the MPO took 103s.
+# Now that we got that out of the way, we can finally construct the MPO. For the ``8 \times 8`` system with eight threads on a 2021 MacBook Pro with the M1 Max CPU and 32GB of memory constructing the `OpIDSum` took one minute and constructing the MPO took an hour.
 
 using TimerOutputs
 for grid_size in ((2, 2), (6, 6))
@@ -338,5 +338,7 @@ for grid_size in ((2, 2), (6, 6))
     grid_size != (2, 2) && print_timer()
   end
 end
+
+## TODO: Illustrate IO capabilities.
 
 nothing

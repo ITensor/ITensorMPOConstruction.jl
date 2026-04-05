@@ -19,6 +19,7 @@ include("OpIDSum.jl")
 include("ops.jl")
 include("large-graph.jl")
 include("large-graph-mpo.jl")
+include("sparse_tensor_construction.jl")
 include("MPOConstruction.jl")
 
 #####################################

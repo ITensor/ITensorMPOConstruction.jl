@@ -191,7 +191,7 @@ function transcorrelated_fermi_hubbard(t::Real, U::Real, J::Real, mapping::Array
 
   sites = sites_from_grid(mapping)
   os = OpIDSum{6, Float64, UInt8}(
-    (J == 0) ? N^3 : N^5 ÷ 2,
+    (J == 0) ? N^3 + 2 * N : N^5 ÷ 2,
     create_op_cache_vec(sites),
     merge_sorted_ops;
     abs_tol=1e-14
@@ -215,7 +215,7 @@ function transcorrelated_fermi_hubbard(t::Real, U::Real, J::Real, mapping::Array
     end
   end
 
-  J == 0 && return os
+  J == 0 && return sites, os
 
   # The transcorrelated two electron terms
   for p in CartesianIndices(mapping)
@@ -294,17 +294,19 @@ end
 function bipartite_mapping(grid_size)
   @assert all(mod(dim, 2) == 0 for dim in grid_size)
 
+  mapping = zeros(Int, grid_size...)
+
   blocks = Dict{Float64, Vector{NTuple{2, CartesianIndex}}}()
-  offset = CartesianIndex([dim ÷ 2 for dim in gridSizes]...)
-  for (i, loc) in enumerate(each_grid_site(gridSizes))
-    partnerLoc = wrap_around(gridSizes, loc + offset)
+  offset = CartesianIndex([dim ÷ 2 for dim in grid_size]...)
+  for (i, loc) in enumerate(CartesianIndices(mapping))
+    partnerLoc = wrap_around(grid_size, loc + offset)
 
     if loc < partnerLoc
       continue
     end
 
-    eps = epsilon(gridSizes, loc)
-    epsPartner = epsilon(gridSizes, partnerLoc)
+    eps = epsilon(grid_size, loc)
+    epsPartner = epsilon(grid_size, partnerLoc)
 
     if eps < epsPartner
       pair = loc, partnerLoc
@@ -319,8 +321,6 @@ function bipartite_mapping(grid_size)
       push!(block, pair)
     end
   end
-
-  mapping = zeros(Int, grid_size...)
 
   i = 1
   for eps in sort([k for k in keys(blocks)])
@@ -337,11 +337,20 @@ end
 
 ## Constructing the MPO
 
+Now that we got that out of the way, we can finally construct the MPO. For the ``8 \times 8`` system with eight threads on a 2021 MacBook Pro with the M1 Max CPU and 32GB of memory constructing the `OpIDSum` took one minute and constructing the MPO took an hour.
+
 ````julia
-let t = 1, U = 4, J = -0.5, mapping = bipartite_mapping((4, 4))
-  sites, os = transcorrelated_fermi_hubbard(t, U, J, mapping)
-  H = MPO_new(os, sites; combine_qn_sectors=true, output_level=2)
+using TimerOutputs
+for grid_size in ((2, 2), (6, 6))
+  let t = 1, U = 4, J = -0.5, mapping = bipartite_mapping(grid_size)
+    @time "Constructing OpIDSum" sites, os = transcorrelated_fermi_hubbard(t, U, J, mapping)
+    reset_timer!()
+    @time "Constructing MPO" H = MPO_new(os, sites; combine_qn_sectors=true, output_level=0, check_for_errors=false)
+    grid_size != (2, 2) && print_timer()
+  end
 end
+
+# TODO: Illustrate IO capabilities.
 
 nothing
 ````

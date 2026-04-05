@@ -45,7 +45,6 @@ ITensorMPOConstruction.BlockSparseMatrix
 ITensorMPOConstruction.add_to_local_matrix!
 ITensorMPOConstruction.CoSorterElement
 ITensorMPOConstruction.sparse_qr
-ITensorMPOConstruction.my_ITensor
 ITensorMPOConstruction.LeftVertex
 ITensorMPOConstruction.CoSorter
 ITensorMPOConstruction.add_to_next_graph!
@@ -56,4 +55,6 @@ ITensorMPOConstruction.merge_qn_sectors
 ITensorMPOConstruction.@time_if
 ITensorMPOConstruction.at_site!
 ITensorMPOConstruction.build_next_edges_specialization!
+ITensorMPOConstruction.to_sparse_itensor
+ITensorMPOConstruction.process_single_left_vertex_cc!
 ```
