@@ -13,6 +13,11 @@
 #
 # While the Hamiltonian as written above has a number of terms that scales as ``2 N^5``, by grouping like-terms together total number of terms can be reduced to ``N^5 / 2``, nevertheless, simply constructing the `OpIDSum` for this Hamiltonian is a hard problem, for the ``12 \times 12`` system the `OpIDSum` alone takes up almost 600GiB. Because of this we needed to construct the `OpIDSum` directly to avoid constructing the much more costly (in both time and space) `OpSum`. 
 
+try
+  using MKL
+catch
+end
+
 using ITensors, ITensorMPS, ITensorMPOConstruction
 
 ↓ = false
@@ -176,7 +181,7 @@ end
 #
 # 2. In order to permit the functioning of `merge_sorted_ops`, we always put spin-up operators before spin-down operators in each term.
 #
-# 3. Adding the three-electron terms dominate the runtime of this function, but we can add them in parallel with a simple `Threads.@threads`. Thread safety is handled internally to `add!`, which does a single `atomic_add`. The overhead of this atomic is swamped by the cost of sorting and merging the operators within each term, and as such the parallelism is good.
+# 3. Adding the three-electron terms dominate the runtime of this function, but we can add them in parallel with a simple `Threads.@threads`. Thread safety is handled internally to `add!`.
 
 function transcorrelated_fermi_hubbard(t::Real, U::Real, J::Real, mapping::Array{Int})::Tuple{Vector{ITensors.QNIndex}, OpIDSum}
   grid_size = size(mapping)

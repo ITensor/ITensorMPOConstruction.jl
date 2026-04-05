@@ -202,8 +202,7 @@ end
     sparse_qr(A::SparseMatrixCSC, tol::Real, absolute_tol::Bool)
         -> Tuple{Q,R,prow,pcol,rank}
 
-Compute a sparse QR factorization of `A` using SuiteSparse SPQR with a single
-thread.
+Compute a sparse QR factorization of `A` using SuiteSparse SPQR.
 
 If `absolute_tol` is `false`, `tol` is interpreted relative to SPQR's default
 tolerance scale. The return values are the orthogonal factor `Q`, upper-triangular
@@ -220,7 +219,7 @@ function sparse_qr(
     tol *= SparseArrays.SPQR._default_tol(A)
   end
 
-  SparseArrays.CHOLMOD.@cholmod_param SPQR_nthreads = 1 begin
+  SparseArrays.CHOLMOD.@cholmod_param SPQR_nthreads = BLAS.get_num_threads() begin
     ret = qr(A; tol)
   end
 
