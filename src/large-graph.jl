@@ -85,10 +85,20 @@ the left and right sides of the bipartite graph (i.e. discarding isolated vertic
 The returned object records, for each retained component, which left vertices it
 contains and how global right-vertex ids map into local positions within their component.
 """
-@timeit function compute_connected_components(
+function compute_connected_components(
   g::BipartiteGraph
 )::BipartiteGraphConnectedComponents
-  min_lv_connected_to_rv = fill(typemax(Int), right_size(g))
+  return compute_connected_components(g, Vector{Int}(undef, right_size(g)))
+end
+
+@timeit function compute_connected_components(
+  g::BipartiteGraph, workspace::Vector{Int}
+)::BipartiteGraphConnectedComponents
+  @assert length(workspace) >= right_size(g)
+  resize!(workspace, right_size(g))
+  min_lv_connected_to_rv = workspace
+  min_lv_connected_to_rv .= typemax(Int)
+
   component_of_lv = Int[i for i in 1:left_size(g)]
   lvs_of_component = Vector{Int}[[i] for i in 1:left_size(g)]
 
@@ -184,7 +194,7 @@ The returned tuple contains:
 If `clear_edges=true`, the consumed adjacency lists are emptied from `g` as the
 matrix is assembled.
 """
-function get_cc_matrix(
+@timeit function get_cc_matrix(
   g::BipartiteGraph{L,R,C},
   ccs::BipartiteGraphConnectedComponents,
   cc::Int;
@@ -218,4 +228,50 @@ function get_cc_matrix(
   return sparse(edge_left_vertex, edge_right_vertex, edge_weight),
   ccs.lvs_of_component[cc],
   right_map
+end
+
+
+function terms_eq_from(n::Int)::Function
+  function are_equal(op1::NTuple{N, OpID}, op2::NTuple{N, OpID})::Bool where {N}
+    for i in 1:N
+      op1[i].n < n && op2[i].n < n && return true
+      op1[i] != op2[i] && return false
+    end
+
+    return true
+  end
+
+  return are_equal
+end
+
+"""
+The input graph's right vertices should be sorted.
+"""
+@timeit function combine_duplicate_adjacent_right_vertices!(g::BipartiteGraph, eq::Function)::Vector{Int}
+  new_positions = zeros(Int, right_size(g))
+
+  cur, next = 1, 2
+  new_positions[cur] = 1
+  while next <= right_size(g)
+    if eq(right_vertex(g, cur), right_vertex(g, next))
+      new_positions[next] = cur
+    else
+      cur += 1
+      new_positions[next] = cur
+      g.right_vertices[cur] = g.right_vertices[next]
+    end
+
+    next += 1
+  end
+
+  resize!(g.right_vertices, cur)
+
+  ## Re-label the left edges. TODO: Think if there may be a better place to do this, my initial guess is no.
+  Threads.@threads for lv_id in 1:left_size(g)
+    for (i, (rv_id, weight)) in enumerate(g.edges_from_left[lv_id])
+      g.edges_from_left[lv_id][i] = new_positions[rv_id], weight
+    end
+  end
+
+  return new_positions
 end

@@ -536,7 +536,7 @@ Apply optional preprocessing to `os` before MPO construction.
 Currently this rewrites terms into `basis_op_cache_vec` when a basis cache is
 provided and otherwise leaves `os` unchanged.
 """
-@timeit function prepare_opID_sum!(
+function prepare_opID_sum!(
   os::OpIDSum, basis_op_cache_vec::Union{Nothing,OpCacheVec}
 )
   if !isnothing(basis_op_cache_vec)

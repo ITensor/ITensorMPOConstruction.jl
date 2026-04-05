@@ -329,10 +329,13 @@ end
 #
 # Now that we got that out of the way, we can finally construct the MPO. To illustrate the threading performance we constructed the MPO for the ``6 \times 6`` system with a single thread and eight threads on a 2021 MacBook Pro with the M1 Max CPU and 32GB of memory. With a single thread constructing the `OpIDSum` took 7.8s and constructing the MPO another 141s. With eight threads constructing the `OpIDSum` took 2.8s and constructing the MPO took 103s.
 
-for grid_size in ((2, 2), (8, 8))
+using TimerOutputs
+for grid_size in ((2, 2), (6, 6))
   let t = 1, U = 4, J = -0.5, mapping = bipartite_mapping(grid_size)
+    reset_timer!()
     @time "Constructing OpIDSum" sites, os = transcorrelated_fermi_hubbard(t, U, J, mapping)
-    @time "Constructing MPO" H = MPO_new(os, sites; combine_qn_sectors=true, output_level=10)
+    @time "Constructing MPO" H = MPO_new(os, sites; combine_qn_sectors=true, output_level=0, check_for_errors=false)
+    grid_size != (2, 2) && print_timer()
   end
 end
 
