@@ -332,8 +332,8 @@ end
 using TimerOutputs
 for grid_size in ((2, 2), (6, 6))
   let t = 1, U = 4, J = -0.5, mapping = bipartite_mapping(grid_size)
-    reset_timer!()
     @time "Constructing OpIDSum" sites, os = transcorrelated_fermi_hubbard(t, U, J, mapping)
+    reset_timer!()
     @time "Constructing MPO" H = MPO_new(os, sites; combine_qn_sectors=true, output_level=0, check_for_errors=false)
     grid_size != (2, 2) && print_timer()
   end

@@ -76,6 +76,35 @@ struct BipartiteGraphConnectedComponents
   rv_size_of_component::Vector{Int}
 end
 
+@timeit function combine_duplicate_adjacent_right_vertices!(g::BipartiteGraph, eq::Function)::Vector{Int}
+  new_positions = zeros(Int, right_size(g))
+
+  cur, next = 1, 2
+  new_positions[cur] = 1
+  while next <= right_size(g)
+    if eq(right_vertex(g, cur), right_vertex(g, next))
+      new_positions[next] = cur
+    else
+      cur += 1
+      new_positions[next] = cur
+      g.right_vertices[cur] = g.right_vertices[next]
+    end
+
+    next += 1
+  end
+
+  resize!(g.right_vertices, cur)
+
+  ## Re-label the left edges. TODO: Think if there may be a better place to do this, my initial guess is no.
+  Threads.@threads for lv_id in 1:left_size(g)
+    for (i, (rv_id, weight)) in enumerate(g.edges_from_left[lv_id])
+      g.edges_from_left[lv_id][i] = new_positions[rv_id], weight
+    end
+  end
+
+  return new_positions
+end
+
 """
     compute_connected_components(g::BipartiteGraph) -> BipartiteGraphConnectedComponents
 
@@ -228,50 +257,4 @@ matrix is assembled.
   return sparse(edge_left_vertex, edge_right_vertex, edge_weight),
   ccs.lvs_of_component[cc],
   right_map
-end
-
-
-function terms_eq_from(n::Int)::Function
-  function are_equal(op1::NTuple{N, OpID}, op2::NTuple{N, OpID})::Bool where {N}
-    for i in 1:N
-      op1[i].n < n && op2[i].n < n && return true
-      op1[i] != op2[i] && return false
-    end
-
-    return true
-  end
-
-  return are_equal
-end
-
-"""
-The input graph's right vertices should be sorted.
-"""
-@timeit function combine_duplicate_adjacent_right_vertices!(g::BipartiteGraph, eq::Function)::Vector{Int}
-  new_positions = zeros(Int, right_size(g))
-
-  cur, next = 1, 2
-  new_positions[cur] = 1
-  while next <= right_size(g)
-    if eq(right_vertex(g, cur), right_vertex(g, next))
-      new_positions[next] = cur
-    else
-      cur += 1
-      new_positions[next] = cur
-      g.right_vertices[cur] = g.right_vertices[next]
-    end
-
-    next += 1
-  end
-
-  resize!(g.right_vertices, cur)
-
-  ## Re-label the left edges. TODO: Think if there may be a better place to do this, my initial guess is no.
-  Threads.@threads for lv_id in 1:left_size(g)
-    for (i, (rv_id, weight)) in enumerate(g.edges_from_left[lv_id])
-      g.edges_from_left[lv_id][i] = new_positions[rv_id], weight
-    end
-  end
-
-  return new_positions
 end

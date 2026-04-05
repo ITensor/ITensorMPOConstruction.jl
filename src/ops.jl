@@ -33,6 +33,19 @@ function are_equal(op1::NTuple{N,OpID}, op2::NTuple{N,OpID}, n::Int)::Bool where
   return true
 end
 
+function terms_eq_from(n::Int)::Function
+  function are_equal(op1::NTuple{N, OpID}, op2::NTuple{N, OpID})::Bool where {N}
+    for i in 1:N
+      op1[i].n < n && op2[i].n < n && return true
+      op1[i] != op2[i] && return false
+    end
+
+    return true
+  end
+
+  return are_equal
+end
+
 """
     get_onsite_op(ops::NTuple{N,OpID{Ti}}, n::Int) where {N, Ti} -> Ti
 

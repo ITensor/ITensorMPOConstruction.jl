@@ -461,7 +461,7 @@ components are iterated over using threads. The returned tuple contains:
     "  The graph is $(left_size(g)) × $(right_size(g)) with $(num_edges(g)) edges and $(nccs) connected components. tol = $(@sprintf("%.2E", tol))",
   )
 
-  @timeit "Threaded loop" Threads.@threads for cc in 1:nccs
+  @timeit "Threaded loop" for cc in 1:nccs
     ## A specialization for when there is only one vertex on the left. This is
     ## a very common case that can be sped up significantly.
     if left_size(ccs, cc) == 1
