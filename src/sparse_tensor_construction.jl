@@ -142,32 +142,3 @@ function to_sparse_itensor(
 
   return itensor(T)
 end
-
-## TODO: Move into a test file and use to test to_sparse_itensor
-function my_ITensor_old(
-  offsets::Vector{Int},
-  block_sparse_matrices::Vector{BlockSparseMatrix{C}},
-  inds...;
-  tol=0.0,
-  checkflux=true,
-)::ITensor where {C}
-  T = ITensors.BlockSparseTensor(C, Block{length(inds)}[], inds)
-
-  for (offset, matrix) in zip(offsets, block_sparse_matrices)
-    for ((left_link, right_link), block) in matrix
-      for i in 1:size(block, 1)
-        for j in 1:size(block, 2)
-          if abs(block[i, j]) > tol
-            T[left_link, right_link + offset, i, j] = block[i, j]
-          end
-        end
-      end
-    end
-  end
-
-  if checkflux
-    ITensors.checkflux(T)
-  end
-
-  return itensor(T)
-end

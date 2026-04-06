@@ -3,6 +3,7 @@ using ITensorMPOConstruction:
   OpID,
   combine_duplicate_adjacent_right_vertices!,
   compute_connected_components,
+  left_size,
   get_cc_matrix,
   num_connected_components
 
@@ -53,6 +54,34 @@ function test_get_connected_components(nl::Int, nr::Int, max_edges_from_left::In
   end
 
   @test isempty(ref_verts)
+end
+
+"""
+Test the "worst case" scenario, in which the bipartite has a zipper structure
+and is fully connected.
+"""
+function test_get_connected_components_worst_case(nl::Int)
+  g = BipartiteGraph{Int,Int,Int}(
+    zeros(Int, nl), zeros(Int, nl), [Int[] for _ in 1:nl], [Int[] for _ in 1:nl]
+  )
+  for lv_id in 1:nl
+    push!(g.right_vertex_ids_from_left[lv_id], lv_id)
+    push!(g.edge_weights_from_left[lv_id], 1)
+    if lv_id < nl
+      push!(g.right_vertex_ids_from_left[lv_id], lv_id + 1)
+      push!(g.edge_weights_from_left[lv_id], 1)
+    end
+  end
+
+  ccs = compute_connected_components(g)
+
+  @test num_connected_components(ccs) == 1
+
+  @test left_size(ccs, 1) == nl
+  @test sort(ccs.lvs_of_component[1]) == [i for i in 1:nl]
+
+  @test ccs.rv_size_of_component[1] == nl
+  @test sort(ccs.component_position_of_rvs) == [i for i in 1:nl]
 end
 
 function test_get_cc_matrix()
@@ -106,36 +135,29 @@ function test_get_cc_matrix_duplicate_edges()
   @test Matrix(W) == [1.0 3.0; 0.0 3.0]
 end
 
-# function test_combine_duplicate_adjacent_right_vertices()
-#   g = BipartiteGraph{Int,NTuple{3,OpID{Int}},Float64}(
-#     zeros(Int, 1),
-#     [
-#       (OpID(2, 5), OpID(3, 3), OpID(1, 1)),
-#       (OpID(2, 5), OpID(3, 3), OpID(7, 2)),
-#       (OpID(2, 5), OpID(4, 4), OpID(1, 1)),
-#       (OpID(2, 5), OpID(4, 4), OpID(8, 2)),
-#     ],
-#     [[1, 2, 3, 4]],
-#     [[1.0, 2.0, 3.0, 4.0]],
-#   )
+function test_combine_duplicate_adjacent_right_vertices()
+  g = BipartiteGraph{Int,Int,Float64}(
+    zeros(Int, 3),
+    [10, 10, 20, 20, 20, 30],
+    [[1, 2, 3, 6], [4, 5], [2, 5, 6]],
+    [fill(1.0, 4), fill(2.0, 2), fill(3.0, 3)],
+  )
 
-#   new_positions = combine_duplicate_adjacent_right_vertices!(g, 3)
+  new_positions = combine_duplicate_adjacent_right_vertices!(g, ==)
 
-#   @test new_positions == [1, 1, 2, 2]
-#   @test g.right_vertices == [
-#     (OpID(2, 5), OpID(3, 3), OpID(1, 1)),
-#     (OpID(2, 5), OpID(4, 4), OpID(1, 1)),
-#   ]
-#   @test g.right_vertex_ids_from_left[1] == [1, 1, 2, 2]
-#   @test g.edge_weights_from_left[1] == [1.0, 2.0, 3.0, 4.0]
-# end
+  @test new_positions == [1, 1, 2, 2, 2, 3]
+  @test g.right_vertices == [10, 20, 30]
+  @test g.right_vertex_ids_from_left == [[1, 1, 2, 3], [2, 2], [1, 2, 3]]
+  @test g.edge_weights_from_left == [fill(1.0, 4), fill(2.0, 2), fill(3.0, 3)]
+end
 
 @testset "BipartiteGraph" begin
   test_get_connected_components(4, 4, 2)
   test_get_connected_components(10, 10, 4)
   test_get_connected_components(187, 294, 18)
   test_get_connected_components(8 * 10^3, 3 * 10^6, 9 * 10^2)
-  # test_combine_duplicate_adjacent_right_vertices()
+  test_get_connected_components_worst_case(1000)
+  test_combine_duplicate_adjacent_right_vertices()
   test_get_cc_matrix()
   test_get_cc_matrix_duplicate_edges()
 end

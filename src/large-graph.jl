@@ -68,7 +68,17 @@ end
   return nothing
 end
 
-## TODO: document
+"""
+    combine_duplicate_adjacent_right_vertices!(g::BipartiteGraph, eq::Function) -> Vector{Int}
+
+Combine adjacent right vertices in `g` that compare equal under `eq`.
+
+The right vertices are assumed to already be grouped so that duplicate vertices
+appear contiguously. The first vertex of each equal run is kept, later vertices
+in the run are removed, and every right-vertex id stored in the left adjacency
+lists is remapped to the surviving vertex id. The returned vector maps each
+original right-vertex id to its new position after compaction.
+"""
 @timeit function combine_duplicate_adjacent_right_vertices!(g::BipartiteGraph, eq::Function)::Vector{Int}
   right_vertices = g.right_vertices
 
