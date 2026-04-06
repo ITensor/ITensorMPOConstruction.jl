@@ -10,6 +10,7 @@ using SparseArrays
 using TimerOutputs
 using FunctionWrappers
 using Printf
+using ThreadsX
 
 #####################################
 # MPO Construction

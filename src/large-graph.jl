@@ -57,6 +57,40 @@ function num_edges(g::BipartiteGraph)::Int
   return sum(length(rvs) for rvs in g.edges_from_left)
 end
 
+## TODO: document
+@timeit function combine_duplicate_adjacent_right_vertices!(g::BipartiteGraph, eq::Function)::Vector{Int}
+  right_vertices = g.right_vertices
+
+  starts_new_run = Vector{Int}(undef, length(right_vertices))
+  starts_new_run[1] = true
+  Threads.@threads for rv_id in 2:length(right_vertices)
+    @inbounds starts_new_run[rv_id] = !eq(right_vertices[rv_id - 1], right_vertices[rv_id])
+  end
+
+  let cur = 0
+    @inbounds for rv_id in eachindex(right_vertices)
+      if starts_new_run[rv_id] == true
+        cur += 1
+        right_vertices[cur] = right_vertices[rv_id]
+      end
+      starts_new_run[rv_id] = cur
+    end
+  end
+
+  # starts_new_run now contains the position of the first equal right vertex.
+  new_positions = starts_new_run
+
+  resize!(right_vertices, new_positions[end])
+
+  Threads.@threads for lv_id in 1:left_size(g)
+    for (i, (rv_id, weight)) in enumerate(g.edges_from_left[lv_id])
+      g.edges_from_left[lv_id][i] = new_positions[rv_id], weight
+    end
+  end
+
+  return new_positions
+end
+
 """
     BipartiteGraphConnectedComponents
 
@@ -74,35 +108,6 @@ struct BipartiteGraphConnectedComponents
   lvs_of_component::Vector{Vector{Int}}
   component_position_of_rvs::Vector{Int}
   rv_size_of_component::Vector{Int}
-end
-
-## TODO: document
-@timeit function combine_duplicate_adjacent_right_vertices!(g::BipartiteGraph, eq::Function)::Vector{Int}
-  new_positions = zeros(Int, right_size(g))
-
-  cur, next = 1, 2
-  new_positions[cur] = 1
-  while next <= right_size(g)
-    if eq(right_vertex(g, cur), right_vertex(g, next))
-      new_positions[next] = cur
-    else
-      cur += 1
-      new_positions[next] = cur
-      g.right_vertices[cur] = g.right_vertices[next]
-    end
-
-    next += 1
-  end
-
-  resize!(g.right_vertices, cur)
-
-  Threads.@threads for lv_id in 1:left_size(g)
-    for (i, (rv_id, weight)) in enumerate(g.edges_from_left[lv_id])
-      g.edges_from_left[lv_id][i] = new_positions[rv_id], weight
-    end
-  end
-
-  return new_positions
 end
 
 """

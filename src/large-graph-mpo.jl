@@ -143,9 +143,10 @@ Duplicate terms are then combined, and resulting terms with a weight below
 the `os.abs_tol` are dropped. The returned graph is split about the first site.
 """
 @timeit function MPOGraph(os::OpIDSum{N,C,Ti})::MPOGraph{N,C,Ti} where {N,C,Ti}
+  @assert size(os.terms, 1) == N
+
   ## Reverse the terms in the sum, ignoring trailing identity operators.
-  for i in 1:length(os)
-    @assert size(os.terms, 1) == N
+  Threads.@threads for i in 1:length(os)
     for j in N:-1:1
       if os.terms[j, i] != zero(os.terms[j, i])
         reverse!(view(os.terms, 1:j, i))
@@ -155,25 +156,17 @@ the `os.abs_tol` are dropped. The returned graph is split about the first site.
   end
 
   ## Sort the terms and scalars.
-  @timeit "sorting" let
-    resize!(os._data, length(os))
-    resize!(os.scalars, length(os))
-    c = CoSorter(os._data, os.scalars)
-    sort!(c; alg=QuickSort)
-  end
+  resize!(os._data, length(os))
+  resize!(os.scalars, length(os))
+  sort!(CoSorter(os._data, os.scalars); alg=ThreadsX.QuickSort)
 
-  ## Combine duplicate terms.
-  for i in 1:(length(os) - 1)
-    if os._data[i] == os._data[i + 1]
-      os.scalars[i + 1] += os.scalars[i]
-      os.scalars[i] = 0
-    end
-  end
-
-  ## Remove terms which are below the tolerance.
+  ## Combine duplicate terms and remove terms which are below the tolerance.
   nnz = 0
   for i in eachindex(os)
-    if abs(os.scalars[i]) > os.abs_tol
+    if i < length(os) && os._data[i] == os._data[i + 1]
+      os.scalars[i + 1] += os.scalars[i]
+      os.scalars[i] = 0
+    elseif abs(os.scalars[i]) > os.abs_tol
       nnz += 1
       os.scalars[nnz] = os.scalars[i]
       os._data[nnz] = os._data[i]
@@ -438,7 +431,12 @@ components are iterated over using threads. The returned tuple contains:
 } where {N,C,Ti}
   has_qns = hasqns(sites)
 
-  workspace = combine_duplicate_adjacent_right_vertices!(g, terms_eq_from(n + 1))
+  if n > 1
+    workspace = combine_duplicate_adjacent_right_vertices!(g, terms_eq_from(n + 1))
+  else
+    workspace = Vector{Int}(undef, right_size(g))
+  end
+
   ccs = compute_connected_components(g, workspace)
   nccs = num_connected_components(ccs)
   workspace = nothing

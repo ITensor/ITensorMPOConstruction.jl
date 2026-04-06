@@ -18,6 +18,12 @@ try
 catch
 end
 
+using LinearAlgebra
+BLAS.set_num_threads(1)
+
+@show Threads.nthreads()
+@show BLAS.get_num_threads()
+
 using ITensors, ITensorMPS, ITensorMPOConstruction
 
 ↓ = false

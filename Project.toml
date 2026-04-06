@@ -1,7 +1,7 @@
 name = "ITensorMPOConstruction"
 uuid = "f1f99f3b-4b00-4d2f-a9c2-ce76efdc8f31"
-version = "0.1.0"
 authors = ["Ben Corbett and contributors"]
+version = "0.1.0"
 
 [deps]
 FunctionWrappers = "069b7b12-0de2-55c6-9aab-29f3d0a68a2e"
@@ -12,6 +12,7 @@ LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
+ThreadsX = "ac1d9e8a-700a-412c-b207-f0111f4b6c0d"
 TimerOutputs = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
 
 [compat]
@@ -20,6 +21,7 @@ ITensors = "0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9"
 LinearAlgebra = "1.9, 1.10"
 Random = "1"
 SparseArrays = "1.9, 1.10"
+ThreadsX = "0.1.12"
 TimerOutputs = "0.5"
 julia = "1.10"
 
