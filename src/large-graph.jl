@@ -11,13 +11,16 @@ Type Parameters
 Fields:
 - `left_vertices`: metadata stored for each left vertex.
 - `right_vertices`: metadata stored for each right vertex.
-- `edges_from_left`: adjacency list from each left vertex to right vertices,
-  stored as `(right_vertex_id, weight)` pairs.
+- `right_vertex_ids_from_left`: adjacency list from each left vertex to the
+  connected right-vertex ids.
+- `edge_weights_from_left`: edge weights stored in parallel with
+  `right_vertex_ids_from_left`.
 """
 struct BipartiteGraph{L,R,C}
   left_vertices::Vector{L}
   right_vertices::Vector{R}
-  edges_from_left::Vector{Vector{Tuple{Int,C}}}
+  right_vertex_ids_from_left::Vector{Vector{Int}}
+  edge_weights_from_left::Vector{Vector{C}}
 end
 
 """
@@ -54,7 +57,15 @@ right_vertex(g::BipartiteGraph, rv_id::Integer) = g.right_vertices[rv_id]
 Return the total number of edges in `g`.
 """
 function num_edges(g::BipartiteGraph)::Int
-  return sum(length(rvs) for rvs in g.edges_from_left)
+  return sum(length(rvs) for rvs in g.right_vertex_ids_from_left)
+end
+
+@inline function clear_edges_from_left!(g::BipartiteGraph, lv_id::Integer)::Nothing
+  empty!(g.right_vertex_ids_from_left[lv_id])
+  sizehint!(g.right_vertex_ids_from_left[lv_id], 0)
+  empty!(g.edge_weights_from_left[lv_id])
+  sizehint!(g.edge_weights_from_left[lv_id], 0)
+  return nothing
 end
 
 ## TODO: document
@@ -83,8 +94,9 @@ end
   resize!(right_vertices, new_positions[end])
 
   Threads.@threads for lv_id in 1:left_size(g)
-    for (i, (rv_id, weight)) in enumerate(g.edges_from_left[lv_id])
-      g.edges_from_left[lv_id][i] = new_positions[rv_id], weight
+    right_vertex_ids = g.right_vertex_ids_from_left[lv_id]
+    for i in eachindex(right_vertex_ids)
+      right_vertex_ids[i] = new_positions[right_vertex_ids[i]]
     end
   end
 
@@ -139,7 +151,7 @@ end
     while changed
       changed = false
       Threads.@threads for lv_id in 1:left_size(g)
-        @inbounds for (rv_id, _) in g.edges_from_left[lv_id]
+        @inbounds for rv_id in g.right_vertex_ids_from_left[lv_id]
           ret = cmp(component_of_lv[lv_id], min_lv_connected_to_rv[rv_id])
           ret == 0 && continue
 
@@ -237,7 +249,7 @@ function get_cc_matrix(
   colptr = zeros(Int, num_right + 1)
   right_map = Vector{Int}(undef, num_right)
   @inbounds for lv_id in left_map
-    for (rv_id, _) in g.edges_from_left[lv_id]
+    for rv_id in g.right_vertex_ids_from_left[lv_id]
       j = component_position_of_rvs[rv_id]
       colptr[j + 1] += 1
       right_map[j] = rv_id
@@ -257,7 +269,11 @@ function get_cc_matrix(
   ## Fill the CSC backing storage directly. Since the rows are traversed in
   ## increasing order, each column is already row-sorted.
   @inbounds for (i, lv_id) in enumerate(left_map)
-    for (rv_id, weight) in g.edges_from_left[lv_id]
+    right_vertex_ids = g.right_vertex_ids_from_left[lv_id]
+    edge_weights = g.edge_weights_from_left[lv_id]
+    for edge_id in eachindex(right_vertex_ids)
+      rv_id = right_vertex_ids[edge_id]
+      weight = edge_weights[edge_id]
       j = component_position_of_rvs[rv_id]
       pos = next_position[j]
       rowvals[pos] = i
@@ -266,8 +282,7 @@ function get_cc_matrix(
     end
 
     if clear_edges
-      empty!(g.edges_from_left[lv_id])
-      sizehint!(g.edges_from_left[lv_id], 0)
+      clear_edges_from_left!(g, lv_id)
     end
   end
 

@@ -73,24 +73,33 @@ function find_first_eq_rv(g::MPOGraph, j::Int, n::Int)::Int
 end
 
 """
-    build_next_edges_specialization!(next_edges, g, cur_site, edges) -> Nothing
+    build_next_edges_specialization!(next_edges, g, cur_site, right_vertex_ids, edge_weights) -> Nothing
 
 Fast path for building outgoing edges when a connected component has only
 a single left vertex.
 
 For each current edge, this extracts the operator acting on `cur_site + 1`,
-finds the unique right vertex from `cur_site + 2` onward, and
-stores the resulting weight in `next_edges`.
+finds the unique right vertex from `cur_site + 2` onward, and stores the
+resulting id/weight entry in `next_edges`.
 """
 function build_next_edges_specialization!(
-  next_edges::Matrix{Vector{Tuple{Int,C}}}, g::MPOGraph{N,C,Ti}, cur_site::Int, edges
+  next_edges::Matrix{Tuple{Vector{Int},Vector{C}}},
+  g::MPOGraph{N,C,Ti},
+  cur_site::Int,
+  right_vertex_ids,
+  edge_weights,
 )::Nothing where {N,C,Ti}
   @assert size(next_edges, 1) == 1
+  @assert length(right_vertex_ids) == length(edge_weights)
 
-  for (rv_id, weight) in edges
+  for edge_id in eachindex(right_vertex_ids)
+    rv_id = right_vertex_ids[edge_id]
+    weight = edge_weights[edge_id]
     op_id = get_onsite_op(right_vertex(g, rv_id), cur_site + 1)
+    next_right_vertex_ids, next_edge_weights = next_edges[1, op_id]
 
-    push!(next_edges[1, op_id], (rv_id, weight))
+    push!(next_right_vertex_ids, rv_id)
+    push!(next_edge_weights, weight)
   end
 
   return nothing
@@ -101,9 +110,9 @@ end
 
 Append the left vertices and adjacency lists described by `next_edges` to `next_graph`.
 
-Each nonempty `(bond_index, op_id)` entry in `next_edges` creates one `LeftVertex` with edges
-to right vertices given by the value of the entry. The stored `needs_JW_string` flag is inferred
-from the fermionic parity of the connected right vertices connected.
+Each nonempty `(bond_index, op_id)` entry in `next_edges` creates one `LeftVertex`, reusing that
+entry's `(right_vertex_ids, edge_weights)` vectors as the outgoing adjacency list. The stored
+`needs_JW_string` flag is inferred from the fermionic parity of the connected right vertices.
 """
 function add_to_next_graph!(
   next_graph::MPOGraph{N,C,Ti},
@@ -111,19 +120,20 @@ function add_to_next_graph!(
   op_cache_vec::OpCacheVec,
   cur_site::Int,
   cur_offset::Int,
-  next_edges::Matrix{Vector{Tuple{Int,C}}},
+  next_edges::Matrix{Tuple{Vector{Int},Vector{C}}},
 )::Nothing where {N,C,Ti}
   for op_id in 1:size(next_edges, 2)
     for m in 1:size(next_edges, 1)
-      cur_edges = next_edges[m, op_id]
-      isempty(cur_edges) && continue
+      cur_right_vertex_ids, cur_edge_weights = next_edges[m, op_id]
+      isempty(cur_right_vertex_ids) && continue
 
-      first_rv_id = cur_edges[1][1]
+      first_rv_id = cur_right_vertex_ids[1]
       needs_JW_string = is_fermionic(
         right_vertex(cur_graph, first_rv_id), cur_site + 2, op_cache_vec
       )
       push!(next_graph.left_vertices, LeftVertex(m + cur_offset, op_id, needs_JW_string))
-      push!(next_graph.edges_from_left, cur_edges)
+      push!(next_graph.right_vertex_ids_from_left, cur_right_vertex_ids)
+      push!(next_graph.edge_weights_from_left, cur_edge_weights)
     end
   end
 
@@ -177,14 +187,14 @@ the `os.abs_tol` are dropped. The returned graph is split about the first site.
   resize!(os._data, nnz)
   resize!(os.scalars, nnz)
 
-  g = MPOGraph{N,C,Ti}([], os._data, [])
+  g = MPOGraph{N,C,Ti}([], os._data, [], [])
 
-  next_edges = Matrix{Vector{Tuple{Int,C}}}(undef, 1, length(os.op_cache_vec[1]))
+  next_edges = Matrix{Tuple{Vector{Int},Vector{C}}}(undef, 1, length(os.op_cache_vec[1]))
   for i in eachindex(next_edges)
-    next_edges[i] = Vector{Tuple{Int,C}}()
+    next_edges[i] = (Int[], C[])
   end
 
-  build_next_edges_specialization!(next_edges, g, 0, enumerate(os.scalars))
+  build_next_edges_specialization!(next_edges, g, 0, Base.OneTo(length(os.scalars)), os.scalars)
 
   add_to_next_graph!(g, g, os.op_cache_vec, 0, 0, next_edges)
 
@@ -348,7 +358,7 @@ function process_single_left_vertex_cc!(
   matrix_of_cc::Vector{BlockSparseMatrix{ValType}},
   qi_of_cc::Vector{Pair{QN,Int}},
   rank_of_cc::Vector{Int},
-  next_edges_of_cc::Vector{Matrix{Vector{Tuple{Int,C}}}},
+  next_edges_of_cc::Vector{Matrix{Tuple{Vector{Int},Vector{C}}}},
   g::MPOGraph{N,C,Ti},
   ccs::BipartiteGraphConnectedComponents,
   cc::Int,
@@ -361,7 +371,7 @@ function process_single_left_vertex_cc!(
   rank = 1
   rank_of_cc[cc] = rank
 
-  first_rv_id, _ = g.edges_from_left[lv_id][1]
+  first_rv_id = g.right_vertex_ids_from_left[lv_id][1]
 
   if has_qns
     qi_of_cc[cc] = flux(right_vertex(g, first_rv_id), n + 1, op_cache_vec) => rank
@@ -377,7 +387,7 @@ function process_single_left_vertex_cc!(
   add_to_local_matrix!(matrix_element, one(C), local_op, lv.needs_JW_string)
 
   if n == length(sites)
-    scaling = only(g.edges_from_left[lv_id])[2]
+    scaling = only(g.edge_weights_from_left[lv_id])
 
     for block in values(matrix_of_cc[cc])
       block .*= scaling
@@ -386,15 +396,20 @@ function process_single_left_vertex_cc!(
     return nothing
   end
 
-  next_edges = Matrix{Vector{Tuple{Int,C}}}(undef, rank, length(op_cache_vec[n + 1]))
+  next_edges = Matrix{Tuple{Vector{Int},Vector{C}}}(undef, rank, length(op_cache_vec[n + 1]))
   for i in eachindex(next_edges)
-    next_edges[i] = Vector{Tuple{Int,C}}()
+    next_edges[i] = (Int[], C[])
   end
 
-  build_next_edges_specialization!(next_edges, g, n, g.edges_from_left[lv_id])
+  build_next_edges_specialization!(
+    next_edges,
+    g,
+    n,
+    g.right_vertex_ids_from_left[lv_id],
+    g.edge_weights_from_left[lv_id],
+  )
 
-  empty!(g.edges_from_left[lv_id])
-  sizehint!(g.edges_from_left[lv_id], 0)
+  clear_edges_from_left!(g, lv_id)
 
   next_edges_of_cc[cc] = next_edges
 
@@ -453,7 +468,7 @@ components are iterated over using threads. The returned tuple contains:
   ## A map from the incoming link to the next site (outgoing link from this site) and the
   ## operator on the next site (this uniquely specifies the left vertex of the next site)
   ## to the right vertices it will connect to along with the weight.
-  next_edges_of_cc = [Matrix{Vector{Tuple{Int,C}}}(undef, 0, 0) for _ in 1:nccs]
+  next_edges_of_cc = [Matrix{Tuple{Vector{Int},Vector{C}}}(undef, 0, 0) for _ in 1:nccs]
 
   output_level > 0 && println(
     "  The graph is $(left_size(g)) × $(right_size(g)) with $(num_edges(g)) edges and $(nccs) connected components. tol = $(@sprintf("%.2E", tol))",
@@ -548,10 +563,13 @@ components are iterated over using threads. The returned tuple contains:
     end
 
     ## Build the graph for the next site out of this component.
-    next_edges = Matrix{Vector{Tuple{Int,C}}}(undef, rank, length(op_cache_vec[n + 1]))
+    next_edges = Matrix{Tuple{Vector{Int},Vector{C}}}(undef, rank, length(op_cache_vec[n + 1]))
     for i in eachindex(next_edges)
-      next_edges[i] = Vector{Tuple{Int,C}}()
-      sizehint!(next_edges[i], next_edges_size[i])
+      right_vertex_ids = Int[]
+      edge_weights = C[]
+      sizehint!(right_vertex_ids, next_edges_size[i])
+      sizehint!(edge_weights, next_edges_size[i])
+      next_edges[i] = (right_vertex_ids, edge_weights)
     end
 
     for_non_zeros_batch(R, length(right_map)) do weights::AbstractVector{C}, ms::AbstractVector{Int}, j::Int
@@ -559,8 +577,12 @@ components are iterated over using threads. The returned tuple contains:
       op_id = op_id_lookup[j]
 
       ## Add the edges.
-      for (weight, m) in zip(weights, ms)
-        push!(next_edges[m, op_id], (rv_id, weight))
+      for edge_id in eachindex(weights, ms)
+        m = ms[edge_id]
+        weight = weights[edge_id]
+        next_right_vertex_ids, next_edge_weights = next_edges[m, op_id]
+        push!(next_right_vertex_ids, rv_id)
+        push!(next_edge_weights, weight)
       end
     end
 
@@ -574,7 +596,7 @@ components are iterated over using threads. The returned tuple contains:
   end
 
   ## Combine the graphs of each component together
-  next_graph = MPOGraph{N,C,Ti}([], g.right_vertices, [])
+  next_graph = MPOGraph{N,C,Ti}([], g.right_vertices, [], [])
   offset_of_cc = zeros(Int, nccs + 1)
 
   cur_offset = 0

@@ -11,14 +11,15 @@ using Graphs
 
 function test_get_connected_components(nl::Int, nr::Int, max_edges_from_left::Int)
   g = BipartiteGraph{Int,Int,Float64}(
-    zeros(Int, nl), zeros(Int, nr), [Vector{Tuple{Int,Float64}}() for _ in 1:nl]
+    zeros(Int, nl), zeros(Int, nr), [Int[] for _ in 1:nl], [Float64[] for _ in 1:nl]
   )
   g_ref = SimpleGraph{Int}(nl + nr)
 
   for lv_id in 1:nl
     for _ in 1:rand(0:max_edges_from_left)
       rv_id = rand(1:nr)
-      push!(g.edges_from_left[lv_id], (rv_id, 1.0))
+      push!(g.right_vertex_ids_from_left[lv_id], rv_id)
+      push!(g.edge_weights_from_left[lv_id], 1.0)
       add_edge!(g_ref, lv_id, nl + rv_id)
     end
   end
@@ -58,7 +59,8 @@ function test_get_cc_matrix()
   g = BipartiteGraph{Int,Int,Float64}(
     zeros(Int, 4),
     zeros(Int, 5),
-    [[(2, 1.5), (5, -2.0)], [(2, 3.0)], [(1, 4.0)], Tuple{Int,Float64}[]],
+    [[2, 5], [2], [1], Int[]],
+    [[1.5, -2.0], [3.0], [4.0], Float64[]],
   )
 
   ccs = compute_connected_components(g)
@@ -69,23 +71,29 @@ function test_get_cc_matrix()
   @test left_map == [1, 2]
   @test right_map == [2, 5]
   @test Matrix(W) == [1.5 -2.0; 3.0 0.0]
-  @test g.edges_from_left[1] == [(2, 1.5), (5, -2.0)]
-  @test g.edges_from_left[2] == [(2, 3.0)]
+  @test g.right_vertex_ids_from_left[1] == [2, 5]
+  @test g.edge_weights_from_left[1] == [1.5, -2.0]
+  @test g.right_vertex_ids_from_left[2] == [2]
+  @test g.edge_weights_from_left[2] == [3.0]
 
   W, left_map, right_map = get_cc_matrix(g, ccs, 2; clear_edges=true)
   @test left_map == [3]
   @test right_map == [1]
   @test Matrix(W) == [4.0;;]
-  @test isempty(g.edges_from_left[3])
-  @test !isempty(g.edges_from_left[1])
-  @test !isempty(g.edges_from_left[2])
+  @test isempty(g.right_vertex_ids_from_left[3])
+  @test isempty(g.edge_weights_from_left[3])
+  @test !isempty(g.right_vertex_ids_from_left[1])
+  @test !isempty(g.edge_weights_from_left[1])
+  @test !isempty(g.right_vertex_ids_from_left[2])
+  @test !isempty(g.edge_weights_from_left[2])
 end
 
 function test_get_cc_matrix_duplicate_edges()
   g = BipartiteGraph{Int,Int,Float64}(
     zeros(Int, 2),
     zeros(Int, 2),
-    [[(1, 1.5), (1, -0.5), (2, 3.0)], [(2, 4.0), (2, -1.0)]],
+    [[1, 1, 2], [2, 2]],
+    [[1.5, -0.5, 3.0], [4.0, -1.0]],
   )
 
   ccs = compute_connected_components(g)
@@ -107,7 +115,8 @@ end
 #       (OpID(2, 5), OpID(4, 4), OpID(1, 1)),
 #       (OpID(2, 5), OpID(4, 4), OpID(8, 2)),
 #     ],
-#     [[(1, 1.0), (2, 2.0), (3, 3.0), (4, 4.0)]],
+#     [[1, 2, 3, 4]],
+#     [[1.0, 2.0, 3.0, 4.0]],
 #   )
 
 #   new_positions = combine_duplicate_adjacent_right_vertices!(g, 3)
@@ -117,7 +126,8 @@ end
 #     (OpID(2, 5), OpID(3, 3), OpID(1, 1)),
 #     (OpID(2, 5), OpID(4, 4), OpID(1, 1)),
 #   ]
-#   @test g.edges_from_left[1] == [(1, 1.0), (1, 2.0), (2, 3.0), (2, 4.0)]
+#   @test g.right_vertex_ids_from_left[1] == [1, 1, 2, 2]
+#   @test g.edge_weights_from_left[1] == [1.0, 2.0, 3.0, 4.0]
 # end
 
 @testset "BipartiteGraph" begin
