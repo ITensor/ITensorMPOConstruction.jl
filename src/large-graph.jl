@@ -146,35 +146,40 @@ end
   min_lv_connected_to_rv .= typemax(Int)
 
   component_of_lv = Int[i for i in 1:left_size(g)]
-  @timeit "min_lv_connected_to_rv" let
-    changed = true
-    while changed
-      changed = false
-      Threads.@threads for lv_id in 1:left_size(g)
-        @inbounds for rv_id in g.right_vertex_ids_from_left[lv_id]
-          ret = cmp(component_of_lv[lv_id], min_lv_connected_to_rv[rv_id])
-          ret == 0 && continue
+  lvs_of_component = Vector{Int}[[i] for i in 1:left_size(g)]
 
-          changed = true
-          if ret < 0
-            min_lv_connected_to_rv[rv_id] = component_of_lv[lv_id]
-          else
-            component_of_lv[lv_id] = min_lv_connected_to_rv[rv_id]
-          end
-        end
+  for lv_id in 1:left_size(g)
+    cur_min_lv = lv_id
+
+    for rv_id in g.right_vertex_ids_from_left[lv_id]
+      min_lv_of_rv = min_lv_connected_to_rv[rv_id]
+
+      ## If the right vertex has not yet been reached...
+      if min_lv_of_rv == typemax(Int)
+        min_lv_connected_to_rv[rv_id] = lv_id
+        continue
       end
-    end
-  end
 
-  lvs_of_component = [Vector{Int}() for _ in 1:maximum(component_of_lv)]
-  @timeit "lvs_of_component" for (lv_id, c) in enumerate(component_of_lv)
-    push!(lvs_of_component[c], lv_id)
+      ## Otherwise, merge the two components
+      cur_min_lv, src_lv = minmax(cur_min_lv, min_lv_of_rv)
+      cur_component = component_of_lv[cur_min_lv]
+      src_component = component_of_lv[src_lv]
+
+      cur_component == src_component && continue
+
+      for lv_id in lvs_of_component[src_component]
+        component_of_lv[lv_id] = cur_component
+      end
+
+      append!(lvs_of_component[cur_component], lvs_of_component[src_component])
+      empty!(lvs_of_component[src_component])
+    end
   end
 
   ## Mutate min_lv_connected_to_rv which stores the first left vertex connected to each
   ## right vertex into the position of each right vertex within it's component.
   rv_size_of_component = zeros(Int, length(lvs_of_component))
-  @timeit "2" @inbounds for rv_id in 1:right_size(g)
+  @inbounds for rv_id in 1:right_size(g)
     min_lv = min_lv_connected_to_rv[rv_id]
 
     ## This means the right vertex is not connected to anything and can be safely ignored.
@@ -188,7 +193,7 @@ end
   ## Drop empty components.
   lvs_of_component_non_empty = Vector{Vector{Int}}()
   rv_size_of_component_non_empty = Vector{Int}()
-  @timeit "3" for (i, lvs) in enumerate(lvs_of_component)
+  for (i, lvs) in enumerate(lvs_of_component)
     if !isempty(lvs) && rv_size_of_component[i] != 0
       push!(lvs_of_component_non_empty, lvs)
       push!(rv_size_of_component_non_empty, rv_size_of_component[i])
