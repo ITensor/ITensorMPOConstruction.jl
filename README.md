@@ -15,9 +15,7 @@ The three goals of this library are
 2. Maximize the block sparsity of the resulting MPOs.
 3. Accomplish these goals as fast as possible.
 
-ITensorMPOConstruction is not designed to construct approximate compressed MPOs. If this is your workflow, use ITensorMPOConstruction to construct the exact MPO and call `ITensorMPS.truncate!`.
-
-All runtimes below are taken from a single sample on a 2021 MacBook Pro with the M1 Max CPU and 32GB of memory.
+ITensorMPOConstruction is not designed to construct approximate compressed MPOs. If this is your workflow, construct the exact MPO then call `ITensorMPS.truncate!`.
 
 ## Installation
 

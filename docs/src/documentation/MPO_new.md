@@ -9,7 +9,10 @@ The main exported function is `MPO_new` which takes an `OpSum` and transforms it
 
 ```@docs
 MPO_new
+resume_MPO_construction
+sparsity
+block2_nnz
 ```
 
 ## A note on truncation:
-`MPO_new` is designed to construct _numerically exact_ MPOs, the tolerance parameter should really only be used to adjust the definition of "numerically exact" and not to perform truncation. If truncation is desired, truncate the resulting MPO with `ITensorMPS.truncate`. See [Haldane-Shastry and truncation](../examples/haldane-shastry.md)
+`MPO_new` is designed to construct _numerically exact_ MPOs, the tolerance parameter should really only be used to adjust the definition of "numerically exact" and not to perform truncation. If truncation is desired, truncate the resulting MPO with `ITensorMPS.truncate`. See [Haldane-Shastry and truncation](../examples/haldane-shastry.md) for an example.

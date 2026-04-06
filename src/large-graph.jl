@@ -60,6 +60,15 @@ function num_edges(g::BipartiteGraph)::Int
   return sum(length(rvs) for rvs in g.right_vertex_ids_from_left)
 end
 
+"""
+    clear_edges_from_left!(g::BipartiteGraph, lv_id::Integer) -> Nothing
+
+Remove all edges incident on the left vertex `lv_id`.
+
+This clears both the adjacent right-vertex ids and their corresponding edge
+weights, and releases any retained capacity in those per-vertex adjacency
+lists.
+"""
 @inline function clear_edges_from_left!(g::BipartiteGraph, lv_id::Integer)::Nothing
   empty!(g.right_vertex_ids_from_left[lv_id])
   sizehint!(g.right_vertex_ids_from_left[lv_id], 0)

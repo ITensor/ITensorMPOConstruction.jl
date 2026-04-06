@@ -337,8 +337,6 @@ function bipartite_mapping(grid_size)
 end
 
 # ## Constructing the MPO
-#
-# Now that we got that out of the way, we can finally construct the MPO. For the ``8 \times 8`` system with eight threads on a 2021 MacBook Pro with the M1 Max CPU and 32GB of memory constructing the `OpIDSum` took one minute and constructing the MPO took an hour.
 
 using TimerOutputs
 for grid_size in ((2, 2), (6, 6))
@@ -349,6 +347,14 @@ for grid_size in ((2, 2), (6, 6))
     grid_size != (2, 2) && print_timer()
   end
 end
+
+# The transcorrelated momentum space Fermi-Hubbard MPO is very sparse. As such, giving Julia all the threads results in the best performance. The following timings are for the ``8 \times 8`` system on a computer with two Intel(R) Xeon(R) Gold 6438Y+ (64 total threads) and 250 GiB of memory.
+## TODO: Update
+
+# | Julia threads | BLAS Threads | OpIDSum time | MPO time |
+# |---------------|--------------|--------------|----------|
+# | 1             | 1            | 203s         | 2796s    |
+# | 64            | 1            | 33s          | 1426s    |
 
 ## TODO: Illustrate IO capabilities.
 

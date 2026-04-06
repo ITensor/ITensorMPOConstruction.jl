@@ -31,6 +31,6 @@ include("MPOConstruction.jl")
 export OpInfo, OpCacheVec, to_OpCacheVec, OpID, OpIDSum
 
 # MPOConstruction.jl
-export MPO_new
+export resume_MPO_construction, MPO_new, sparsity, block2_nnz
 
 end
