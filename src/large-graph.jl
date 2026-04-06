@@ -125,129 +125,6 @@ function compute_connected_components(
   return compute_connected_components(g, Vector{Int}(undef, right_size(g)))
 end
 
-# @inline function _find_component_root!(parent::Vector{Int}, lv_id::Int)::Int
-#   root = lv_id
-#   @inbounds while parent[root] != root
-#     root = parent[root]
-#   end
-
-#   @inbounds while parent[lv_id] != root
-#     next_lv = parent[lv_id]
-#     parent[lv_id] = root
-#     lv_id = next_lv
-#   end
-
-#   return root
-# end
-
-# @inline function _merge_component_anchors!(
-#   parent::Vector{Int},
-#   next_lv_in_component::Vector{Int},
-#   tail_of_component::Vector{Int},
-#   left_size_of_component::Vector{Int},
-#   current_anchor_lv::Int,
-#   other_anchor_lv::Int,
-# )::Int
-#   current_anchor_lv, other_anchor_lv = minmax(current_anchor_lv, other_anchor_lv)
-#   current_root = _find_component_root!(parent, current_anchor_lv)
-#   other_root = _find_component_root!(parent, other_anchor_lv)
-#   current_root == other_root && return current_anchor_lv
-
-#   @inbounds begin
-#     parent[other_root] = current_root
-#     next_lv_in_component[tail_of_component[current_root]] = other_root
-#     tail_of_component[current_root] = tail_of_component[other_root]
-#     left_size_of_component[current_root] += left_size_of_component[other_root]
-#   end
-#   return current_anchor_lv
-# end
-
-# @timeit function compute_connected_components(
-#   g::BipartiteGraph, workspace::Vector{Int}
-# )::BipartiteGraphConnectedComponents
-#   nl = left_size(g)
-#   nr = right_size(g)
-#   unseen_rv = typemax(Int)
-
-#   @assert length(workspace) >= nr
-#   resize!(workspace, nr)
-#   first_lv_connected_to_rv = workspace
-#   fill!(first_lv_connected_to_rv, unseen_rv)
-
-#   parent = Vector{Int}(undef, nl)
-#   next_lv_in_component = zeros(Int, nl)
-#   tail_of_component = Vector{Int}(undef, nl)
-#   left_size_of_component = ones(Int, nl)
-#   @timeit "1" @inbounds for lv_id in 1:nl
-#     parent[lv_id] = lv_id
-#     tail_of_component[lv_id] = lv_id
-#   end
-
-#   @timeit "2" @inbounds for lv_id in 1:nl
-#     current_anchor_lv = lv_id
-#     for (rv_id, _) in g.edges_from_left[lv_id]
-#       first_lv = first_lv_connected_to_rv[rv_id]
-#       if first_lv == unseen_rv
-#         first_lv_connected_to_rv[rv_id] = lv_id
-#         continue
-#       end
-
-#       current_anchor_lv = _merge_component_anchors!(
-#         parent,
-#         next_lv_in_component,
-#         tail_of_component,
-#         left_size_of_component,
-#         current_anchor_lv,
-#         first_lv,
-#       )
-#     end
-#   end
-
-#   num_right_of_component = zeros(Int, nl)
-#   @timeit "3" @inbounds for rv_id in 1:nr
-#     first_lv = first_lv_connected_to_rv[rv_id]
-#     first_lv == unseen_rv && continue
-
-#     root = _find_component_root!(parent, first_lv)
-#     first_lv_connected_to_rv[rv_id] = root
-#     num_right_of_component[root] += 1
-#   end
-
-#   rv_size_of_component = Int[]
-#   lvs_of_component = Vector{Vector{Int}}()
-#   @timeit "4" @inbounds for root in 1:nl
-#     parent[root] != root && continue
-#     num_right = num_right_of_component[root]
-#     num_right == 0 && continue
-
-#     push!(rv_size_of_component, num_right)
-#     lvs = Vector{Int}(undef, left_size_of_component[root])
-#     push!(lvs_of_component, lvs)
-
-#     lv_id = root
-#     pos = 1
-#     while lv_id != 0
-#       lvs[pos] = lv_id
-#       lv_id = next_lv_in_component[lv_id]
-#       pos += 1
-#     end
-
-#     num_right_of_component[root] = 0
-#   end
-
-#   @timeit "5" @inbounds for rv_id in 1:nr
-#     root = first_lv_connected_to_rv[rv_id]
-#     root == unseen_rv && continue
-
-#     num_right_of_component[root] += 1
-#     first_lv_connected_to_rv[rv_id] = num_right_of_component[root]
-#   end
-
-#   return BipartiteGraphConnectedComponents(
-#     lvs_of_component, first_lv_connected_to_rv, rv_size_of_component
-#   )
-# end
-
 @timeit function compute_connected_components(
   g::BipartiteGraph, workspace::Vector{Int}
 )::BipartiteGraphConnectedComponents
@@ -265,7 +142,7 @@ end
         @inbounds for (rv_id, _) in g.edges_from_left[lv_id]
           ret = cmp(component_of_lv[lv_id], min_lv_connected_to_rv[rv_id])
           ret == 0 && continue
-          
+
           changed = true
           if ret < 0
             min_lv_connected_to_rv[rv_id] = component_of_lv[lv_id]

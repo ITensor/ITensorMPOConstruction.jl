@@ -1,5 +1,10 @@
 using ITensorMPOConstruction:
-  BipartiteGraph, compute_connected_components, get_cc_matrix, num_connected_components
+  BipartiteGraph,
+  OpID,
+  combine_duplicate_adjacent_right_vertices!,
+  compute_connected_components,
+  get_cc_matrix,
+  num_connected_components
 
 using Test
 using Graphs
@@ -93,11 +98,34 @@ function test_get_cc_matrix_duplicate_edges()
   @test Matrix(W) == [1.0 3.0; 0.0 3.0]
 end
 
+# function test_combine_duplicate_adjacent_right_vertices()
+#   g = BipartiteGraph{Int,NTuple{3,OpID{Int}},Float64}(
+#     zeros(Int, 1),
+#     [
+#       (OpID(2, 5), OpID(3, 3), OpID(1, 1)),
+#       (OpID(2, 5), OpID(3, 3), OpID(7, 2)),
+#       (OpID(2, 5), OpID(4, 4), OpID(1, 1)),
+#       (OpID(2, 5), OpID(4, 4), OpID(8, 2)),
+#     ],
+#     [[(1, 1.0), (2, 2.0), (3, 3.0), (4, 4.0)]],
+#   )
+
+#   new_positions = combine_duplicate_adjacent_right_vertices!(g, 3)
+
+#   @test new_positions == [1, 1, 2, 2]
+#   @test g.right_vertices == [
+#     (OpID(2, 5), OpID(3, 3), OpID(1, 1)),
+#     (OpID(2, 5), OpID(4, 4), OpID(1, 1)),
+#   ]
+#   @test g.edges_from_left[1] == [(1, 1.0), (1, 2.0), (2, 3.0), (2, 4.0)]
+# end
+
 @testset "BipartiteGraph" begin
   test_get_connected_components(4, 4, 2)
   test_get_connected_components(10, 10, 4)
   test_get_connected_components(187, 294, 18)
   test_get_connected_components(8 * 10^3, 3 * 10^6, 9 * 10^2)
+  # test_combine_duplicate_adjacent_right_vertices()
   test_get_cc_matrix()
   test_get_cc_matrix_duplicate_edges()
 end
