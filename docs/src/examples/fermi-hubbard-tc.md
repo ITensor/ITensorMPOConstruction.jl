@@ -14,6 +14,17 @@ where ``J`` is a real number. After ruthless optimization and with a lot of pati
 While the Hamiltonian as written above has a number of terms that scales as ``2 N^5``, by grouping like-terms together total number of terms can be reduced to ``N^5 / 2``, nevertheless, simply constructing the `OpIDSum` for this Hamiltonian is a hard problem, for the ``12 \times 12`` system the `OpIDSum` alone takes up almost 600GiB. Because of this we needed to construct the `OpIDSum` directly to avoid constructing the much more costly (in both time and space) `OpSum`.
 
 ````julia
+try
+  using MKL
+catch
+end
+
+using LinearAlgebra
+BLAS.set_num_threads(1)
+
+@show Threads.nthreads()
+@show BLAS.get_num_threads()
+
 using ITensors, ITensorMPS, ITensorMPOConstruction
 
 ↓ = false
@@ -118,7 +129,9 @@ end;
 
 ````julia
 # Function to construct the momentum conserving site indices
-function sites_from_grid(mapping::Array{Int})::Vector{ITensors.QNIndex}
+function sites_from_grid(mapping::Array{Int}, conserve_momentum::Bool)::Vector{ITensors.QNIndex}
+  !conserve_momentum && return siteinds("Electron", length(mapping); conserve_qns=true)
+
   spatial_dimension = ndims(mapping)
   @assert 1 <= spatial_dimension <= 2
 
@@ -182,14 +195,14 @@ In the function below we construct the `OpIDSum`. There are three things worth h
 
 2. In order to permit the functioning of `merge_sorted_ops`, we always put spin-up operators before spin-down operators in each term.
 
-3. Adding the three-electron terms dominate the runtime of this function, but we can add them in parallel with a simple `Threads.@threads`. Thread safety is handled internally to `add!`, which does a single `atomic_add`. The overhead of this atomic is swamped by the cost of sorting and merging the operators within each term, and as such the parallelism is good.
+3. Adding the three-electron terms dominate the runtime of this function, but we can add them in parallel with a simple `Threads.@threads`. Thread safety is handled internally to `add!`.
 
 ````julia
-function transcorrelated_fermi_hubbard(t::Real, U::Real, J::Real, mapping::Array{Int})::Tuple{Vector{ITensors.QNIndex}, OpIDSum}
+function transcorrelated_fermi_hubbard(t::Real, U::Real, J::Real, mapping::Array{Int}; conserve_momentum::Bool=true)::Tuple{Vector{ITensors.QNIndex}, OpIDSum}
   grid_size = size(mapping)
   N = length(mapping)
 
-  sites = sites_from_grid(mapping)
+  sites = sites_from_grid(mapping, conserve_momentum)
   os = OpIDSum{6, Float64, UInt8}(
     (J == 0) ? N^3 + 2 * N : N^5 ÷ 2,
     create_op_cache_vec(sites),
@@ -337,8 +350,6 @@ end
 
 ## Constructing the MPO
 
-Now that we got that out of the way, we can finally construct the MPO. For the ``8 \times 8`` system with eight threads on a 2021 MacBook Pro with the M1 Max CPU and 32GB of memory constructing the `OpIDSum` took one minute and constructing the MPO took an hour.
-
 ````julia
 using TimerOutputs
 for grid_size in ((2, 2), (6, 6))
@@ -349,10 +360,64 @@ for grid_size in ((2, 2), (6, 6))
     grid_size != (2, 2) && print_timer()
   end
 end
+````
 
-# TODO: Illustrate IO capabilities.
+The transcorrelated momentum space Fermi-Hubbard MPO is very sparse. As such, giving Julia all the threads results in the best performance. The following timings are for the ``8 \times 8`` system on a computer with two Intel(R) Xeon(R) Gold 6438Y+ (64 total threads) and 250 GiB of memory.
 
-nothing
+| Julia threads | BLAS Threads | OpIDSum time | MPO time |
+|---------------|--------------|--------------|----------|
+| 1             | 1            | 207s         | 2691s    |
+| 64            | 1            | 33s          | 1177s    |
+
+# Writing a Checkpoint File
+
+In certain cases (such as for the ``10 \times 10`` and ``12 \times 12`` systems), MPO construction can take so long that it is prudent to write out a checkpoint file in case of catastrophic failure. This can be accomplished by the `call_back` parameter to `MPO_new`, construction can be resumed later by calling `resume_MPO_construction`. This functionality is demonstrated below.
+
+````julia
+using Serialization
+
+function call_back(
+  n::Int,
+  H::MPO,
+  sites::Vector{<:Index},
+  llinks::Vector{<:Index},
+  g::ITensorMPOConstruction.MPOGraph,
+  op_cache_vec::OpCacheVec)::Nothing
+
+  n != 18 && return nothing
+  serialize("./mpo.jldump", (n, H, sites, llinks, g, op_cache_vec))
+  println("Wrote a checkpoint to ./mpo.jldump")
+
+  throw(InterruptException())
+
+  return nothing
+end
+
+let t = 1, U = 4, J = -0.5, mapping = standard_mapping((6, 6))
+  sites, os = transcorrelated_fermi_hubbard(t, U, J, mapping; conserve_momentum=false)
+  try
+    MPO_new(os, sites; combine_qn_sectors=true, check_for_errors=false, call_back)
+  catch e
+    if e isa InterruptException
+        println("Caught a InterruptException!")
+    else
+        rethrow(e)
+    end
+  end
+
+  println("Reading a checkpoint from ./mpo.jldump")
+  n, H, sites, llinks, g, op_cache_vec = Serialization.deserialize("./mpo.jldump")
+  H = resume_MPO_construction(Float64, n + 1, H, sites, llinks, g, op_cache_vec; combine_qn_sectors=true, call_back)
+  println("Construction finished!")
+  rm("./mpo.jldump")
+end
+````
+
+````
+Wrote a checkpoint to ./mpo.jldump
+Caught a InterruptException!
+Reading a checkpoint from ./mpo.jldump
+Construction finished!
 ````
 
 ---
