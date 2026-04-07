@@ -45,4 +45,16 @@ for N in [10, 1000]
   end
 end
 
+# ````
+# Constructing the Fermi-Hubbard real space MPO for 1000 sites using ITensorMPS
+# Total construction time: 1.622434 seconds (23.19 M allocations: 1.937 GiB, 19.34% gc time, 15.05% compilation time)
+# The maximum bond dimension is 10
+# The sparsity is 0.9343640957766816
+
+# Constructing the Fermi-Hubbard real space MPO for 1000 sites using ITensorMPOConstruction
+# Total construction time: 0.553754 seconds (5.22 M allocations: 521.909 MiB, 31.39% gc time, 13.50% compilation time)
+# The maximum bond dimension is 10
+# The sparsity is 0.9743412345084828
+# ````
+#
 # For a more convincing reason to use `ITensorMPOConstruction` we need to go to momentum space.

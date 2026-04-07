@@ -13,10 +13,10 @@ function preprocess(content)
 end
 
 examples = [
-  # "./examples/fermi-hubbard-rs.jl",
-  # "./examples/fermi-hubbard-ks.jl",
-  # "./examples/haldane-shastry.jl",
-  # "./examples/fermi-hubbard-tc.jl",
+  "./examples/fermi-hubbard-rs.jl",
+  "./examples/fermi-hubbard-ks.jl",
+  "./examples/haldane-shastry.jl",
+  "./examples/fermi-hubbard-tc.jl",
 ]
 
 for example in examples

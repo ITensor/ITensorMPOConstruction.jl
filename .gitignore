@@ -13,3 +13,4 @@ Manifest.toml
 benchmark/*.json
 docs/build/
 docs/src/index.md
+docs/src/examples/

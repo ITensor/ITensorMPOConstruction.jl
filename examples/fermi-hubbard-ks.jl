@@ -75,3 +75,15 @@ for N in [4, 16]
     N > 4 && use_ITensors_alg && println()
   end
 end
+
+# ````
+# Constructing the Fermi-Hubbard real space MPO for 16 sites using ITensorMPS
+# Total construction time: 6.036585 seconds (8.10 M allocations: 3.314 GiB, 9.07% gc time)
+# The maximum bond dimension is 156
+# The sparsity is 0.9264518110540555
+
+# Constructing the Fermi-Hubbard real space MPO for 16 sites using ITensorMPOConstruction
+# Total construction time: 0.062162 seconds (1.04 M allocations: 68.179 MiB, 6.35% gc time)
+# The maximum bond dimension is 156
+# The sparsity is 0.9961176909060792
+# ````
