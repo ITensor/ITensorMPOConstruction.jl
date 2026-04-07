@@ -1,0 +1,55 @@
+# Internal Function Documentation
+
+## Ops
+
+```@docs
+ITensorMPOConstruction.is_fermionic
+ITensorMPOConstruction.are_equal
+ITensorMPOConstruction.terms_eq_from
+ITensorMPOConstruction.sort_fermion_perm!
+ITensorMPOConstruction.determine_val_type
+ITensorMPOConstruction.for_equal_sites
+ITensorMPOConstruction.rewrite_in_operator_basis!
+ITensorMPOConstruction.op_sum_to_opID_sum
+ITensorMPOConstruction.check_os_for_errors
+ITensorMPOConstruction.prepare_opID_sum!
+ITensorMPOConstruction.get_onsite_op
+```
+
+## Bipartite Graph
+
+```@docs
+  ITensorMPOConstruction.BipartiteGraph
+  ITensorMPOConstruction.BipartiteGraphConnectedComponents
+  ITensorMPOConstruction.left_size
+  ITensorMPOConstruction.right_size
+  ITensorMPOConstruction.left_vertex
+  ITensorMPOConstruction.right_vertex
+  ITensorMPOConstruction.num_edges
+  ITensorMPOConstruction.clear_edges_from_left!
+  ITensorMPOConstruction.combine_duplicate_adjacent_right_vertices!
+  ITensorMPOConstruction.compute_connected_components
+  ITensorMPOConstruction.num_connected_components
+  ITensorMPOConstruction.get_cc_matrix
+```
+
+## Others
+
+```@docs
+ITensorMPOConstruction.BlockSparseMatrix
+ITensorMPOConstruction.to_sparse_itensor
+ITensorMPOConstruction.add_to_local_matrix!
+ITensorMPOConstruction.CoSorterElement
+ITensorMPOConstruction.CoSorter
+ITensorMPOConstruction.sparse_qr
+ITensorMPOConstruction.for_non_zeros_batch
+ITensorMPOConstruction.at_site!
+ITensorMPOConstruction.MPOGraph
+ITensorMPOConstruction.LeftVertex
+ITensorMPOConstruction.add_to_next_graph!
+ITensorMPOConstruction.find_first_eq_rv
+ITensorMPOConstruction.merge_qn_sectors
+ITensorMPOConstruction.build_next_edges_specialization!
+ITensorMPOConstruction.process_single_left_vertex_cc!
+ITensorMPOConstruction.@time_if
+```

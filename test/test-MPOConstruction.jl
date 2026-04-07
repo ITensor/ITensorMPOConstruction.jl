@@ -66,6 +66,71 @@ function random_complex()::ComplexF64
   return 2 * rand(ComplexF64) - ComplexF64(1, 1)
 end
 
+function my_ITensor_old(
+  offsets::Vector{Int},
+  block_sparse_matrices::Vector{Dict{Tuple{Int,Int},Matrix{C}}},
+  inds...;
+  tol=0.0,
+  checkflux=true,
+)::ITensor where {C}
+  T = ITensors.BlockSparseTensor(C, Block{length(inds)}[], inds)
+
+  for (offset, matrix) in zip(offsets, block_sparse_matrices)
+    for ((left_link, right_link), block) in matrix
+      for i in 1:size(block, 1)
+        for j in 1:size(block, 2)
+          if abs(block[i, j]) > tol
+            T[left_link, right_link + offset, i, j] = block[i, j]
+          end
+        end
+      end
+    end
+  end
+
+  if checkflux
+    ITensors.checkflux(T)
+  end
+
+  return itensor(T)
+end
+
+function test_to_sparse_itensor()::Nothing
+  left_link = Index(QN("L", 0) => 2, QN("L", 1) => 2; tags="Link,left", dir=ITensors.Out)
+  right_link = Index(QN("L", 0) => 2, QN("L", 1) => 2; tags="Link,right", dir=ITensors.Out)
+  site = Index(QN("S", 0) => 1, QN("S", 1) => 1; tags="Site", dir=ITensors.Out)
+
+  left = dag(left_link)
+  right = right_link
+  site_in = prime(site)
+  site_out = dag(site)
+
+  offsets = [0, 2]
+  block_sparse_matrices = [
+    Dict(
+      (1, 1) => [1.0 0.0; 0.0 1e-9],
+      (2, 2) => [0.5 0.0; 0.0 -0.75],
+    ),
+    Dict(
+      (3, 1) => [2.0 0.0; 0.0 3.0],
+      (4, 2) => [-1.0 0.0; 0.0 0.25],
+    ),
+  ]
+
+  for tol in (0.0, 1e-6)
+    T_old = my_ITensor_old(
+      offsets, block_sparse_matrices, left, right, site_in, site_out; tol, checkflux=true
+    )
+    T_new = ITensorMPOConstruction.to_sparse_itensor(
+      offsets, block_sparse_matrices, left, right, site_in, site_out; tol, checkflux=true
+    )
+    @test array(T_new, left, right, site_in, site_out) == array(
+      T_old, left, right, site_in, site_out
+    )
+  end
+
+  return nothing
+end
+
 function test_IXYZ(N::Int64, tol::Real)
   β = zeros(ComplexF64, N, 4)
   for i in eachindex(β)
@@ -245,9 +310,9 @@ function test_non_zero_flux()::Nothing
   os .+= 1.0, "S-", 1, "S-", 4
   os .+= 1.0, "S-", 2, "S-", 3
   O = MPO_new(os, sites)
-  
+
   @test flux(O) == QN(("Number", 2))
-  
+
   mpoFromITensor = MPO(os, sites)
   compare_MPOs(O, mpoFromITensor)
 
@@ -354,6 +419,9 @@ function test_qft(N::Int64, applyR::Bool, tol::Real)
 end
 
 @testset "MPOConstruction" begin
+  test_to_sparse_itensor()
+  println()
+
   test_IXYZ(8, 1.0)
   println()
 

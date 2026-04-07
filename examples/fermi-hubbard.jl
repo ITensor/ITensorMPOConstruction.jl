@@ -22,62 +22,6 @@ electron_basis_ops = [
   "Nup * Ndn",
 ]
 
-function Fermi_Hubbard_real_space(
-  N::Int, t::Real=1.0, U::Real=4.0; useITensorsAlg::Bool=false
-)::MPO
-  os = OpSum{Float64}()
-  for i in 1:N
-    for j in [mod1(i + 1, N), mod1(i - 1, N)]
-      os .+= -t, "Cdagup", i, "Cup", j
-      os .+= -t, "Cdagdn", i, "Cdn", j
-    end
-
-    os .+= U, "Nup * Ndn", i
-  end
-
-  sites = siteinds("Electron", N; conserve_qns=true)
-
-  if useITensorsAlg
-    return MPO(os, sites)
-  else
-    return MPO_new(os, sites)
-  end
-end
-
-function Fermi_Hubbard_momentum_space(
-  N::Int, t::Real=1.0, U::Real=4.0; useITensorsAlg::Bool=false
-)::MPO
-  os = OpSum{Float64}()
-
-  @time "Constructing OpSum\t" let
-    for k in 1:N
-      epsilon = -2 * t * cospi(2 * k / N)
-      os .+= epsilon, "Nup", k
-      os .+= epsilon, "Ndn", k
-    end
-
-    for p in 1:N
-      for q in 1:N
-        for k in 1:N
-          pmk = mod1(p - k, N)
-          qpk = mod1(q + k, N)
-          os .+= U / N, "Cdagup", pmk, "Cdagdn", qpk, "Cdn", q, "Cup", p
-        end
-      end
-    end
-  end
-
-  sites = siteinds("Electron", N; conserve_qns=true)
-
-  if useITensorsAlg
-    return @time "\tConstructing MPO" MPO(os, sites)
-  else
-    operatorNames = [electron_basis_ops for _ in 1:N]
-
-    return @time "\tConstructing MPO" MPO_new(os, sites; basis_op_cache_vec=operatorNames)
-  end
-end
-
 function transcorrelated_Fermi_Hubbard_momentum_space_OpIDSum(
   N::Int, t::Real=1.0, U::Real=4.0, J::Real=0.0; output_level::Int=0
 )::MPO
@@ -166,37 +110,6 @@ function transcorrelated_Fermi_Hubbard_momentum_space_OpIDSum(
     os, sites; basis_op_cache_vec=op_cache_vec, output_level
   )
 end
-
-let
-  for useITensorsAlg in [true, false]
-    for N in [10]
-      alg = useITensorsAlg ? "ITensorMPS" : "ITensorMPOConstruction"
-
-      println("Constructing the Fermi-Hubbard real space MPO for $N sites using $alg")
-      @time "Total construction time" mpo = Fermi_Hubbard_real_space(
-        N; useITensorsAlg=useITensorsAlg
-      )
-      println("The maximum bond dimension is $(maxlinkdim(mpo))")
-      println("The sparsity is $(ITensorMPOConstruction.sparsity(mpo))")
-      println()
-    end
-  end
-end
-
-# let
-#   for N in [10]
-#     println(
-#       "Constructing the Fermi-Hubbard momentum space MPO for $N sites using ITensorMPS"
-#     )
-#     @time "Total construction time" mpo = Fermi_Hubbard_momentum_space(
-#       N; useITensorsAlg=true
-#     )
-#     println("The maximum bond dimension is $(maxlinkdim(mpo))")
-#     println("The sparsity is $(ITensorMPOConstruction.sparsity(mpo))")
-#     @show ITensorMPOConstruction.block2_nnz(mpo)
-#     println()
-#   end
-# end
 
 let
   for N in [10, 26]

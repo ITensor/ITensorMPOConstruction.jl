@@ -10,6 +10,7 @@ using SparseArrays
 using TimerOutputs
 using FunctionWrappers
 using Printf
+using ThreadsX
 
 #####################################
 # MPO Construction
@@ -19,6 +20,7 @@ include("OpIDSum.jl")
 include("ops.jl")
 include("large-graph.jl")
 include("large-graph-mpo.jl")
+include("sparse_tensor_construction.jl")
 include("MPOConstruction.jl")
 
 #####################################
@@ -29,6 +31,6 @@ include("MPOConstruction.jl")
 export OpInfo, OpCacheVec, to_OpCacheVec, OpID, OpIDSum
 
 # MPOConstruction.jl
-export MPO_new
+export resume_MPO_construction, MPO_new, sparsity, block2_nnz
 
 end

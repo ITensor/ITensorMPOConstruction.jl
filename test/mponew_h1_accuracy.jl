@@ -44,7 +44,7 @@ end
 
 function sample_sites(n::Int, k::Int)
   k = max(1, min(k, n))
-  idx = sort(unique(round.(Int, collect(range(1, n, length=k)))))
+  idx = sort(unique(round.(Int, collect(range(1, n; length=k)))))
   while length(idx) < k
     for i in 1:n
       (i in idx) && continue
@@ -69,7 +69,7 @@ function make_test_orbitals(N::Int; n_basis::Int=8, n_random::Int=4, seed::Int=1
   for _ in 1:n_random
     phi = randn(rng, N)
     nrm = norm(phi)
-    nrm > 0 || (phi[1] = 1.0; nrm = 1.0)
+    nrm > 0 || (phi[1]=1.0; nrm=1.0)
     phi ./= nrm
     push!(tests, phi)
   end

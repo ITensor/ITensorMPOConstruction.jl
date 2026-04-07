@@ -1,25 +1,25 @@
 using ITensorMPOConstruction
-using ITensorMPOConstruction: terms_eq_from, get_onsite_op, is_fermionic, sort_fermion_perm!
+using ITensorMPOConstruction: are_equal, get_onsite_op, is_fermionic, sort_fermion_perm!
 using ITensors
 using ITensorMPS
 using Test
 
-function test_terms_eq_from()
+function test_are_equal()
   op1 = (OpID(1, 10), OpID(5, 7), OpID(1, 1), OpID(1, 1), OpID(1, 1))
   op2 = (OpID(1, 10), OpID(5, 7), OpID(3, 2), OpID(1, 1), OpID(1, 1))
 
-  @test !terms_eq_from(0)(op1, op2)
-  @test !terms_eq_from(1)(op1, op2)
-  @test !terms_eq_from(2)(op1, op2)
+  @test !are_equal(op1, op2, 0)
+  @test !are_equal(op1, op2, 1)
+  @test !are_equal(op1, op2, 2)
 
-  @test terms_eq_from(3)(op1, op2)
-  @test terms_eq_from(4)(op1, op2)
-  @test terms_eq_from(5)(op1, op2)
-  @test terms_eq_from(6)(op1, op2)
-  @test terms_eq_from(7)(op1, op2)
-  @test terms_eq_from(8)(op1, op2)
-  @test terms_eq_from(9)(op1, op2)
-  @test terms_eq_from(10)(op1, op2)
+  @test are_equal(op1, op2, 3)
+  @test are_equal(op1, op2, 4)
+  @test are_equal(op1, op2, 5)
+  @test are_equal(op1, op2, 6)
+  @test are_equal(op1, op2, 7)
+  @test are_equal(op1, op2, 8)
+  @test are_equal(op1, op2, 9)
+  @test are_equal(op1, op2, 10)
 end
 
 function test_get_onsite_op()
@@ -96,7 +96,7 @@ function test_sort_fermion_perm()
 end
 
 @testset "Ops" begin
-  test_terms_eq_from()
+  test_are_equal()
 
   test_get_onsite_op()
 
