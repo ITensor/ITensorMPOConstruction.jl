@@ -9,7 +9,7 @@ DocMeta.setdocmeta!(
 )
 
 function preprocess(content)
-    return replace(content, r"#START_HIDE.*?#END_HIDE"s => "\1s#src")
+  return replace(content, r"#START_HIDE.*?#END_HIDE"s => "\1s#src")
 end
 
 examples = [
@@ -23,9 +23,9 @@ for example in examples
   Literate.markdown(
     example,
     "./docs/src/examples/";
-    flavor = Literate.CommonMarkFlavor(),
+    flavor=Literate.CommonMarkFlavor(),
     # preprocess
-    execute=false
+    execute=false,
   )
 end
 
@@ -59,4 +59,6 @@ makedocs(;
   ],
 )
 
-deploydocs(; repo="github.com/ITensor/ITensorMPOConstruction.jl", devbranch="main", push_preview=true)
+deploydocs(;
+  repo="github.com/ITensor/ITensorMPOConstruction.jl", devbranch="main", push_preview=true
+)

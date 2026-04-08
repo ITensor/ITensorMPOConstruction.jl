@@ -67,8 +67,11 @@ for N in [4, 16]
   for use_ITensors_alg in [true, false]
     alg = use_ITensors_alg ? "ITensorMPS" : "ITensorMPOConstruction"
 
-    N > 4 && println("Constructing the Fermi-Hubbard real space MPO for $N sites using $alg")
-    ITensorMPOConstruction.@time_if (N > 4) 0 "Total construction time" mpo = Fermi_Hubbard_momentum_space(N; use_ITensors_alg)
+    N > 4 &&
+      println("Constructing the Fermi-Hubbard real space MPO for $N sites using $alg")
+    ITensorMPOConstruction.@time_if (N > 4) 0 "Total construction time" mpo = Fermi_Hubbard_momentum_space(
+      N; use_ITensors_alg
+    )
 
     N > 4 && println("The maximum bond dimension is $(maxlinkdim(mpo))")
     N > 4 && println("The sparsity is $(ITensorMPOConstruction.sparsity(mpo))")

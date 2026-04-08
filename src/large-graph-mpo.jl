@@ -194,7 +194,9 @@ the `os.abs_tol` are dropped. The returned graph is split about the first site.
     next_edges[i] = (Int[], C[])
   end
 
-  build_next_edges_specialization!(next_edges, g, 0, Base.OneTo(length(os.scalars)), os.scalars)
+  build_next_edges_specialization!(
+    next_edges, g, 0, Base.OneTo(length(os.scalars)), os.scalars
+  )
 
   add_to_next_graph!(g, g, os.op_cache_vec, 0, 0, next_edges)
 
@@ -396,17 +398,15 @@ function process_single_left_vertex_cc!(
     return nothing
   end
 
-  next_edges = Matrix{Tuple{Vector{Int},Vector{C}}}(undef, rank, length(op_cache_vec[n + 1]))
+  next_edges = Matrix{Tuple{Vector{Int},Vector{C}}}(
+    undef, rank, length(op_cache_vec[n + 1])
+  )
   for i in eachindex(next_edges)
     next_edges[i] = (Int[], C[])
   end
 
   build_next_edges_specialization!(
-    next_edges,
-    g,
-    n,
-    g.right_vertex_ids_from_left[lv_id],
-    g.edge_weights_from_left[lv_id],
+    next_edges, g, n, g.right_vertex_ids_from_left[lv_id], g.edge_weights_from_left[lv_id]
   )
 
   clear_edges_from_left!(g, lv_id)
@@ -546,7 +546,9 @@ components are iterated over using threads. The returned tuple contains:
     rv_id_lookup = Vector{Int}(undef, size(R, 2))
     op_id_lookup = Vector{Ti}(undef, size(R, 2))
 
-    for_non_zeros_batch(R, length(right_map)) do _::AbstractVector{C}, ms::AbstractVector{Int}, j::Int
+    for_non_zeros_batch(
+      R, length(right_map)
+    ) do _::AbstractVector{C}, ms::AbstractVector{Int}, j::Int
       ## Convert j, which has been permuted first by the connected components
       ## and then again by SPQR into a right vertex Id.
       rv_id = right_map[pcol[j]]
@@ -563,7 +565,9 @@ components are iterated over using threads. The returned tuple contains:
     end
 
     ## Build the graph for the next site out of this component.
-    next_edges = Matrix{Tuple{Vector{Int},Vector{C}}}(undef, rank, length(op_cache_vec[n + 1]))
+    next_edges = Matrix{Tuple{Vector{Int},Vector{C}}}(
+      undef, rank, length(op_cache_vec[n + 1])
+    )
     for i in eachindex(next_edges)
       right_vertex_ids = Int[]
       edge_weights = C[]
@@ -572,7 +576,9 @@ components are iterated over using threads. The returned tuple contains:
       next_edges[i] = (right_vertex_ids, edge_weights)
     end
 
-    for_non_zeros_batch(R, length(right_map)) do weights::AbstractVector{C}, ms::AbstractVector{Int}, j::Int
+    for_non_zeros_batch(
+      R, length(right_map)
+    ) do weights::AbstractVector{C}, ms::AbstractVector{Int}, j::Int
       rv_id = rv_id_lookup[j]
       op_id = op_id_lookup[j]
 

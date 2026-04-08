@@ -120,7 +120,8 @@ function to_sparse_itensor(
     block_offset = block_offsets[block_id]
     block_dim = prod(block_dims[block_id])
     block_data = reshape(
-      @view(storage_data[(block_offset + 1):(block_offset + block_dim)]), block_dims[block_id]
+      @view(storage_data[(block_offset + 1):(block_offset + block_dim)]),
+      block_dims[block_id],
     )
     fill!(block_data, zero(C))
 

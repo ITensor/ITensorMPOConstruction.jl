@@ -30,27 +30,45 @@ using ITensors, ITensorMPS, ITensorMPOConstruction
 ↑ = true
 
 function create_op_cache_vec(sites::Vector{<:Index})::OpCacheVec
-  operatorNames = ["I", "Cdn", "Cup", "Cdagdn", "Cdagup", "Ndn", "Nup",
-                  "Cup * Cdn", "Cup * Cdagdn", "Cup * Ndn",
-                  "Cdagup * Cdn", "Cdagup * Cdagdn", "Cdagup * Ndn",
-                  "Nup * Cdn", "Nup * Cdagdn", "Nup * Ndn"]
+  operatorNames = [
+    "I",
+    "Cdn",
+    "Cup",
+    "Cdagdn",
+    "Cdagup",
+    "Ndn",
+    "Nup",
+    "Cup * Cdn",
+    "Cup * Cdagdn",
+    "Cup * Ndn",
+    "Cdagup * Cdn",
+    "Cdagup * Cdagdn",
+    "Cdagup * Ndn",
+    "Nup * Cdn",
+    "Nup * Cdagdn",
+    "Nup * Ndn",
+  ]
 
   return to_OpCacheVec(sites, [operatorNames for _ in 1:length(sites)])
 end
 
-function wrap_around(grid_size::NTuple{N, Int}, k::CartesianIndex{N})::CartesianIndex{N} where {N}
-  CartesianIndex(NTuple{N, Int}(mod1(k[i], grid_size[i]) for i in 1:N))
+function wrap_around(
+  grid_size::NTuple{N,Int}, k::CartesianIndex{N}
+)::CartesianIndex{N} where {N}
+  CartesianIndex(NTuple{N,Int}(mod1(k[i], grid_size[i]) for i in 1:N))
 end
 
-function opC(j::CartesianIndex{N}, spin::Bool, mapping::Array{Int, N})::OpID{UInt8} where {N}
+function opC(j::CartesianIndex{N}, spin::Bool, mapping::Array{Int,N})::OpID{UInt8} where {N}
   return OpID{UInt8}(2 + spin, mapping[wrap_around(size(mapping), j)])
 end
 
-function opCdag(j::CartesianIndex{N}, spin::Bool, mapping::Array{Int, N})::OpID{UInt8} where {N}
+function opCdag(
+  j::CartesianIndex{N}, spin::Bool, mapping::Array{Int,N}
+)::OpID{UInt8} where {N}
   return OpID{UInt8}(4 + spin, mapping[wrap_around(size(mapping), j)])
 end
 
-function opN(j::CartesianIndex{N}, spin::Bool, mapping::Array{Int, N})::OpID{UInt8} where {N}
+function opN(j::CartesianIndex{N}, spin::Bool, mapping::Array{Int,N})::OpID{UInt8} where {N}
   return OpID{UInt8}(6 + spin, mapping[wrap_around(size(mapping), j)])
 end
 
@@ -68,7 +86,7 @@ end
 function merge_sorted_ops(ops::AbstractVector{OpID{UInt8}})::Int
   ITensorMPOConstruction.for_equal_sites(ops) do a, c
     local_ops = view(ops, a:c)
-    length(local_ops) == 1 && return
+    length(local_ops) == 1 && return nothing
 
     b = findfirst(is_spin_dn(op.id) for op in local_ops)
     isnothing(b) && (b = length(local_ops) + 1)
@@ -82,7 +100,7 @@ function merge_sorted_ops(ops::AbstractVector{OpID{UInt8}})::Int
       @assert length(spin_up_ops) == 2
       @assert spin_up_ops[1].id == 5 ## Cdagup
       @assert spin_up_ops[2].id == 3 ## Cup
-      
+
       spin_up_op = 7 ## Nup
     end
 
@@ -96,7 +114,7 @@ function merge_sorted_ops(ops::AbstractVector{OpID{UInt8}})::Int
       @assert length(spin_dn_ops) == 2
       @assert spin_dn_ops[1].id == 4 ## Cdagdn
       @assert spin_dn_ops[2].id == 2 ## Cdn
-      
+
       spin_dn_op = 6 ## Ndn
     end
 
@@ -124,9 +142,11 @@ end;
 # ## General helper code
 
 ## Function to construct the momentum conserving site indices
-function sites_from_grid(mapping::Array{Int}, conserve_momentum::Bool)::Vector{ITensors.QNIndex}
+function sites_from_grid(
+  mapping::Array{Int}, conserve_momentum::Bool
+)::Vector{ITensors.QNIndex}
   !conserve_momentum && return siteinds("Electron", length(mapping); conserve_qns=true)
-  
+
   spatial_dimension = ndims(mapping)
   @assert 1 <= spatial_dimension <= 2
 
@@ -136,19 +156,19 @@ function sites_from_grid(mapping::Array{Int}, conserve_momentum::Bool)::Vector{I
       k = only(loc)
       L = length(mapping)
       qns = [
-        QN(("Nf", 0, -1), ("Sz", +0), ("Kx",     0, L)) => 1,
-        QN(("Nf", 1, -1), ("Sz", +1), ("Kx",     k, L)) => 1,
-        QN(("Nf", 1, -1), ("Sz", -1), ("Kx",     k, L)) => 1,
-        QN(("Nf", 2, -1), ("Sz", +0), ("Kx", 2 * k, L)) => 1
+        QN(("Nf", 0, -1), ("Sz", +0), ("Kx", 0, L)) => 1,
+        QN(("Nf", 1, -1), ("Sz", +1), ("Kx", k, L)) => 1,
+        QN(("Nf", 1, -1), ("Sz", -1), ("Kx", k, L)) => 1,
+        QN(("Nf", 2, -1), ("Sz", +0), ("Kx", 2 * k, L)) => 1,
       ]
     else
       kx, ky = Tuple(loc)
       Lx, Ly = size(mapping)
       qns = [
-        QN(("Nf", 0, -1), ("Sz", +0), ("Kx",      0, Lx), ("Ky",      0, Ly)) => 1,
-        QN(("Nf", 1, -1), ("Sz", +1), ("Kx",     kx, Lx), ("Ky",     ky, Ly)) => 1,
-        QN(("Nf", 1, -1), ("Sz", -1), ("Kx",     kx, Lx), ("Ky",     ky, Ly)) => 1,
-        QN(("Nf", 2, -1), ("Sz", +0), ("Kx", 2 * kx, Lx), ("Ky", 2 * ky, Ly)) => 1
+        QN(("Nf", 0, -1), ("Sz", +0), ("Kx", 0, Lx), ("Ky", 0, Ly)) => 1,
+        QN(("Nf", 1, -1), ("Sz", +1), ("Kx", kx, Lx), ("Ky", ky, Ly)) => 1,
+        QN(("Nf", 1, -1), ("Sz", -1), ("Kx", kx, Lx), ("Ky", ky, Ly)) => 1,
+        QN(("Nf", 2, -1), ("Sz", +0), ("Kx", 2 * kx, Lx), ("Ky", 2 * ky, Ly)) => 1,
       ]
     end
 
@@ -177,7 +197,7 @@ function my_cospi(x::Rational)
   return sgn * cospi(x)
 end
 
-function epsilon(gridSize::NTuple{N, Int}, k::CartesianIndex{N})::Float64 where {N}
+function epsilon(gridSize::NTuple{N,Int}, k::CartesianIndex{N})::Float64 where {N}
   return 2 * sum(my_cospi(2 * k[i] // gridSize[i]) for i in 1:N)
 end
 
@@ -191,16 +211,18 @@ end
 #
 # 3. Adding the three-electron terms dominate the runtime of this function, but we can add them in parallel with a simple `Threads.@threads`. Thread safety is handled internally to `add!`.
 
-function transcorrelated_fermi_hubbard(t::Real, U::Real, J::Real, mapping::Array{Int}; conserve_momentum::Bool=true)::Tuple{Vector{ITensors.QNIndex}, OpIDSum}
+function transcorrelated_fermi_hubbard(
+  t::Real, U::Real, J::Real, mapping::Array{Int}; conserve_momentum::Bool=true
+)::Tuple{Vector{ITensors.QNIndex},OpIDSum}
   grid_size = size(mapping)
   N = length(mapping)
 
   sites = sites_from_grid(mapping, conserve_momentum)
-  os = OpIDSum{6, Float64, UInt8}(
+  os = OpIDSum{6,Float64,UInt8}(
     (J == 0) ? N^3 + 2 * N : N^5 ÷ 2,
-    create_op_cache_vec(sites), 
+    create_op_cache_vec(sites),
     merge_sorted_ops;
-    abs_tol=1e-14
+    abs_tol=1e-14,
   )
 
   ## The hopping term
@@ -215,7 +237,9 @@ function transcorrelated_fermi_hubbard(t::Real, U::Real, J::Real, mapping::Array
     for q in CartesianIndices(mapping)
       for k in CartesianIndices(mapping)
         factor = U / N
-        ops = opCdag(p - k, ↑, mapping), opC(p, ↑, mapping), opCdag(q + k, ↓, mapping), opC(q, ↓, mapping)
+        ops = opCdag(p - k, ↑, mapping),
+        opC(p, ↑, mapping), opCdag(q + k, ↓, mapping),
+        opC(q, ↓, mapping)
         add!(os, factor, ops)
       end
     end
@@ -227,12 +251,19 @@ function transcorrelated_fermi_hubbard(t::Real, U::Real, J::Real, mapping::Array
   for p in CartesianIndices(mapping)
     for q in CartesianIndices(mapping)
       for k in CartesianIndices(mapping)
-        factor = -t * ((exp(J) - 1) * epsilon(grid_size, p - k) + (exp(-J) - 1) * epsilon(grid_size, p)) / N
-        
-        ops = opCdag(p - k, ↑, mapping), opC(p, ↑, mapping), opCdag(q + k, ↓, mapping), opC(q, ↓, mapping)
+        factor =
+          -t * (
+            (exp(J) - 1) * epsilon(grid_size, p - k) + (exp(-J) - 1) * epsilon(grid_size, p)
+          ) / N
+
+        ops = opCdag(p - k, ↑, mapping),
+        opC(p, ↑, mapping), opCdag(q + k, ↓, mapping),
+        opC(q, ↓, mapping)
         add!(os, factor, ops)
 
-        ops = opCdag(q + k, ↑, mapping), opC(q, ↑, mapping), opCdag(p - k, ↓, mapping), opC(p, ↓, mapping)
+        ops = opCdag(q + k, ↑, mapping),
+        opC(q, ↑, mapping), opCdag(p - k, ↓, mapping),
+        opC(p, ↓, mapping)
         add!(os, factor, ops)
       end
     end
@@ -249,17 +280,29 @@ function transcorrelated_fermi_hubbard(t::Real, U::Real, J::Real, mapping::Array
             wrap_around(grid_size, q + kp) <= wrap_around(grid_size, s + k - kp) && continue
 
             ## Add up the contributions from the four terms.
-            factor = 2 * t * (cosh(J) - 1) / N^2 * (
-              + epsilon(grid_size, p - (k - kp))         ## From (q + kp    , s + k - kp, s, q)
-              - epsilon(grid_size, p - (s + k - kp - q)) ## From (q + kp    , s + k - kp, q, s)
-              - epsilon(grid_size, p - (q + kp - s))     ## From (s + k - kp, q + kp    , s, q)
-              + epsilon(grid_size, p - kp)               ## From (s + k - kp, q + kp    , q, s)
-            )
+            factor =
+              2 * t * (cosh(J) - 1) / N^2 * (
+                + epsilon(grid_size, p - (k - kp))         ## From (q + kp    , s + k - kp, s, q)
+                - epsilon(grid_size, p - (s + k - kp - q)) ## From (q + kp    , s + k - kp, q, s)
+                -
+                epsilon(grid_size, p - (q + kp - s))     ## From (s + k - kp, q + kp    , s, q)
+                + epsilon(grid_size, p - kp)               ## From (s + k - kp, q + kp    , q, s)
+              )
 
-            ops = opCdag(p - k, ↑, mapping), opC(p, ↑, mapping), opCdag(q + kp, ↓, mapping), opCdag(s + k - kp, ↓, mapping), opC(s, ↓, mapping), opC(q, ↓, mapping)
+            ops = opCdag(p - k, ↑, mapping),
+            opC(p, ↑, mapping),
+            opCdag(q + kp, ↓, mapping),
+            opCdag(s + k - kp, ↓, mapping),
+            opC(s, ↓, mapping),
+            opC(q, ↓, mapping)
             add!(os, factor, ops)
 
-            ops = opCdag(q + kp, ↑, mapping), opCdag(s + k - kp, ↑, mapping), opC(s, ↑, mapping), opC(q, ↑, mapping), opCdag(p - k, ↓, mapping), opC(p, ↓, mapping)
+            ops = opCdag(q + kp, ↑, mapping),
+            opCdag(s + k - kp, ↑, mapping),
+            opC(s, ↑, mapping),
+            opC(q, ↑, mapping),
+            opCdag(p - k, ↓, mapping),
+            opC(p, ↓, mapping)
             add!(os, factor, ops)
           end
         end
@@ -285,8 +328,8 @@ end
 
 function epsilon_mapping(grid_size::Tuple)::Array{Int}
   kAndEps = vec([(k, epsilon(grid_size, k)) for k in each_grid_site(grid_size)])
-  sort!(kAndEps, by = (kAndEps) -> kAndEps[2])
-  
+  sort!(kAndEps; by=(kAndEps) -> kAndEps[2])
+
   mapping = zeros(Int, grid_size...)
   for (i, (k, eps)) in enumerate(kAndEps)
     mapping[k] = i
@@ -297,10 +340,10 @@ end
 
 function bipartite_mapping(grid_size)
   @assert all(mod(dim, 2) == 0 for dim in grid_size)
-  
+
   mapping = zeros(Int, grid_size...)
 
-  blocks = Dict{Float64, Vector{NTuple{2, CartesianIndex}}}()
+  blocks = Dict{Float64,Vector{NTuple{2,CartesianIndex}}}()
   offset = CartesianIndex([dim ÷ 2 for dim in grid_size]...)
   for (i, loc) in enumerate(CartesianIndices(mapping))
     partnerLoc = wrap_around(grid_size, loc + offset)
@@ -320,7 +363,7 @@ function bipartite_mapping(grid_size)
 
     eps = max(eps, epsPartner)
 
-    block = get!(blocks, eps, Vector{NTuple{2, CartesianIndex}}())
+    block = get!(blocks, eps, Vector{NTuple{2,CartesianIndex}}())
     if pair ∉ block
       push!(block, pair)
     end
@@ -345,7 +388,9 @@ for grid_size in ((2, 2), (6, 6))
   let t = 1, U = 4, J = -0.5, mapping = bipartite_mapping(grid_size)
     @time "Constructing OpIDSum" sites, os = transcorrelated_fermi_hubbard(t, U, J, mapping)
     reset_timer!()
-    @time "Constructing MPO" H = MPO_new(os, sites; combine_qn_sectors=true, output_level=0, check_for_errors=false)
+    @time "Constructing MPO" H = MPO_new(
+      os, sites; combine_qn_sectors=true, output_level=0, check_for_errors=false
+    )
     grid_size != (2, 2) && print_timer()
   end
 end
@@ -369,8 +414,8 @@ function call_back(
   sites::Vector{<:Index},
   llinks::Vector{<:Index},
   g::ITensorMPOConstruction.MPOGraph,
-  op_cache_vec::OpCacheVec)::Nothing
-
+  op_cache_vec::OpCacheVec,
+)::Nothing
   n != 18 && return nothing
   serialize("./mpo.jldump", (n, H, sites, llinks, g, op_cache_vec))
   println("Wrote a checkpoint to ./mpo.jldump")
@@ -386,15 +431,17 @@ let t = 1, U = 4, J = -0.5, mapping = standard_mapping((6, 6))
     MPO_new(os, sites; combine_qn_sectors=true, check_for_errors=false, call_back)
   catch e
     if e isa InterruptException
-        println("Caught a InterruptException!")
+      println("Caught a InterruptException!")
     else
-        rethrow(e)
+      rethrow(e)
     end
   end
 
   println("Reading a checkpoint from ./mpo.jldump")
   n, H, sites, llinks, g, op_cache_vec = Serialization.deserialize("./mpo.jldump")
-  H = resume_MPO_construction(Float64, n + 1, H, sites, llinks, g, op_cache_vec; combine_qn_sectors=true, call_back)
+  H = resume_MPO_construction(
+    Float64, n + 1, H, sites, llinks, g, op_cache_vec; combine_qn_sectors=true, call_back
+  )
   println("Construction finished!")
   rm("./mpo.jldump")
 end

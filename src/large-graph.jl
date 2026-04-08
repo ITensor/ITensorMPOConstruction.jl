@@ -88,7 +88,9 @@ in the run are removed, and every right-vertex id stored in the left adjacency
 lists is remapped to the surviving vertex id. The returned vector maps each
 original right-vertex id to its new position after compaction.
 """
-@timeit function combine_duplicate_adjacent_right_vertices!(g::BipartiteGraph, eq::Function)::Vector{Int}
+@timeit function combine_duplicate_adjacent_right_vertices!(
+  g::BipartiteGraph, eq::Function
+)::Vector{Int}
   right_vertices = g.right_vertices
 
   starts_new_run = Vector{Int}(undef, length(right_vertices))
@@ -150,9 +152,7 @@ the left and right sides of the bipartite graph (i.e. discarding isolated vertic
 The returned object records, for each retained component, which left vertices it
 contains and how global right-vertex ids map into local positions within their component.
 """
-function compute_connected_components(
-  g::BipartiteGraph
-)::BipartiteGraphConnectedComponents
+function compute_connected_components(g::BipartiteGraph)::BipartiteGraphConnectedComponents
   return compute_connected_components(g, Vector{Int}(undef, right_size(g)))
 end
 

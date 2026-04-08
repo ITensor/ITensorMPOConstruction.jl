@@ -119,10 +119,7 @@ end
 
 function test_get_cc_matrix_duplicate_edges()
   g = BipartiteGraph{Int,Int,Float64}(
-    zeros(Int, 2),
-    zeros(Int, 2),
-    [[1, 1, 2], [2, 2]],
-    [[1.5, -0.5, 3.0], [4.0, -1.0]],
+    zeros(Int, 2), zeros(Int, 2), [[1, 1, 2], [2, 2]], [[1.5, -0.5, 3.0], [4.0, -1.0]]
   )
 
   ccs = compute_connected_components(g)

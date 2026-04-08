@@ -106,14 +106,8 @@ function test_to_sparse_itensor()::Nothing
 
   offsets = [0, 2]
   block_sparse_matrices = [
-    Dict(
-      (1, 1) => [1.0 0.0; 0.0 1e-9],
-      (2, 2) => [0.5 0.0; 0.0 -0.75],
-    ),
-    Dict(
-      (3, 1) => [2.0 0.0; 0.0 3.0],
-      (4, 2) => [-1.0 0.0; 0.0 0.25],
-    ),
+    Dict((1, 1) => [1.0 0.0; 0.0 1e-9], (2, 2) => [0.5 0.0; 0.0 -0.75]),
+    Dict((3, 1) => [2.0 0.0; 0.0 3.0], (4, 2) => [-1.0 0.0; 0.0 0.25]),
   ]
 
   for tol in (0.0, 1e-6)
@@ -123,9 +117,8 @@ function test_to_sparse_itensor()::Nothing
     T_new = ITensorMPOConstruction.to_sparse_itensor(
       offsets, block_sparse_matrices, left, right, site_in, site_out; tol, checkflux=true
     )
-    @test array(T_new, left, right, site_in, site_out) == array(
-      T_old, left, right, site_in, site_out
-    )
+    @test array(T_new, left, right, site_in, site_out) ==
+      array(T_old, left, right, site_in, site_out)
   end
 
   return nothing
