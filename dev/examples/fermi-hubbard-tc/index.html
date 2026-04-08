@@ -19,27 +19,45 @@ using ITensors, ITensorMPS, ITensorMPOConstruction
 ↑ = true
 
 function create_op_cache_vec(sites::Vector{&lt;:Index})::OpCacheVec
-  operatorNames = [&quot;I&quot;, &quot;Cdn&quot;, &quot;Cup&quot;, &quot;Cdagdn&quot;, &quot;Cdagup&quot;, &quot;Ndn&quot;, &quot;Nup&quot;,
-                  &quot;Cup * Cdn&quot;, &quot;Cup * Cdagdn&quot;, &quot;Cup * Ndn&quot;,
-                  &quot;Cdagup * Cdn&quot;, &quot;Cdagup * Cdagdn&quot;, &quot;Cdagup * Ndn&quot;,
-                  &quot;Nup * Cdn&quot;, &quot;Nup * Cdagdn&quot;, &quot;Nup * Ndn&quot;]
+  operatorNames = [
+    &quot;I&quot;,
+    &quot;Cdn&quot;,
+    &quot;Cup&quot;,
+    &quot;Cdagdn&quot;,
+    &quot;Cdagup&quot;,
+    &quot;Ndn&quot;,
+    &quot;Nup&quot;,
+    &quot;Cup * Cdn&quot;,
+    &quot;Cup * Cdagdn&quot;,
+    &quot;Cup * Ndn&quot;,
+    &quot;Cdagup * Cdn&quot;,
+    &quot;Cdagup * Cdagdn&quot;,
+    &quot;Cdagup * Ndn&quot;,
+    &quot;Nup * Cdn&quot;,
+    &quot;Nup * Cdagdn&quot;,
+    &quot;Nup * Ndn&quot;,
+  ]
 
   return to_OpCacheVec(sites, [operatorNames for _ in 1:length(sites)])
 end
 
-function wrap_around(grid_size::NTuple{N, Int}, k::CartesianIndex{N})::CartesianIndex{N} where {N}
-  CartesianIndex(NTuple{N, Int}(mod1(k[i], grid_size[i]) for i in 1:N))
+function wrap_around(
+  grid_size::NTuple{N,Int}, k::CartesianIndex{N}
+)::CartesianIndex{N} where {N}
+  CartesianIndex(NTuple{N,Int}(mod1(k[i], grid_size[i]) for i in 1:N))
 end
 
-function opC(j::CartesianIndex{N}, spin::Bool, mapping::Array{Int, N})::OpID{UInt8} where {N}
+function opC(j::CartesianIndex{N}, spin::Bool, mapping::Array{Int,N})::OpID{UInt8} where {N}
   return OpID{UInt8}(2 + spin, mapping[wrap_around(size(mapping), j)])
 end
 
-function opCdag(j::CartesianIndex{N}, spin::Bool, mapping::Array{Int, N})::OpID{UInt8} where {N}
+function opCdag(
+  j::CartesianIndex{N}, spin::Bool, mapping::Array{Int,N}
+)::OpID{UInt8} where {N}
   return OpID{UInt8}(4 + spin, mapping[wrap_around(size(mapping), j)])
 end
 
-function opN(j::CartesianIndex{N}, spin::Bool, mapping::Array{Int, N})::OpID{UInt8} where {N}
+function opN(j::CartesianIndex{N}, spin::Bool, mapping::Array{Int,N})::OpID{UInt8} where {N}
   return OpID{UInt8}(6 + spin, mapping[wrap_around(size(mapping), j)])
 end
 
@@ -49,7 +67,7 @@ function is_spin_dn(op_id)::Bool
 end</code></pre><h2 id="Combining-local-operators"><a class="docs-heading-anchor" href="#Combining-local-operators">Combining local operators</a><a id="Combining-local-operators-1"></a><a class="docs-heading-anchor-permalink" href="#Combining-local-operators" title="Permalink"></a></h2><p>The next bottleneck in construction is combining multiple operators acting on the same site into a single basis operator to satisfy <a href="../../documentation/MPO_new/">constraint #3</a>. This entails for example, replacing <span>$c^\dagger_{k, \uparrow} c_{k, \uparrow}$</span> with <span>$n_{k, \uparrow}$</span>. While this can be accomplished by passing a <code>basis_op_chache_vec</code> to <code>MPO_new</code>, that code path is slow since it relies on numeric computations to rewrite each product. If instead, we are intelligent about how we formulate the individual terms, we can rewrite them symbolically.</p><p>By utilizing the <code>modify!</code> function of <code>OpIDSum</code> we can let <code>OpIDSum</code> do the tricky business of sorting the fermionic operators, and we can then modify the resulting term after operators acting on the same site have been made adjacent. Because the sort is stable, if the original term contains normal ordered spin-up operators followed by normal ordered spin-down operators this structure will be maintained in the operators acting on each site. This allows us to combine the spin-up operators and spin-down operators separately first before merging them together. This does require some changes to the code constructing the <code>OpIDSum</code> to respect this ordering in construction.</p><pre><code class="language-julia hljs">function merge_sorted_ops(ops::AbstractVector{OpID{UInt8}})::Int
   ITensorMPOConstruction.for_equal_sites(ops) do a, c
     local_ops = view(ops, a:c)
-    length(local_ops) == 1 &amp;&amp; return
+    length(local_ops) == 1 &amp;&amp; return nothing
 
     b = findfirst(is_spin_dn(op.id) for op in local_ops)
     isnothing(b) &amp;&amp; (b = length(local_ops) + 1)
@@ -101,7 +119,9 @@ end</code></pre><h2 id="Combining-local-operators"><a class="docs-heading-anchor
   sort!(ops; by=op -&gt; op.n)
   return 1
 end;</code></pre><h2 id="General-helper-code"><a class="docs-heading-anchor" href="#General-helper-code">General helper code</a><a id="General-helper-code-1"></a><a class="docs-heading-anchor-permalink" href="#General-helper-code" title="Permalink"></a></h2><pre><code class="language-julia hljs"># Function to construct the momentum conserving site indices
-function sites_from_grid(mapping::Array{Int}, conserve_momentum::Bool)::Vector{ITensors.QNIndex}
+function sites_from_grid(
+  mapping::Array{Int}, conserve_momentum::Bool
+)::Vector{ITensors.QNIndex}
   !conserve_momentum &amp;&amp; return siteinds(&quot;Electron&quot;, length(mapping); conserve_qns=true)
 
   spatial_dimension = ndims(mapping)
@@ -113,19 +133,19 @@ function sites_from_grid(mapping::Array{Int}, conserve_momentum::Bool)::Vector{I
       k = only(loc)
       L = length(mapping)
       qns = [
-        QN((&quot;Nf&quot;, 0, -1), (&quot;Sz&quot;, +0), (&quot;Kx&quot;,     0, L)) =&gt; 1,
-        QN((&quot;Nf&quot;, 1, -1), (&quot;Sz&quot;, +1), (&quot;Kx&quot;,     k, L)) =&gt; 1,
-        QN((&quot;Nf&quot;, 1, -1), (&quot;Sz&quot;, -1), (&quot;Kx&quot;,     k, L)) =&gt; 1,
-        QN((&quot;Nf&quot;, 2, -1), (&quot;Sz&quot;, +0), (&quot;Kx&quot;, 2 * k, L)) =&gt; 1
+        QN((&quot;Nf&quot;, 0, -1), (&quot;Sz&quot;, +0), (&quot;Kx&quot;, 0, L)) =&gt; 1,
+        QN((&quot;Nf&quot;, 1, -1), (&quot;Sz&quot;, +1), (&quot;Kx&quot;, k, L)) =&gt; 1,
+        QN((&quot;Nf&quot;, 1, -1), (&quot;Sz&quot;, -1), (&quot;Kx&quot;, k, L)) =&gt; 1,
+        QN((&quot;Nf&quot;, 2, -1), (&quot;Sz&quot;, +0), (&quot;Kx&quot;, 2 * k, L)) =&gt; 1,
       ]
     else
       kx, ky = Tuple(loc)
       Lx, Ly = size(mapping)
       qns = [
-        QN((&quot;Nf&quot;, 0, -1), (&quot;Sz&quot;, +0), (&quot;Kx&quot;,      0, Lx), (&quot;Ky&quot;,      0, Ly)) =&gt; 1,
-        QN((&quot;Nf&quot;, 1, -1), (&quot;Sz&quot;, +1), (&quot;Kx&quot;,     kx, Lx), (&quot;Ky&quot;,     ky, Ly)) =&gt; 1,
-        QN((&quot;Nf&quot;, 1, -1), (&quot;Sz&quot;, -1), (&quot;Kx&quot;,     kx, Lx), (&quot;Ky&quot;,     ky, Ly)) =&gt; 1,
-        QN((&quot;Nf&quot;, 2, -1), (&quot;Sz&quot;, +0), (&quot;Kx&quot;, 2 * kx, Lx), (&quot;Ky&quot;, 2 * ky, Ly)) =&gt; 1
+        QN((&quot;Nf&quot;, 0, -1), (&quot;Sz&quot;, +0), (&quot;Kx&quot;, 0, Lx), (&quot;Ky&quot;, 0, Ly)) =&gt; 1,
+        QN((&quot;Nf&quot;, 1, -1), (&quot;Sz&quot;, +1), (&quot;Kx&quot;, kx, Lx), (&quot;Ky&quot;, ky, Ly)) =&gt; 1,
+        QN((&quot;Nf&quot;, 1, -1), (&quot;Sz&quot;, -1), (&quot;Kx&quot;, kx, Lx), (&quot;Ky&quot;, ky, Ly)) =&gt; 1,
+        QN((&quot;Nf&quot;, 2, -1), (&quot;Sz&quot;, +0), (&quot;Kx&quot;, 2 * kx, Lx), (&quot;Ky&quot;, 2 * ky, Ly)) =&gt; 1,
       ]
     end
 
@@ -154,18 +174,20 @@ function my_cospi(x::Rational)
   return sgn * cospi(x)
 end
 
-function epsilon(gridSize::NTuple{N, Int}, k::CartesianIndex{N})::Float64 where {N}
+function epsilon(gridSize::NTuple{N,Int}, k::CartesianIndex{N})::Float64 where {N}
   return 2 * sum(my_cospi(2 * k[i] // gridSize[i]) for i in 1:N)
-end</code></pre><h2 id="Constructing-the-OpIDSum"><a class="docs-heading-anchor" href="#Constructing-the-OpIDSum">Constructing the <code>OpIDSum</code></a><a id="Constructing-the-OpIDSum-1"></a><a class="docs-heading-anchor-permalink" href="#Constructing-the-OpIDSum" title="Permalink"></a></h2><p>In the function below we construct the <code>OpIDSum</code>. There are three things worth highlighting.</p><ol><li><p>The initialization of the <code>OpIDSum</code>: We specify the weight of the Hamiltonian, which is 6 in this case, and use a <code>UInt8</code> to enumerate the operators and sites, which does limit us to 255 sites. Additionally, we specify the maximum number of terms, our <code>merge_sorted_ops</code> function, and a non-zero <code>abs_tol</code> to drop terms with coefficients smaller than <code>1e-14</code>. This last point is to account for floating point round error for terms whose coefficients are analytically zero.</p></li><li><p>In order to permit the functioning of <code>merge_sorted_ops</code>, we always put spin-up operators before spin-down operators in each term.</p></li><li><p>Adding the three-electron terms dominate the runtime of this function, but we can add them in parallel with a simple <code>Threads.@threads</code>. Thread safety is handled internally to <code>add!</code>.</p></li></ol><pre><code class="language-julia hljs">function transcorrelated_fermi_hubbard(t::Real, U::Real, J::Real, mapping::Array{Int}; conserve_momentum::Bool=true)::Tuple{Vector{ITensors.QNIndex}, OpIDSum}
+end</code></pre><h2 id="Constructing-the-OpIDSum"><a class="docs-heading-anchor" href="#Constructing-the-OpIDSum">Constructing the <code>OpIDSum</code></a><a id="Constructing-the-OpIDSum-1"></a><a class="docs-heading-anchor-permalink" href="#Constructing-the-OpIDSum" title="Permalink"></a></h2><p>In the function below we construct the <code>OpIDSum</code>. There are three things worth highlighting.</p><ol><li><p>The initialization of the <code>OpIDSum</code>: We specify the weight of the Hamiltonian, which is 6 in this case, and use a <code>UInt8</code> to enumerate the operators and sites, which does limit us to 255 sites. Additionally, we specify the maximum number of terms, our <code>merge_sorted_ops</code> function, and a non-zero <code>abs_tol</code> to drop terms with coefficients smaller than <code>1e-14</code>. This last point is to account for floating point round error for terms whose coefficients are analytically zero.</p></li><li><p>In order to permit the functioning of <code>merge_sorted_ops</code>, we always put spin-up operators before spin-down operators in each term.</p></li><li><p>Adding the three-electron terms dominate the runtime of this function, but we can add them in parallel with a simple <code>Threads.@threads</code>. Thread safety is handled internally to <code>add!</code>.</p></li></ol><pre><code class="language-julia hljs">function transcorrelated_fermi_hubbard(
+  t::Real, U::Real, J::Real, mapping::Array{Int}; conserve_momentum::Bool=true
+)::Tuple{Vector{ITensors.QNIndex},OpIDSum}
   grid_size = size(mapping)
   N = length(mapping)
 
   sites = sites_from_grid(mapping, conserve_momentum)
-  os = OpIDSum{6, Float64, UInt8}(
+  os = OpIDSum{6,Float64,UInt8}(
     (J == 0) ? N^3 + 2 * N : N^5 ÷ 2,
     create_op_cache_vec(sites),
     merge_sorted_ops;
-    abs_tol=1e-14
+    abs_tol=1e-14,
   )
 
   # The hopping term
@@ -180,7 +202,9 @@ end</code></pre><h2 id="Constructing-the-OpIDSum"><a class="docs-heading-anchor"
     for q in CartesianIndices(mapping)
       for k in CartesianIndices(mapping)
         factor = U / N
-        ops = opCdag(p - k, ↑, mapping), opC(p, ↑, mapping), opCdag(q + k, ↓, mapping), opC(q, ↓, mapping)
+        ops = opCdag(p - k, ↑, mapping),
+        opC(p, ↑, mapping), opCdag(q + k, ↓, mapping),
+        opC(q, ↓, mapping)
         add!(os, factor, ops)
       end
     end
@@ -192,12 +216,19 @@ end</code></pre><h2 id="Constructing-the-OpIDSum"><a class="docs-heading-anchor"
   for p in CartesianIndices(mapping)
     for q in CartesianIndices(mapping)
       for k in CartesianIndices(mapping)
-        factor = -t * ((exp(J) - 1) * epsilon(grid_size, p - k) + (exp(-J) - 1) * epsilon(grid_size, p)) / N
+        factor =
+          -t * (
+            (exp(J) - 1) * epsilon(grid_size, p - k) + (exp(-J) - 1) * epsilon(grid_size, p)
+          ) / N
 
-        ops = opCdag(p - k, ↑, mapping), opC(p, ↑, mapping), opCdag(q + k, ↓, mapping), opC(q, ↓, mapping)
+        ops = opCdag(p - k, ↑, mapping),
+        opC(p, ↑, mapping), opCdag(q + k, ↓, mapping),
+        opC(q, ↓, mapping)
         add!(os, factor, ops)
 
-        ops = opCdag(q + k, ↑, mapping), opC(q, ↑, mapping), opCdag(p - k, ↓, mapping), opC(p, ↓, mapping)
+        ops = opCdag(q + k, ↑, mapping),
+        opC(q, ↑, mapping), opCdag(p - k, ↓, mapping),
+        opC(p, ↓, mapping)
         add!(os, factor, ops)
       end
     end
@@ -214,17 +245,29 @@ end</code></pre><h2 id="Constructing-the-OpIDSum"><a class="docs-heading-anchor"
             wrap_around(grid_size, q + kp) &lt;= wrap_around(grid_size, s + k - kp) &amp;&amp; continue
 
             # Add up the contributions from the four terms.
-            factor = 2 * t * (cosh(J) - 1) / N^2 * (
-              + epsilon(grid_size, p - (k - kp))         ## From (q + kp    , s + k - kp, s, q)
-              - epsilon(grid_size, p - (s + k - kp - q)) ## From (q + kp    , s + k - kp, q, s)
-              - epsilon(grid_size, p - (q + kp - s))     ## From (s + k - kp, q + kp    , s, q)
-              + epsilon(grid_size, p - kp)               ## From (s + k - kp, q + kp    , q, s)
-            )
+            factor =
+              2 * t * (cosh(J) - 1) / N^2 * (
+                + epsilon(grid_size, p - (k - kp))         ## From (q + kp    , s + k - kp, s, q)
+                - epsilon(grid_size, p - (s + k - kp - q)) ## From (q + kp    , s + k - kp, q, s)
+                -
+                epsilon(grid_size, p - (q + kp - s))     ## From (s + k - kp, q + kp    , s, q)
+                + epsilon(grid_size, p - kp)               ## From (s + k - kp, q + kp    , q, s)
+              )
 
-            ops = opCdag(p - k, ↑, mapping), opC(p, ↑, mapping), opCdag(q + kp, ↓, mapping), opCdag(s + k - kp, ↓, mapping), opC(s, ↓, mapping), opC(q, ↓, mapping)
+            ops = opCdag(p - k, ↑, mapping),
+            opC(p, ↑, mapping),
+            opCdag(q + kp, ↓, mapping),
+            opCdag(s + k - kp, ↓, mapping),
+            opC(s, ↓, mapping),
+            opC(q, ↓, mapping)
             add!(os, factor, ops)
 
-            ops = opCdag(q + kp, ↑, mapping), opCdag(s + k - kp, ↑, mapping), opC(s, ↑, mapping), opC(q, ↑, mapping), opCdag(p - k, ↓, mapping), opC(p, ↓, mapping)
+            ops = opCdag(q + kp, ↑, mapping),
+            opCdag(s + k - kp, ↑, mapping),
+            opC(s, ↑, mapping),
+            opC(q, ↑, mapping),
+            opCdag(p - k, ↓, mapping),
+            opC(p, ↓, mapping)
             add!(os, factor, ops)
           end
         end
@@ -244,7 +287,7 @@ end
 
 function epsilon_mapping(grid_size::Tuple)::Array{Int}
   kAndEps = vec([(k, epsilon(grid_size, k)) for k in each_grid_site(grid_size)])
-  sort!(kAndEps, by = (kAndEps) -&gt; kAndEps[2])
+  sort!(kAndEps; by=(kAndEps) -&gt; kAndEps[2])
 
   mapping = zeros(Int, grid_size...)
   for (i, (k, eps)) in enumerate(kAndEps)
@@ -259,7 +302,7 @@ function bipartite_mapping(grid_size)
 
   mapping = zeros(Int, grid_size...)
 
-  blocks = Dict{Float64, Vector{NTuple{2, CartesianIndex}}}()
+  blocks = Dict{Float64,Vector{NTuple{2,CartesianIndex}}}()
   offset = CartesianIndex([dim ÷ 2 for dim in grid_size]...)
   for (i, loc) in enumerate(CartesianIndices(mapping))
     partnerLoc = wrap_around(grid_size, loc + offset)
@@ -279,7 +322,7 @@ function bipartite_mapping(grid_size)
 
     eps = max(eps, epsPartner)
 
-    block = get!(blocks, eps, Vector{NTuple{2, CartesianIndex}}())
+    block = get!(blocks, eps, Vector{NTuple{2,CartesianIndex}}())
     if pair ∉ block
       push!(block, pair)
     end
@@ -300,7 +343,9 @@ for grid_size in ((2, 2), (6, 6))
   let t = 1, U = 4, J = -0.5, mapping = bipartite_mapping(grid_size)
     @time &quot;Constructing OpIDSum&quot; sites, os = transcorrelated_fermi_hubbard(t, U, J, mapping)
     reset_timer!()
-    @time &quot;Constructing MPO&quot; H = MPO_new(os, sites; combine_qn_sectors=true, output_level=0, check_for_errors=false)
+    @time &quot;Constructing MPO&quot; H = MPO_new(
+      os, sites; combine_qn_sectors=true, output_level=0, check_for_errors=false
+    )
     grid_size != (2, 2) &amp;&amp; print_timer()
   end
 end</code></pre><p>The transcorrelated momentum space Fermi-Hubbard MPO is very sparse. As such, giving Julia all the threads results in the best performance. The following timings are for the <span>$8 \times 8$</span> system on a computer with two Intel(R) Xeon(R) Gold 6438Y+ (64 total threads) and 250 GiB of memory.</p><table><tr><th style="text-align: right">Julia threads</th><th style="text-align: right">BLAS Threads</th><th style="text-align: right">OpIDSum time</th><th style="text-align: right">MPO time</th></tr><tr><td style="text-align: right">1</td><td style="text-align: right">1</td><td style="text-align: right">207s</td><td style="text-align: right">2691s</td></tr><tr><td style="text-align: right">64</td><td style="text-align: right">1</td><td style="text-align: right">33s</td><td style="text-align: right">1177s</td></tr></table><h1 id="Writing-a-Checkpoint-File"><a class="docs-heading-anchor" href="#Writing-a-Checkpoint-File">Writing a Checkpoint File</a><a id="Writing-a-Checkpoint-File-1"></a><a class="docs-heading-anchor-permalink" href="#Writing-a-Checkpoint-File" title="Permalink"></a></h1><p>In certain cases (such as for the <span>$10 \times 10$</span> and <span>$12 \times 12$</span> systems), MPO construction can take so long that it is prudent to write out a checkpoint file in case of catastrophic failure. This can be accomplished by the <code>call_back</code> parameter to <code>MPO_new</code>, construction can be resumed later by calling <code>resume_MPO_construction</code>. This functionality is demonstrated below.</p><pre><code class="language-julia hljs">using Serialization
@@ -311,8 +356,8 @@ function call_back(
   sites::Vector{&lt;:Index},
   llinks::Vector{&lt;:Index},
   g::ITensorMPOConstruction.MPOGraph,
-  op_cache_vec::OpCacheVec)::Nothing
-
+  op_cache_vec::OpCacheVec,
+)::Nothing
   n != 18 &amp;&amp; return nothing
   serialize(&quot;./mpo.jldump&quot;, (n, H, sites, llinks, g, op_cache_vec))
   println(&quot;Wrote a checkpoint to ./mpo.jldump&quot;)
@@ -328,18 +373,20 @@ let t = 1, U = 4, J = -0.5, mapping = standard_mapping((6, 6))
     MPO_new(os, sites; combine_qn_sectors=true, check_for_errors=false, call_back)
   catch e
     if e isa InterruptException
-        println(&quot;Caught a InterruptException!&quot;)
+      println(&quot;Caught a InterruptException!&quot;)
     else
-        rethrow(e)
+      rethrow(e)
     end
   end
 
   println(&quot;Reading a checkpoint from ./mpo.jldump&quot;)
   n, H, sites, llinks, g, op_cache_vec = Serialization.deserialize(&quot;./mpo.jldump&quot;)
-  H = resume_MPO_construction(Float64, n + 1, H, sites, llinks, g, op_cache_vec; combine_qn_sectors=true, call_back)
+  H = resume_MPO_construction(
+    Float64, n + 1, H, sites, llinks, g, op_cache_vec; combine_qn_sectors=true, call_back
+  )
   println(&quot;Construction finished!&quot;)
   rm(&quot;./mpo.jldump&quot;)
 end</code></pre><pre><code class="nohighlight hljs">Wrote a checkpoint to ./mpo.jldump
 Caught a InterruptException!
 Reading a checkpoint from ./mpo.jldump
-Construction finished!</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../../benchmarks/">« Benchmarks</a><a class="docs-footer-nextpage" href="../../on-sparsity/">On sparsity »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Tuesday 7 April 2026 23:17">Tuesday 7 April 2026</span>. Using Julia version 1.12.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+Construction finished!</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../../benchmarks/">« Benchmarks</a><a class="docs-footer-nextpage" href="../../on-sparsity/">On sparsity »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Wednesday 8 April 2026 00:24">Wednesday 8 April 2026</span>. Using Julia version 1.12.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
