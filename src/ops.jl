@@ -44,7 +44,7 @@ same comparison rule as [`are_equal`](@ref): once both tuples have moved to
 sites `< n` at the same position, the remaining entries are ignored.
 """
 function terms_eq_from(n::Int)::Function
-  function are_equal(op1::NTuple{N, OpID}, op2::NTuple{N, OpID})::Bool where {N}
+  function are_equal(op1::NTuple{N,OpID}, op2::NTuple{N,OpID})::Bool where {N}
     for i in 1:N
       op1[i].n < n && op2[i].n < n && return true
       op1[i] != op2[i] && return false

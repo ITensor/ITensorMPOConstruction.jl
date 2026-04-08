@@ -36,8 +36,11 @@ for N in [10, 1000]
   for use_ITensors_alg in [true, false]
     alg = use_ITensors_alg ? "ITensorMPS" : "ITensorMPOConstruction"
 
-    N > 10 && println("Constructing the Fermi-Hubbard real space MPO for $N sites using $alg")
-    ITensorMPOConstruction.@time_if (N > 10) 0 "Total construction time" mpo = Fermi_Hubbard_real_space(N; use_ITensors_alg)
+    N > 10 &&
+      println("Constructing the Fermi-Hubbard real space MPO for $N sites using $alg")
+    ITensorMPOConstruction.@time_if (N > 10) 0 "Total construction time" mpo = Fermi_Hubbard_real_space(
+      N; use_ITensors_alg
+    )
 
     N > 10 && println("The maximum bond dimension is $(maxlinkdim(mpo))")
     N > 10 && println("The sparsity is $(ITensorMPOConstruction.sparsity(mpo))")

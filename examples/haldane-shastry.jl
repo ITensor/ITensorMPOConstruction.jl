@@ -11,9 +11,7 @@ end
 
 using ITensors, ITensorMPS, ITensorMPOConstruction
 
-function haldane_shastry_mpo(
-  N::Int, J::Real, tol::Real; use_ITensors_alg::Bool=false
-)::MPO
+function haldane_shastry_mpo(N::Int, J::Real, tol::Real; use_ITensors_alg::Bool=false)::MPO
   os = OpSum()
   for n in 1:N
     for m in (n + 1):N
@@ -75,7 +73,24 @@ function run_dmrg(
   E_gs = ground_state_energy(N, 1, two_Sz)
   println("With N = $N, 2 * S_z = $two_Sz, the exact ground state energy is: $E_gs")
 
-  noise = [1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8, 1e-9, 1e-10, 1e-11, 1e-12, 1e-13, 1e-14, 1e-15, 0, 0, 0]
+  noise = [
+    1e-3,
+    1e-4,
+    1e-5,
+    1e-6,
+    1e-7,
+    1e-8,
+    1e-9,
+    1e-10,
+    1e-11,
+    1e-12,
+    1e-13,
+    1e-14,
+    1e-15,
+    0,
+    0,
+    0,
+  ]
   E, psi = dmrg(H, psi; maxdim, cutoff=noise, nsweeps=length(noise), noise, outputlevel=1)
   energy_error = abs(E - E_gs)
   println("The error in the energy from DMRG is: $energy_error")

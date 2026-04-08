@@ -129,7 +129,6 @@ function sort_fermion_perm!(ops::AbstractVector{<:OpID}, op_cache_vec::OpCacheVe
   return sign
 end
 
-
 mutable struct OpIDSum{N,C,Ti}
   _data::Vector{NTuple{N,OpID{Ti}}}
   terms::Base.ReinterpretArray{
@@ -536,9 +535,7 @@ Apply optional preprocessing to `os` before MPO construction.
 Currently this rewrites terms into `basis_op_cache_vec` when a basis cache is
 provided and otherwise leaves `os` unchanged.
 """
-function prepare_opID_sum!(
-  os::OpIDSum, basis_op_cache_vec::Union{Nothing,OpCacheVec}
-)
+function prepare_opID_sum!(os::OpIDSum, basis_op_cache_vec::Union{Nothing,OpCacheVec})
   if !isnothing(basis_op_cache_vec)
     rewrite_in_operator_basis!(os, basis_op_cache_vec)
   end
