@@ -19,9 +19,9 @@ ITensorMPOConstruction is not designed to construct approximate compressed MPOs.
 
 ## Installation
 
-The package is currently not registered. Please install with the commands:
+The package is registered and can be installed with the usual commands:
 ```julia
-julia> using Pkg; Pkg.add(url="https://github.com/ITensor/ITensorMPOConstruction.jl.git")
+julia> using Pkg; Pkg.add("ITensorMPOConstruction")
 ```
 
 ## Citing
