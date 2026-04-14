@@ -8,7 +8,7 @@
 
 # Unlike in real space, `MPO_new` is not a drop-in replacement for `MPO`. This is because as expressed above, the Hamiltonian has multiple operators acting on the same site, violating [constraint #3](../documentation/MPO_new.md). For example when ``k = 0`` in the second sum we have terms of the form ``c^\dagger_{p, \uparrow} c^\dagger_{q, \downarrow} c_{q, \downarrow} c_{p, \uparrow}``. 
 
-# You could always create a special case for ``k = 0`` and rewrite it as ``n_{p, \uparrow} n_{q, \downarrow}``. However if using "Electron" sites then you would also need to consider other cases such as when ``p = q``, this would introduce a lot of extraneous complication. Luckily ITensorMPOConstruction provides a method to automatically perform these transformations. If you provide a set of operators foreach site to `MPO_new` it will attempt to express the operators acting on each site as a single one of these "basis" operators.
+# You could always create a special case for ``k = 0`` and rewrite it as ``n_{p, \uparrow} n_{q, \downarrow}``. However if using "Electron" sites then you would also need to consider other cases such as when ``p = q``, this would introduce a lot of extraneous complication. Luckily ITensorMPOConstruction provides a method to automatically perform these transformations. If you provide a set of operators on each site to `MPO_new` it will attempt to express the operators acting on each site as a single one of these "basis" operators.
 
 using ITensors, ITensorMPS, ITensorMPOConstruction
 
