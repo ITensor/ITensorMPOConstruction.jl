@@ -92,6 +92,17 @@ function build_next_edges_specialization!(
   @assert size(next_edges, 1) == 1
   @assert length(right_vertex_ids) == length(edge_weights)
 
+  next_edge_sizes = zeros(Int, size(next_edges, 2))
+  for rv_id in right_vertex_ids
+    op_id = get_onsite_op(right_vertex(g, rv_id), cur_site + 1)
+    next_edge_sizes[op_id] += 1
+  end
+
+  for op_id in eachindex(next_edge_sizes)
+    sizehint!(next_edges[1, op_id][1], next_edge_sizes[op_id])
+    sizehint!(next_edges[1, op_id][2], next_edge_sizes[op_id])
+  end
+
   for edge_id in eachindex(right_vertex_ids)
     rv_id = right_vertex_ids[edge_id]
     weight = edge_weights[edge_id]
