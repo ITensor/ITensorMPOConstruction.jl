@@ -26,7 +26,7 @@ julia> using Pkg; Pkg.add("ITensorMPOConstruction")
 
 ## Citing
 
-If you use this library in your research, please cite the following article https://doi.org/10.1103/nzrt-l2j1
+If you use this library in your research, please cite the following article [https://doi.org/10.1103/nzrt-l2j1](https://doi.org/10.1103/nzrt-l2j1).
 
 ## Questions or Issues
 

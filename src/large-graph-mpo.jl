@@ -168,7 +168,10 @@ the `os.abs_tol` are dropped. The returned graph is split about the first site.
   ## Sort the terms and scalars.
   resize!(os._data, length(os))
   resize!(os.scalars, length(os))
-  sort!(CoSorter(os._data, os.scalars); alg=ThreadsX.QuickSort)
+  sort!(
+    CoSorter(os._data, os.scalars);
+    alg=(Threads.nthreads() > 1) ? ThreadsX.QuickSort : Base.QuickSort,
+  )
 
   ## Combine duplicate terms and remove terms which are below the tolerance.
   nnz = 0
