@@ -26,6 +26,7 @@ ITensorMPOConstruction.get_onsite_op
   ITensorMPOConstruction.left_vertex
   ITensorMPOConstruction.right_vertex
   ITensorMPOConstruction.num_edges
+  ITensorMPOConstruction.minimum_vertex_cover
   ITensorMPOConstruction.clear_edges_from_left!
   ITensorMPOConstruction.combine_duplicate_adjacent_right_vertices!
   ITensorMPOConstruction.compute_connected_components
