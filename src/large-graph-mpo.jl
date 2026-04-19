@@ -421,7 +421,6 @@ function process_single_left_vertex_cc!(
   cc::Int,
   n::Int,
   sites::Vector{<:Index},
-  has_qns::Bool,
   op_cache_vec::OpCacheVec,
 )::Nothing where {ValType<:Number,N,C,Ti}
   lv_id = only(ccs.lvs_of_component[cc])
@@ -429,10 +428,7 @@ function process_single_left_vertex_cc!(
   rank_of_cc[cc] = rank
 
   first_rv_id = g.right_vertex_ids_from_left[lv_id][1]
-
-  if has_qns
-    qi_of_cc[cc] = flux(right_vertex(g, first_rv_id), n + 1, op_cache_vec) => rank
-  end
+  qi_of_cc[cc] = flux(right_vertex(g, first_rv_id), n + 1, op_cache_vec) => rank
 
   lv = left_vertex(g, lv_id)
   local_op = op_cache_vec[n][lv.op_id].matrix
@@ -473,51 +469,60 @@ end
 
 """
     process_vertex_cover_cc!(
-      matrix_of_cc, qi_of_cc, rank_of_cc, next_edges_of_cc, g, ccs, cc, n, sites,
+      matrix_of_cc, qi_of_cc, rank_of_cc, next_edges_of_cc, g, ccs, n, sites,
       has_qns, op_cache_vec
     ) -> Nothing
 
-Handle a connected component using the minimum-vertex-cover specialization.
-
-This computes the cover, fills the local MPO tensor contribution for the
-component, records its QN sector and rank, and builds the outgoing edges for the
-next site unless the current site is terminal.
+Process every connected component using the minimum-vertex-cover specialization.
 """
 @timeit function process_vertex_cover_cc!(
-  matrix::BlockSparseMatrix{ValType},
+  matrix_of_cc::Vector{BlockSparseMatrix{ValType}},
+  qi_of_cc::Vector{Pair{QN,Int}},
+  rank_of_cc::Vector{Int},
+  next_edges_of_cc::Vector{Matrix{Tuple{Vector{Int},Vector{C}}}},
   g::MPOGraph{N,C,Ti},
-  next_op_of_rv_id::Vector{Ti},
   ccs::BipartiteGraphConnectedComponents,
-  cc::Int,
   n::Int,
   sites::Vector{<:Index},
   op_cache_vec::OpCacheVec,
-)::Tuple{Int, Matrix{Tuple{Vector{Int},Vector{C}}}, QN} where {ValType<:Number,N,C,Ti}
-  @timeit "minimum_vertex_cover" left_cover, right_cover = minimum_vertex_cover(g, ccs, cc)
-
-  rank = length(left_cover) + length(right_cover)
-
-  first_rv_id = isempty(right_cover) ? g.right_vertex_ids_from_left[left_cover[1]][1] : right_cover[1]
-  qn = flux(right_vertex(g, first_rv_id), n + 1, op_cache_vec)
-
-  @timeit "building tensor from left" for m in eachindex(left_cover)
-    lv_id = left_cover[m]
-    lv = left_vertex(g, lv_id)
-    local_op = op_cache_vec[n][lv.op_id].matrix
-
-    matrix_element = zeros(C, dim(sites[n]), dim(sites[n]))
-    add_to_local_matrix!(matrix_element, one(C), local_op, lv.needs_JW_string)
-    matrix[lv.link, m] = matrix_element
+)::Nothing where {ValType<:Number,N,C,Ti}
+  next_op_of_rv_id = Vector{Ti}(undef, right_size(g))
+  Threads.@threads for rv_id in 1:right_size(g)
+    next_op_of_rv_id[rv_id] = get_onsite_op(right_vertex(g, rv_id), n + 1)
   end
 
-  @timeit "building tensor from right" for lv_id in ccs.lvs_of_component[cc]
-    lv = left_vertex(g, lv_id)
-    local_op = op_cache_vec[n][lv.op_id].matrix
+  nccs = num_connected_components(ccs)
+  @timeit "Loop over ccs" for cc in 1:nccs
+    @timeit "minimum_vertex_cover" left_cover, right_cover = minimum_vertex_cover(g, ccs, cc)
 
-    m = searchsortedfirst(left_cover, lv_id)
-    if m <= length(left_cover) && left_cover[m] == lv_id
-      continue
-    else
+    rank = length(left_cover) + length(right_cover)
+    rank_of_cc[cc] = rank
+
+    first_rv_id = isempty(right_cover) ? g.right_vertex_ids_from_left[left_cover[1]][1] : right_cover[1]
+    qn = flux(right_vertex(g, first_rv_id), n + 1, op_cache_vec)
+    qi_of_cc[cc] = qn => rank
+
+    matrix = matrix_of_cc[cc]
+
+    @timeit "building tensor from left" for m in eachindex(left_cover)
+      lv_id = left_cover[m]
+      lv = left_vertex(g, lv_id)
+      local_op = op_cache_vec[n][lv.op_id].matrix
+
+      matrix_element = zeros(C, dim(sites[n]), dim(sites[n]))
+      add_to_local_matrix!(matrix_element, one(C), local_op, lv.needs_JW_string)
+      matrix[lv.link, m] = matrix_element
+    end
+
+    @timeit "building tensor from right" for lv_id in ccs.lvs_of_component[cc]
+      lv = left_vertex(g, lv_id)
+      local_op = op_cache_vec[n][lv.op_id].matrix
+
+      m = searchsortedfirst(left_cover, lv_id)
+      if m <= length(left_cover) && left_cover[m] == lv_id
+        continue
+      end
+
       for (rv_id, weight) in weighted_edge_iterator(g, lv_id)
         m = searchsortedfirst(right_cover, rv_id)
         @assert m <= length(right_cover) && right_cover[m] == rv_id
@@ -530,35 +535,171 @@ next site unless the current site is terminal.
         add_to_local_matrix!(matrix_element, weight, local_op, lv.needs_JW_string)
       end
     end
-  end
 
-  n == length(sites) && return rank, Matrix{Tuple{Vector{Int},Vector{C}}}(undef, 0, 0), qn
+    n == length(sites) && continue
 
-  next_edges = Matrix{Tuple{Vector{Int},Vector{C}}}(undef, rank, length(op_cache_vec[n + 1]))
-  for i in eachindex(next_edges)
-    next_edges[i] = (Int[], C[])
-  end
-
-  @timeit "left_cover" Threads.@threads for m in eachindex(left_cover)
-    lv_id = left_cover[m]
-    for (rv_id, weight) in weighted_edge_iterator(g, lv_id)
-      op_id = next_op_of_rv_id[rv_id]
-
-      next_right_vertex_ids, next_edge_weights = next_edges[m, op_id]
-      push!(next_right_vertex_ids, rv_id)
-      push!(next_edge_weights, weight)
+    next_edges = Matrix{Tuple{Vector{Int},Vector{C}}}(undef, rank, length(op_cache_vec[n + 1]))
+    for i in eachindex(next_edges)
+      next_edges[i] = (Int[], C[])
     end
+
+    @timeit "left_cover" Threads.@threads for m in eachindex(left_cover)
+      lv_id = left_cover[m]
+      for (rv_id, weight) in weighted_edge_iterator(g, lv_id)
+        op_id = next_op_of_rv_id[rv_id]
+
+        next_right_vertex_ids, next_edge_weights = next_edges[m, op_id]
+        push!(next_right_vertex_ids, rv_id)
+        push!(next_edge_weights, weight)
+      end
+    end
+
+    @timeit "right_cover" Threads.@threads for m in eachindex(right_cover)
+      rv_id = right_cover[m]
+      m += length(left_cover)
+
+      op_id = next_op_of_rv_id[rv_id]
+      next_edges[m, op_id] = [rv_id], [one(C)]
+    end
+
+    next_edges_of_cc[cc] = next_edges
   end
 
-  @timeit "right_cover" Threads.@threads for m in eachindex(right_cover)
-    rv_id = right_cover[m]
-    m += length(left_cover)
+  return nothing
+end
 
-    op_id = next_op_of_rv_id[rv_id]
-    next_edges[m, op_id] = [rv_id], [one(C)]
+"""
+    process_sparse_qr_cc!(
+      matrix_of_cc, qi_of_cc, rank_of_cc, next_edges_of_cc, g, ccs, n, sites,
+      has_qns, tol, absolute_tol, op_cache_vec
+    ) -> Nothing
+
+Process every connected component using the sparse-QR path.
+"""
+@timeit function process_sparse_qr_cc!(
+  matrix_of_cc::Vector{BlockSparseMatrix{ValType}},
+  qi_of_cc::Vector{Pair{QN,Int}},
+  rank_of_cc::Vector{Int},
+  next_edges_of_cc::Vector{Matrix{Tuple{Vector{Int},Vector{C}}}},
+  g::MPOGraph{N,C,Ti},
+  ccs::BipartiteGraphConnectedComponents,
+  n::Int,
+  sites::Vector{<:Index},
+  tol::Real,
+  absolute_tol::Bool,
+  op_cache_vec::OpCacheVec,
+)::Nothing where {ValType<:Number,N,C,Ti}
+  @timeit "Loop over ccs" Threads.@threads for cc in 1:num_connected_components(ccs)
+    ## A specialization for when there is only one vertex on the left. This is
+    ## a very common case that can be sped up significantly.
+    if left_size(ccs, cc) == 1
+      process_single_left_vertex_cc!(
+        matrix_of_cc,
+        qi_of_cc,
+        rank_of_cc,
+        next_edges_of_cc,
+        g,
+        ccs,
+        cc,
+        n,
+        sites,
+        op_cache_vec,
+      )
+      continue
+    end
+
+    matrix = matrix_of_cc[cc]
+    W, left_map, right_map = get_cc_matrix(g, ccs, cc; clear_edges=true)
+
+    ## Compute the decomposition and then free W
+    Q, R, prow, pcol, rank = sparse_qr(W, tol, absolute_tol)
+    W = nothing
+
+    rank_of_cc[cc] = rank
+    qn = flux(right_vertex(g, right_map[1]), n + 1, op_cache_vec)
+    qi_of_cc[cc] = qn => rank
+
+    ## Form the local transformation tensor.
+    for_non_zeros_batch(Q, rank) do weights::AbstractVector{C}, m::Int
+      for (i, weight) in enumerate(weights)
+        weight == 0 && continue
+
+        ## TODO: This allocates for some reason
+        lv = left_vertex(g, left_map[prow[i]])
+        local_op = op_cache_vec[n][lv.op_id].matrix
+
+        matrix_element = get!(matrix, (lv.link, m)) do
+          return zeros(C, dim(sites[n]), dim(sites[n]))
+        end
+
+        add_to_local_matrix!(matrix_element, weight, local_op, lv.needs_JW_string)
+      end
+    end
+
+    ## Q and prow are no longer needed.
+    Q = nothing
+    prow = nothing
+
+    ## If we are at the last site, then R will be a 1x1 matrix containing an overall scaling.
+    if n == length(sites)
+      scaling = only(R)
+      for block in values(matrix)
+        block .*= scaling
+      end
+
+      continue
+    end
+
+    next_edges_size = zeros(Int, rank, length(op_cache_vec[n + 1]))
+    rv_id_lookup = Vector{Int}(undef, size(R, 2))
+    op_id_lookup = Vector{Ti}(undef, size(R, 2))
+
+    for_non_zeros_batch(
+      R, length(right_map)
+    ) do _::AbstractVector{C}, ms::AbstractVector{Int}, j::Int
+      ## Convert j, which has been permuted first by the connected components
+      ## and then again by SPQR into a right vertex Id.
+      rv_id = right_map[pcol[j]]
+
+      ## Get the operator acting on site (n + 1) of this right vertex.
+      op_id = get_onsite_op(right_vertex(g, rv_id), n + 1)
+
+      rv_id_lookup[j] = rv_id
+      op_id_lookup[j] = op_id
+
+      for m in ms
+        next_edges_size[m, op_id] += 1
+      end
+    end
+
+    ## Build the graph for the next site out of this component.
+    next_edges = Matrix{Tuple{Vector{Int},Vector{C}}}(undef, rank, length(op_cache_vec[n + 1]))
+    for i in eachindex(next_edges)
+      right_vertex_ids = Int[]
+      edge_weights = C[]
+      sizehint!(right_vertex_ids, next_edges_size[i])
+      sizehint!(edge_weights, next_edges_size[i])
+      next_edges[i] = (right_vertex_ids, edge_weights)
+    end
+
+    for_non_zeros_batch(
+      R, length(right_map)
+    ) do weights::AbstractVector{C}, ms::AbstractVector{Int}, j::Int
+      rv_id = rv_id_lookup[j]
+      op_id = op_id_lookup[j]
+
+      ## Add the edges.
+      for (m, weight) in zip(ms, weights)
+        next_right_vertex_ids, next_edge_weights = next_edges[m, op_id]
+        push!(next_right_vertex_ids, rv_id)
+        push!(next_edge_weights, weight)
+      end
+    end
+
+    next_edges_of_cc[cc] = next_edges
   end
 
-  return rank, next_edges, qn
+  return nothing
 end
 
 """
@@ -567,10 +708,10 @@ end
 
 Process one site of the MPO construction algorithm.
 
-For each connected component of `g`, this routine forms the sparse adjacency
-matrix, computes a sparse QR factorization, assembles the local MPO tensor
-blocks for site `n`, and builds the graph passed to the next site. The connected
-components are iterated over using threads. The returned tuple contains:
+For each connected component of `g`, this routine dispatches to either the
+minimum-vertex-cover or sparse-QR processing path, assembles the local MPO
+tensor blocks for site `n`, and builds the graph passed to the next site. The
+returned tuple contains:
 - the graph for site `n + 1`,
 - offsets locating each connected component inside the outgoing bond space,
 - the block-sparse local MPO tensors for each component,
@@ -621,154 +762,32 @@ components are iterated over using threads. The returned tuple contains:
     "  The graph is $(left_size(g)) × $(right_size(g)) with $(num_edges(g)) edges and $(nccs) connected components. tol = $(@sprintf("%.2E", tol))",
   )
 
-  next_op_of_rv_id = Ti[]
   if use_vertex_cover
-    resize!(next_op_of_rv_id, right_size(g))
-
-    Threads.@threads for rv_id in 1:right_size(g)
-      next_op_of_rv_id[rv_id] = get_onsite_op(right_vertex(g, rv_id), n + 1)
-    end
-  end
-
-  @timeit "Loop over ccs" for cc in 1:nccs
-    ## A specialization for when there is only one vertex on the left. This is
-    ## a very common case that can be sped up significantly.
-    if left_size(ccs, cc) == 1
-      process_single_left_vertex_cc!(
-        matrix_of_cc,
-        qi_of_cc,
-        rank_of_cc,
-        next_edges_of_cc,
-        g,
-        ccs,
-        cc,
-        n,
-        sites,
-        has_qns,
-        op_cache_vec,
-      )
-      continue
-    end
-
-    if use_vertex_cover
-      rank, next_edges, qn = process_vertex_cover_cc!(
-        matrix_of_cc[cc],
-        g,
-        next_op_of_rv_id,
-        ccs,
-        cc,
-        n,
-        sites,
-        op_cache_vec,
-      )
-
-      rank_of_cc[cc] = rank
-      next_edges_of_cc[cc] = next_edges
-
-      if has_qns
-        qi_of_cc[cc] = qn => rank
-      end
-
-      continue
-    end
-
-    W, left_map, right_map = get_cc_matrix(g, ccs, cc; clear_edges=true)
-
-    ## Compute the decomposition and then free W
-    Q, R, prow, pcol, rank = sparse_qr(W, tol, absolute_tol)
-    W = nothing
-
-    rank_of_cc[cc] = rank
-
-    ## Compute and store the QN of this component
-    if has_qns
-      qi_of_cc[cc] = flux(right_vertex(g, right_map[1]), n + 1, op_cache_vec) => rank
-    end
-
-    ## Form the local transformation tensor.
-    for_non_zeros_batch(Q, rank) do weights::AbstractVector{C}, m::Int
-      for (i, weight) in enumerate(weights)
-        weight == 0 && continue
-
-        ## TODO: This allocates for some reason
-        lv = left_vertex(g, left_map[prow[i]])
-        local_op = op_cache_vec[n][lv.op_id].matrix
-
-        matrix_element = get!(matrix_of_cc[cc], (lv.link, m)) do
-          return zeros(C, dim(sites[n]), dim(sites[n]))
-        end
-
-        add_to_local_matrix!(matrix_element, weight, local_op, lv.needs_JW_string)
-      end
-    end
-
-    ## Q and prow are no longer needed.
-    Q = nothing
-    prow = nothing
-
-    ## If we are at the last site, then R will be a 1x1 matrix containing an overall scaling.
-    if n == length(sites)
-      @assert nccs == 1
-
-      scaling = only(R)
-
-      for block in values(matrix_of_cc[cc])
-        block .*= scaling
-      end
-
-      ## We can the also skip building the next graph.
-      continue
-    end
-
-    next_edges_size = zeros(Int, rank, length(op_cache_vec[n + 1]))
-    rv_id_lookup = Vector{Int}(undef, size(R, 2))
-    op_id_lookup = Vector{Ti}(undef, size(R, 2))
-
-    for_non_zeros_batch(
-      R, length(right_map)
-    ) do _::AbstractVector{C}, ms::AbstractVector{Int}, j::Int
-      ## Convert j, which has been permuted first by the connected components
-      ## and then again by SPQR into a right vertex Id.
-      rv_id = right_map[pcol[j]]
-
-      ## Get the operator acting on site (n + 1) of this right vertex.
-      op_id = get_onsite_op(right_vertex(g, rv_id), n + 1)
-
-      rv_id_lookup[j] = rv_id
-      op_id_lookup[j] = op_id
-
-      for m in ms
-        next_edges_size[m, op_id] += 1
-      end
-    end
-
-    ## Build the graph for the next site out of this component.
-    next_edges = Matrix{Tuple{Vector{Int},Vector{C}}}(
-      undef, rank, length(op_cache_vec[n + 1])
+    process_vertex_cover_cc!(
+      matrix_of_cc,
+      qi_of_cc,
+      rank_of_cc,
+      next_edges_of_cc,
+      g,
+      ccs,
+      n,
+      sites,
+      op_cache_vec,
     )
-    for i in eachindex(next_edges)
-      right_vertex_ids = Int[]
-      edge_weights = C[]
-      sizehint!(right_vertex_ids, next_edges_size[i])
-      sizehint!(edge_weights, next_edges_size[i])
-      next_edges[i] = (right_vertex_ids, edge_weights)
-    end
-
-    for_non_zeros_batch(
-      R, length(right_map)
-    ) do weights::AbstractVector{C}, ms::AbstractVector{Int}, j::Int
-      rv_id = rv_id_lookup[j]
-      op_id = op_id_lookup[j]
-
-      ## Add the edges.
-      for (m, weight) in zip(ms, weights)
-        next_right_vertex_ids, next_edge_weights = next_edges[m, op_id]
-        push!(next_right_vertex_ids, rv_id)
-        push!(next_edge_weights, weight)
-      end
-    end
-
-    next_edges_of_cc[cc] = next_edges
+  else
+    process_sparse_qr_cc!(
+      matrix_of_cc,
+      qi_of_cc,
+      rank_of_cc,
+      next_edges_of_cc,
+      g,
+      ccs,
+      n,
+      sites,
+      tol,
+      absolute_tol,
+      op_cache_vec,
+    )
   end
 
   ## If we are merging the connected components by the quantum numbers.
