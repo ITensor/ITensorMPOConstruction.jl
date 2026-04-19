@@ -630,7 +630,7 @@ components are iterated over using threads. The returned tuple contains:
     end
   end
 
-  for cc in 1:nccs
+  @timeit "Loop over ccs" for cc in 1:nccs
     ## A specialization for when there is only one vertex on the left. This is
     ## a very common case that can be sped up significantly.
     if left_size(ccs, cc) == 1
