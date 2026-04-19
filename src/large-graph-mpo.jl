@@ -500,17 +500,23 @@ next site unless the current site is terminal.
   first_rv_id = isempty(right_cover) ? g.right_vertex_ids_from_left[left_cover[1]][1] : right_cover[1]
   qn = flux(right_vertex(g, first_rv_id), n + 1, op_cache_vec)
 
-  @timeit "building tensor" for lv_id in ccs.lvs_of_component[cc]
+  @timeit "building tensor from left" for m in eachindex(left_cover)
+    lv_id = left_cover[m]
+    lv = left_vertex(g, lv_id)
+    local_op = op_cache_vec[n][lv.op_id].matrix
+
+    matrix_element = zeros(C, dim(sites[n]), dim(sites[n]))
+    add_to_local_matrix!(matrix_element, one(C), local_op, lv.needs_JW_string)
+    matrix[lv.link, m] = matrix_element
+  end
+
+  @timeit "building tensor from right" for lv_id in ccs.lvs_of_component[cc]
     lv = left_vertex(g, lv_id)
     local_op = op_cache_vec[n][lv.op_id].matrix
 
     m = searchsortedfirst(left_cover, lv_id)
     if m <= length(left_cover) && left_cover[m] == lv_id
-      matrix_element = get!(matrix, (lv.link, m)) do
-        return zeros(C, dim(sites[n]), dim(sites[n]))
-      end
-
-      add_to_local_matrix!(matrix_element, one(C), local_op, lv.needs_JW_string)
+      continue
     else
       for (rv_id, weight) in weighted_edge_iterator(g, lv_id)
         m = searchsortedfirst(right_cover, rv_id)
@@ -533,7 +539,8 @@ next site unless the current site is terminal.
     next_edges[i] = (Int[], C[])
   end
 
-  @timeit "left_cover" for (m, lv_id) in enumerate(left_cover)
+  @timeit "left_cover" Threads.@threads for m in eachindex(left_cover)
+    lv_id = left_cover[m]
     for (rv_id, weight) in weighted_edge_iterator(g, lv_id)
       op_id = next_op_of_rv_id[rv_id]
 
@@ -543,8 +550,10 @@ next site unless the current site is terminal.
     end
   end
 
-  for (m, rv_id) in enumerate(right_cover)
+  @timeit "right_cover" Threads.@threads for m in eachindex(right_cover)
+    rv_id = right_cover[m]
     m += length(left_cover)
+
     op_id = next_op_of_rv_id[rv_id]
     next_edges[m, op_id] = [rv_id], [one(C)]
   end
