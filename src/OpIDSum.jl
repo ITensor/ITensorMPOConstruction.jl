@@ -9,6 +9,7 @@ Fields:
 - `qn_flux`: the quantum-number flux carried by the operator.
 """
 struct OpInfo
+  name::String
   matrix::Matrix
   is_fermionic::Bool
   qn_flux::QN
@@ -26,8 +27,7 @@ function OpInfo(local_op::Op, site::Index)
   tensor = op(site, ITensors.which_op(local_op); ITensors.params(local_op)...)
   is_fermionic = has_fermion_string(ITensors.name(local_op), site)
   qn_flux = flux(tensor)
-
-  return OpInfo(copy(array(tensor)), is_fermionic, isnothing(qn_flux) ? QN() : qn_flux)
+  return OpInfo("$(local_op.which_op)", copy(array(tensor)), is_fermionic, isnothing(qn_flux) ? QN() : qn_flux)
 end
 
 """

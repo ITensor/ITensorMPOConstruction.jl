@@ -60,24 +60,37 @@ function num_edges(g::BipartiteGraph)::Int
   return sum(length(rvs) for rvs in g.right_vertex_ids_from_left)
 end
 
-"""
-    minimum_vertex_cover(g::BipartiteGraph) -> Tuple{Vector{Int},Vector{Int}}
+function weighted_edge_iterator(g::BipartiteGraph, lv_id::Integer)
+  return zip(g.right_vertex_ids_from_left[lv_id], g.edge_weights_from_left[lv_id])
+end
 
-Return a minimum-cardinality vertex cover of the unweighted bipartite graph
-underlying `g`.
-
-The result is a pair `(left_ids, right_ids)` of ascending global vertex ids on
-the left and right sides whose union touches every edge. Edge weights are
-ignored.
-"""
 function minimum_vertex_cover(g::BipartiteGraph)::Tuple{Vector{Int},Vector{Int}}
-  matched_right_of_left, matched_left_of_right = _hopcroft_karp_maximum_matching(g)
+  ccs = compute_connected_components(g)
+  left_ids = Int[]
+  right_ids = Int[]
 
-  reached_left = falses(left_size(g))
-  reached_right = falses(right_size(g))
+  for cc in 1:num_connected_components(ccs)
+    component_left_ids, component_right_ids = minimum_vertex_cover(g, ccs, cc)
+    append!(left_ids, component_left_ids)
+    append!(right_ids, component_right_ids)
+  end
+
+  sort!(left_ids)
+  sort!(right_ids)
+
+  return left_ids, right_ids
+end
+
+function _minimum_vertex_cover_from_matching(
+  right_vertex_ids_from_left::AbstractVector{<:AbstractVector{Int}},
+  matched_right_of_left::Vector{Int},
+  matched_left_of_right::Vector{Int},
+)::Tuple{Vector{Int},Vector{Int}}
+  reached_left = falses(length(right_vertex_ids_from_left))
+  reached_right = falses(length(matched_left_of_right))
   queue = Int[]
 
-  for lv_id in 1:left_size(g)
+  for lv_id in 1:length(right_vertex_ids_from_left)
     if matched_right_of_left[lv_id] == 0
       reached_left[lv_id] = true
       push!(queue, lv_id)
@@ -90,7 +103,7 @@ function minimum_vertex_cover(g::BipartiteGraph)::Tuple{Vector{Int},Vector{Int}}
     head += 1
 
     matched_rv_id = matched_right_of_left[lv_id]
-    for rv_id in g.right_vertex_ids_from_left[lv_id]
+    for rv_id in right_vertex_ids_from_left[lv_id]
       rv_id == matched_rv_id && continue
       reached_right[rv_id] && continue
 
@@ -107,11 +120,11 @@ function minimum_vertex_cover(g::BipartiteGraph)::Tuple{Vector{Int},Vector{Int}}
   left_ids = Int[]
   right_ids = Int[]
 
-  for lv_id in 1:left_size(g)
+  for lv_id in 1:length(right_vertex_ids_from_left)
     !reached_left[lv_id] && push!(left_ids, lv_id)
   end
 
-  for rv_id in 1:right_size(g)
+  for rv_id in 1:length(matched_left_of_right)
     reached_right[rv_id] && push!(right_ids, rv_id)
   end
 
@@ -119,28 +132,29 @@ function minimum_vertex_cover(g::BipartiteGraph)::Tuple{Vector{Int},Vector{Int}}
 end
 
 function _hopcroft_karp_maximum_matching(
-  g::BipartiteGraph
+  right_vertex_ids_from_left::AbstractVector{<:AbstractVector{Int}}, num_right::Int
 )::Tuple{Vector{Int},Vector{Int}}
-  matched_right_of_left = zeros(Int, left_size(g))
-  matched_left_of_right = zeros(Int, right_size(g))
+  num_left = length(right_vertex_ids_from_left)
+  matched_right_of_left = zeros(Int, num_left)
+  matched_left_of_right = zeros(Int, num_right)
 
-  dist = Vector{Int}(undef, left_size(g))
-  next_edge_id = ones(Int, left_size(g))
+  dist = Vector{Int}(undef, num_left)
+  next_edge_id = ones(Int, num_left)
   queue = Int[]
   path_left = Int[]
   path_right = Int[]
 
   while true
     unmatched_distance = _hopcroft_karp_layered_bfs!(
-      g, matched_right_of_left, matched_left_of_right, dist, queue
+      right_vertex_ids_from_left, matched_right_of_left, matched_left_of_right, dist, queue
     )
     unmatched_distance == typemax(Int) && break
 
     fill!(next_edge_id, 1)
-    for lv_id in 1:left_size(g)
+    for lv_id in 1:num_left
       matched_right_of_left[lv_id] == 0 || continue
       _hopcroft_karp_augment_from!(
-        g,
+        right_vertex_ids_from_left,
         lv_id,
         unmatched_distance,
         matched_right_of_left,
@@ -157,7 +171,7 @@ function _hopcroft_karp_maximum_matching(
 end
 
 function _hopcroft_karp_layered_bfs!(
-  g::BipartiteGraph,
+  right_vertex_ids_from_left::AbstractVector{<:AbstractVector{Int}},
   matched_right_of_left::Vector{Int},
   matched_left_of_right::Vector{Int},
   dist::Vector{Int},
@@ -166,7 +180,7 @@ function _hopcroft_karp_layered_bfs!(
   fill!(dist, typemax(Int))
   empty!(queue)
 
-  for lv_id in 1:left_size(g)
+  for lv_id in 1:length(right_vertex_ids_from_left)
     if matched_right_of_left[lv_id] == 0
       dist[lv_id] = 0
       push!(queue, lv_id)
@@ -182,7 +196,7 @@ function _hopcroft_karp_layered_bfs!(
     next_dist = dist[lv_id] + 1
     next_dist >= unmatched_distance && continue
 
-    for rv_id in g.right_vertex_ids_from_left[lv_id]
+    for rv_id in right_vertex_ids_from_left[lv_id]
       matched_lv_id = matched_left_of_right[rv_id]
       if matched_lv_id == 0
         unmatched_distance = next_dist
@@ -197,7 +211,7 @@ function _hopcroft_karp_layered_bfs!(
 end
 
 function _hopcroft_karp_augment_from!(
-  g::BipartiteGraph,
+  right_vertex_ids_from_left::AbstractVector{<:AbstractVector{Int}},
   start_lv_id::Int,
   unmatched_distance::Int,
   matched_right_of_left::Vector{Int},
@@ -216,7 +230,7 @@ function _hopcroft_karp_augment_from!(
     lv_id = path_left[end]
     found_step = false
 
-    right_vertex_ids = g.right_vertex_ids_from_left[lv_id]
+    right_vertex_ids = right_vertex_ids_from_left[lv_id]
     while next_edge_id[lv_id] <= length(right_vertex_ids)
       rv_id = right_vertex_ids[next_edge_id[lv_id]]
       next_edge_id[lv_id] += 1
@@ -434,6 +448,55 @@ Return the number of left vertices in connected component `cc`.
 """
 function left_size(ccs::BipartiteGraphConnectedComponents, cc::Int)
   length(ccs.lvs_of_component[cc])
+end
+
+"""
+    minimum_vertex_cover(
+      g::BipartiteGraph, ccs::BipartiteGraphConnectedComponents, cc::Int
+    ) -> Tuple{Vector{Int},Vector{Int}}
+
+Return a minimum-cardinality vertex cover of connected component `cc` of the
+unweighted bipartite graph underlying `g`.
+
+The result is a pair `(left_ids, right_ids)` of ascending global vertex ids on
+the left and right sides belonging to component `cc` whose union touches every
+edge in that component. Edge weights are ignored.
+"""
+function minimum_vertex_cover(
+  g::BipartiteGraph{L,R,C}, ccs::BipartiteGraphConnectedComponents, cc::Int
+)::Tuple{Vector{Int},Vector{Int}} where {L,R,C}
+  left_map = ccs.lvs_of_component[cc]
+  component_position_of_rvs = ccs.component_position_of_rvs
+  num_right = ccs.rv_size_of_component[cc]
+
+  right_vertex_ids_from_left = Vector{Vector{Int}}(undef, length(left_map))
+  right_map = Vector{Int}(undef, num_right)
+
+  @inbounds for (i, lv_id) in enumerate(left_map)
+    global_right_vertex_ids = g.right_vertex_ids_from_left[lv_id]
+    local_right_vertex_ids = Vector{Int}(undef, length(global_right_vertex_ids))
+    for edge_id in eachindex(global_right_vertex_ids)
+      rv_id = global_right_vertex_ids[edge_id]
+      j = component_position_of_rvs[rv_id]
+      local_right_vertex_ids[edge_id] = j
+      right_map[j] = rv_id
+    end
+    right_vertex_ids_from_left[i] = local_right_vertex_ids
+  end
+
+  matched_right_of_left, matched_left_of_right = _hopcroft_karp_maximum_matching(
+    right_vertex_ids_from_left, num_right
+  )
+  local_left_ids, local_right_ids = _minimum_vertex_cover_from_matching(
+    right_vertex_ids_from_left, matched_right_of_left, matched_left_of_right
+  )
+
+  left_ids = Int[left_map[lv_id] for lv_id in local_left_ids]
+  right_ids = Int[right_map[rv_id] for rv_id in local_right_ids]
+  sort!(left_ids)
+  sort!(right_ids)
+
+  return left_ids, right_ids
 end
 
 """
