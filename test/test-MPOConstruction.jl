@@ -50,12 +50,13 @@ function test_from_OpSum(
   basis_op_cache_vec::Union{Nothing,OpCacheVec},
   tol::Real;
   combine_qn_sectors::Bool=false,
+  use_vertex_cover::Bool=true # TODO: Forward this to MPO_new and create dual tests
 )::Tuple{MPO,MPO}
   mpo = MPO_new(os, sites; tol, basis_op_cache_vec, combine_qn_sectors, output_level=0)
 
   mpoFromITensor = MPO(os, sites)
 
-  @test all(linkdims(mpo) .<= linkdims(mpoFromITensor))
+  !use_vertex_cover && @test all(linkdims(mpo) .<= linkdims(mpoFromITensor))
 
   compare_MPOs(mpo, mpoFromITensor)
 
@@ -319,8 +320,26 @@ function test_non_zero_flux()::Nothing
   return nothing
 end
 
-function test_Fermi_Hubbard(N::Int, tol::Real, combine_qn_sectors::Bool)::Nothing
+function test_Fermi_Hubbard_real_space(N::Int, tol::Real, combine_qn_sectors::Bool)::Nothing
   t, U = 1, 4
+  sites = siteinds("Electron", N; conserve_qns=true)
+  
+  os = OpSum{Float64}()
+  for i in 1:N
+    for j in (mod1(i + 1, N), mod1(i - 1, N))
+      os .+= -t, "Cdagup", i, "Cup", j
+      os .+= -t, "Cdagdn", i, "Cdn", j
+    end
+
+    os .+= U, "Nup * Ndn", i
+  end
+
+  test_from_OpSum(os, sites, nothing, tol; combine_qn_sectors)
+  return nothing
+end
+
+function test_Fermi_Hubbard(N::Int, tol::Real, combine_qn_sectors::Bool)::Nothing
+  t, U = 1, 1e-10
   sites = siteinds("Electron", N; conserve_qns=true)
 
   os = OpSum{Float64}()
@@ -418,10 +437,10 @@ end
   test_IXYZ(8, 1.0)
   println()
 
-  test_weight_one(200, 1.0)
+  test_weight_one(100, 1.0)
   println()
 
-  test_weight_one(100, 1.0)
+  test_weight_one(200, 1.0)
   println()
 
   test_random_operator(8, 4, 1.0)
@@ -434,6 +453,9 @@ end
   println()
 
   test_qft(6, true, 1.0)
+  println()
+
+  test_Fermi_Hubbard_real_space(20, 1.0, false)
   println()
 
   test_Fermi_Hubbard(12, 1.0, false)

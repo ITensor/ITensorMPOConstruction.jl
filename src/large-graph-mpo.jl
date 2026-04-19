@@ -18,6 +18,44 @@ remaining operator content of a term, and edge weights carry the scalar coeffici
 """
 MPOGraph{N,C,Ti} = BipartiteGraph{LeftVertex,NTuple{N,OpID{Ti}},C}
 
+function pretty_print(g::MPOGraph, n::Int, op_cache_vec::OpCacheVec)
+  num_left = left_size(g)
+  num_right = right_size(g)
+  total_edges = num_edges(g)
+
+  println("MPOGraph at site $n has $num_left left vertices, $num_right right vertices and $total_edges edges")
+  println("  Left vertices:")
+  for (lv_id, lv) in enumerate(g.left_vertices)
+    op = op_cache_vec[n][lv.op_id].name
+    println("    $lv_id: link = $(lv.link), op = $op, fermionic = $(lv.needs_JW_string)")
+  end
+
+  println("  Right vertices:")
+  for (rv_id, rv) in enumerate(g.right_vertices)
+    print("    $rv_id:")
+
+    is_identity = true
+    for op in reverse(rv)
+      op.n <= n && continue
+      name = op_cache_vec[op.n][op.id].name
+      print(" $name^$(op.n)")
+      is_identity = false
+    end
+
+    is_identity && print(" I")
+    println()
+  end
+
+  println("  Edges from left:")
+  for lv_id in 1:left_size(g)
+    print("    $lv_id: ")
+    for (rv_id, weight) in weighted_edge_iterator(g, lv_id)
+      print("($rv_id, $weight), ")
+    end
+    println()
+  end
+end
+
 """
     CoSorterElement{T1,T2}
 
@@ -477,7 +515,9 @@ components are iterated over using threads. The returned tuple contains:
     "  The graph is $(left_size(g)) × $(right_size(g)) with $(num_edges(g)) edges and $(nccs) connected components. tol = $(@sprintf("%.2E", tol))",
   )
 
-  @timeit "Threaded loop" Threads.@threads for cc in 1:nccs
+  use_vertex_cover = true
+
+  for cc in 1:nccs
     ## A specialization for when there is only one vertex on the left. This is
     ## a very common case that can be sped up significantly.
     if left_size(ccs, cc) == 1
@@ -494,6 +534,78 @@ components are iterated over using threads. The returned tuple contains:
         has_qns,
         op_cache_vec,
       )
+      continue
+    end
+
+    if use_vertex_cover
+      left_cover, right_cover = minimum_vertex_cover(g, ccs, cc)
+
+      rank = length(left_cover) + length(right_cover)
+      rank_of_cc[cc] = rank
+
+      ## Compute and store the QN of this component
+      if has_qns
+        first_rv_id = isempty(right_cover) ? g.right_vertex_ids_from_left[left_cover[1]][1] : right_cover[1]
+        qi_of_cc[cc] = flux(right_vertex(g, first_rv_id), n + 1, op_cache_vec) => rank
+      end
+
+      for lv_id in ccs.lvs_of_component[cc]
+        lv = left_vertex(g, lv_id)
+        local_op = op_cache_vec[n][lv.op_id].matrix
+
+        m = searchsortedfirst(left_cover, lv_id)
+        if m <= length(left_cover) && left_cover[m] == lv_id
+          matrix_element = get!(matrix_of_cc[cc], (lv.link, m)) do
+            return zeros(C, dim(sites[n]), dim(sites[n]))
+          end
+
+          add_to_local_matrix!(matrix_element, one(C), local_op, lv.needs_JW_string)
+        else
+          for (rv_id, weight) in weighted_edge_iterator(g, lv_id)
+            m = searchsortedfirst(right_cover, rv_id)
+            @assert m <= length(right_cover) && right_cover[m] == rv_id
+            m += length(left_cover)
+
+            matrix_element = get!(matrix_of_cc[cc], (lv.link, m)) do
+              return zeros(C, dim(sites[n]), dim(sites[n]))
+            end
+
+            add_to_local_matrix!(matrix_element, weight, local_op, lv.needs_JW_string)
+          end
+        end
+      end
+
+      n == length(sites) && continue
+
+      ## Build the graph for the next site out of this component.
+      next_edges = Matrix{Tuple{Vector{Int},Vector{C}}}(
+        undef, rank, length(op_cache_vec[n + 1])
+      )
+      for i in eachindex(next_edges)
+        next_edges[i] = Int[], C[]
+      end
+
+      for (m, lv_id) in enumerate(left_cover)
+        for (rv_id, weight) in weighted_edge_iterator(g, lv_id)
+          op_id = get_onsite_op(right_vertex(g, rv_id), n + 1)
+
+          next_right_vertex_ids, next_edge_weights = next_edges[m, op_id]
+          push!(next_right_vertex_ids, rv_id)
+          push!(next_edge_weights, weight)
+        end
+      end
+
+      for (m, rv_id) in enumerate(right_cover)
+        m += length(left_cover)
+        op_id = get_onsite_op(right_vertex(g, rv_id), n + 1)
+
+        next_right_vertex_ids, next_edge_weights = next_edges[m, op_id]
+        push!(next_right_vertex_ids, rv_id)
+        push!(next_edge_weights, one(C))
+      end
+
+      next_edges_of_cc[cc] = next_edges
+
       continue
     end
 
@@ -586,9 +698,7 @@ components are iterated over using threads. The returned tuple contains:
       op_id = op_id_lookup[j]
 
       ## Add the edges.
-      for edge_id in eachindex(weights, ms)
-        m = ms[edge_id]
-        weight = weights[edge_id]
+      for (m, weight) in zip(ms, weights)
         next_right_vertex_ids, next_edge_weights = next_edges[m, op_id]
         push!(next_right_vertex_ids, rv_id)
         push!(next_edge_weights, weight)
