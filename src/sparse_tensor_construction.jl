@@ -95,7 +95,7 @@ function to_ITensor(
     end
   end
 
-  isempty(block_ids) && return ITensors.BlockSparseTensor(C, Block{4}[], inds)
+  isempty(block_ids) && return itensor(ITensors.BlockSparseTensor(C, Block{4}[], inds))
 
   block_id_list = collect(block_ids)
   blocks = Vector{Block{4}}(undef, length(block_id_list))
@@ -150,7 +150,7 @@ function to_ITensor(
   return itensor(T)
 end
 
-function to_Itensor(
+function to_ITensor(
   offsets::Vector{Int},
   block_sparse_matrices::Vector{BlockSparseMatrix{C}},
   llink::Index,
