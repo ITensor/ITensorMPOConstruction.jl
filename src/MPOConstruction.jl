@@ -15,7 +15,7 @@ _resume_MPO_kwargs = """
 """
 
 @doc """
-    resume_MPO_construction(ValType, n_init, H, sites, llinks, g, op_cache_vec;
+    resume_MPO_construction!(ValType, n_init, H, sites, llinks, g, op_cache_vec;
       tol=1, absolute_tol=false, combine_qn_sectors=false, call_back=..., output_level=0) -> MPO
 
 Continue MPO construction starting from site `n_init` using the current graph
@@ -28,10 +28,10 @@ and advances to the next-site graph. The callback is invoked after each site is 
 Keyword arguments:
 $_resume_MPO_kwargs
 """
-function resume_MPO_construction(
-  ValType::Type{<:Number},
+function resume_MPO_construction!(
   n_init::Int,
-  H::MPO,
+  offsets::Vector{Vector{Int}},
+  block_sparse_matrices::Vector{Vector{BlockSparseMatrix{ValType}}},
   sites::Vector{<:Index},
   llinks::Vector{<:Index},
   g::MPOGraph,
@@ -41,24 +41,23 @@ function resume_MPO_construction(
   combine_qn_sectors::Bool=false,
   call_back::Function=(
     cur_site::Int,
-    H::MPO,
+    offsets::Vector{Vector{Int}},
+    block_sparse_matrices::Vector{Vector{BlockSparseMatrix{ValType}}},
     sites::Vector{<:Index},
     llinks::Vector{<:Index},
     cur_graph::MPOGraph,
     op_cache_vec::OpCacheVec,
   ) -> nothing,
   output_level::Int=0,
-)::MPO
+)::Nothing where {ValType<:Number}
   @assert !ITensors.using_auto_fermion() # TODO: This should be fixed.
   @assert tol >= 0
 
-  N = length(sites)
-
-  for n in n_init:N
+  for n in n_init:length(sites)
     output_level > 0 && println(
       "At site $n/$(length(sites)) the graph takes up $(Base.format_bytes(Base.summarysize(g)))",
     )
-    @time_if output_level 1 "at_site!" g, offsets, block_sparse_matrices, llinks[n + 1] = at_site!(
+    @time_if output_level 1 "at_site!" g, offsets[n], block_sparse_matrices[n], llinks[n + 1] = at_site!(
       ValType,
       g,
       n,
@@ -70,57 +69,47 @@ function resume_MPO_construction(
       output_level,
     )
 
-    @timeit "Constructing ITensor for MPO" let
-      if hasqns(sites)
-        H[n] = to_sparse_itensor(
-          offsets,
-          block_sparse_matrices,
-          dag(llinks[n]),
-          llinks[n + 1],
-          prime(sites[n]),
-          dag(sites[n]);
-          tol=0.0,
-          checkflux=true,
-        )
-      else
-        tensor = zeros(
-          ValType,
-          dim(dag(llinks[n])),
-          dim(llinks[n + 1]),
-          dim(prime(sites[n])),
-          dim(dag(sites[n])),
-        )
+    call_back(n, offsets, block_sparse_matrices, sites, llinks, g, op_cache_vec)
+  end
 
-        for (offset, matrix) in zip(offsets, block_sparse_matrices)
-          for ((left_link, right_link), block) in matrix
-            tensor[left_link, right_link + offset, :, :] = block
-          end
-        end
+  return nothing
+end
 
-        H[n] = itensor(
-          tensor,
-          dag(llinks[n]),
-          llinks[n + 1],
-          prime(sites[n]),
-          dag(sites[n]);
-          tol=0.0,
-          checkflux=true,
-        )
-      end
+@timeit function instantiate_MPO(
+  offsets::Vector{Vector{Int}},
+  block_sparse_matrices::Vector{Vector{BlockSparseMatrix{ValType}}},
+  sites::Vector{<:Index},
+  llinks::Vector{<:Index},
+)::MPO where {ValType<:Number}
+  H = MPO(sites)
+
+  for n in 1:length(sites)
+    if hasqns(sites)
+      H[n] = to_sparse_itensor(
+        offsets[n],
+        block_sparse_matrices[n],
+        dag(llinks[n]),
+        llinks[n + 1],
+        prime(sites[n]),
+        dag(sites[n]);
+        checkflux=true,
+      )
+    else
+      H[n] = to_dense_itensor(
+        offsets[n], block_sparse_matrices[n], llinks[n], llinks[n + 1], sites[n]
+      )
     end
-
-    call_back(n, H, sites, llinks, g, op_cache_vec)
   end
 
   # Remove the dummy link indices from the left and right.
   L = ITensor(llinks[1])
   L[end] = 1.0
 
-  R = ITensor(dag(llinks[N + 1]))
+  R = ITensor(dag(llinks[end]))
   R[1] = 1.0
 
   H[1] *= L
-  H[N] *= R
+  H[length(sites)] *= R
 
   return H
 end
@@ -156,8 +145,6 @@ function MPO_new(
 
   @time_if output_level 0 "Constructing MPOGraph" g = MPOGraph(os)
 
-  H = MPO(sites)
-
   llinks = Vector{Index}(undef, length(sites) + 1)
   if hasqns(sites)
     llinks[1] = Index(QN() => 1; tags="Link,l=0", dir=ITensors.Out)
@@ -165,9 +152,14 @@ function MPO_new(
     llinks[1] = Index(1; tags="Link,l=0")
   end
 
-  return resume_MPO_construction(
-    ValType, 1, H, sites, llinks, g, os.op_cache_vec; output_level, kwargs...
+  offsets = Vector{Vector{Int}}(undef, length(sites))
+  block_sparse_matrices = Vector{Vector{BlockSparseMatrix{ValType}}}(undef, length(sites))
+
+  resume_MPO_construction!(
+    1, offsets, block_sparse_matrices, sites, llinks, g, os.op_cache_vec; output_level, kwargs...
   )
+
+  return instantiate_MPO(offsets, block_sparse_matrices, sites, llinks)
 end
 
 """

@@ -67,6 +67,7 @@ function random_complex()::ComplexF64
   return 2 * rand(ComplexF64) - ComplexF64(1, 1)
 end
 
+# TODO: Move itensor construction tests into new file
 function my_ITensor_old(
   offsets::Vector{Int},
   block_sparse_matrices::Vector{Dict{Tuple{Int,Int},Matrix{C}}},
