@@ -83,9 +83,9 @@ end
 )::MPO where {ValType<:Number}
   H = MPO(sites)
 
-  for n in 1:length(sites)
+  Threads.@threads for n in 1:length(sites)
     if hasqns(sites)
-      H[n] = to_sparse_itensor(
+      H[n] = my_ITensor_old(
         offsets[n],
         block_sparse_matrices[n],
         dag(llinks[n]),
