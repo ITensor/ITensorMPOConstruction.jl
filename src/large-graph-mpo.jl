@@ -385,6 +385,20 @@ function merge_qn_sectors(
   return new_order, new_qi
 end
 
+function split_qi(qi_of_cc::Vector{Pair{QN,Int}}, total_dim::Int)::Vector{Pair{QN,Int}}
+  new_qi = Vector{Pair{QN,Int}}(undef, total_dim)
+  
+  i = 1
+  for (qn, dim) in qi_of_cc
+    for _ in 1:dim
+      new_qi[i] = qn => 1
+      i += 1
+    end
+  end
+
+  return new_qi
+end
+
 """
     process_single_left_vertex_cc!(
       matrix_of_cc, qi_of_cc, rank_of_cc, next_edges_of_cc, g, ccs, cc, n, sites,
@@ -458,6 +472,87 @@ function process_single_left_vertex_cc!(
 end
 
 """
+    process_vertex_cover_cc!(
+      matrix_of_cc, qi_of_cc, rank_of_cc, next_edges_of_cc, g, ccs, cc, n, sites,
+      has_qns, op_cache_vec
+    ) -> Nothing
+
+Handle a connected component using the minimum-vertex-cover specialization.
+
+This computes the cover, fills the local MPO tensor contribution for the
+component, records its QN sector and rank, and builds the outgoing edges for the
+next site unless the current site is terminal.
+"""
+@timeit function process_vertex_cover_cc!(
+  matrix::BlockSparseMatrix{ValType},
+  g::MPOGraph{N,C,Ti},
+  next_op_of_rv_id::Vector{Ti},
+  ccs::BipartiteGraphConnectedComponents,
+  cc::Int,
+  n::Int,
+  sites::Vector{<:Index},
+  op_cache_vec::OpCacheVec,
+)::Tuple{Int, Matrix{Tuple{Vector{Int},Vector{C}}}, QN} where {ValType<:Number,N,C,Ti}
+  @timeit "minimum_vertex_cover" left_cover, right_cover = minimum_vertex_cover(g, ccs, cc)
+
+  rank = length(left_cover) + length(right_cover)
+
+  first_rv_id = isempty(right_cover) ? g.right_vertex_ids_from_left[left_cover[1]][1] : right_cover[1]
+  qn = flux(right_vertex(g, first_rv_id), n + 1, op_cache_vec)
+
+  @timeit "building tensor" for lv_id in ccs.lvs_of_component[cc]
+    lv = left_vertex(g, lv_id)
+    local_op = op_cache_vec[n][lv.op_id].matrix
+
+    m = searchsortedfirst(left_cover, lv_id)
+    if m <= length(left_cover) && left_cover[m] == lv_id
+      matrix_element = get!(matrix, (lv.link, m)) do
+        return zeros(C, dim(sites[n]), dim(sites[n]))
+      end
+
+      add_to_local_matrix!(matrix_element, one(C), local_op, lv.needs_JW_string)
+    else
+      for (rv_id, weight) in weighted_edge_iterator(g, lv_id)
+        m = searchsortedfirst(right_cover, rv_id)
+        @assert m <= length(right_cover) && right_cover[m] == rv_id
+        m += length(left_cover)
+
+        matrix_element = get!(matrix, (lv.link, m)) do
+          return zeros(C, dim(sites[n]), dim(sites[n]))
+        end
+
+        add_to_local_matrix!(matrix_element, weight, local_op, lv.needs_JW_string)
+      end
+    end
+  end
+
+  n == length(sites) && return rank, Matrix{Tuple{Vector{Int},Vector{C}}}(undef, 0, 0), qn
+
+  next_edges = Matrix{Tuple{Vector{Int},Vector{C}}}(undef, rank, length(op_cache_vec[n + 1]))
+  for i in eachindex(next_edges)
+    next_edges[i] = (Int[], C[])
+  end
+
+  @timeit "left_cover" for (m, lv_id) in enumerate(left_cover)
+    for (rv_id, weight) in weighted_edge_iterator(g, lv_id)
+      op_id = next_op_of_rv_id[rv_id]
+
+      next_right_vertex_ids, next_edge_weights = next_edges[m, op_id]
+      push!(next_right_vertex_ids, rv_id)
+      push!(next_edge_weights, weight)
+    end
+  end
+
+  for (m, rv_id) in enumerate(right_cover)
+    m += length(left_cover)
+    op_id = next_op_of_rv_id[rv_id]
+    next_edges[m, op_id] = [rv_id], [one(C)]
+  end
+
+  return rank, next_edges, qn
+end
+
+"""
     at_site!(ValType, g, n, sites, tol, absolute_tol, op_cache_vec; combine_qn_sectors, output_level=0)
         -> Tuple{MPOGraph,Vector{Int},Vector{BlockSparseMatrix{ValType}},Index}
 
@@ -473,18 +568,20 @@ components are iterated over using threads. The returned tuple contains:
 - the outgoing link `Index`, optionally grouped into merged QN sectors.
 """
 @timeit function at_site!(
-  ValType::Type{<:Number},
+  ::Type{ValType},
   g::MPOGraph{N,C,Ti},
   n::Int,
   sites::Vector{<:Index},
   tol::Real,
   absolute_tol::Bool,
   op_cache_vec::OpCacheVec;
+  use_vertex_cover::Bool = true, # TODO: Propogate this and splitblocks up the call chain, document, and change defaults.
+  splitblocks::Bool = false,
   combine_qn_sectors::Bool,
   output_level::Int=0,
 )::Tuple{
   MPOGraph{N,C,Ti},Vector{Int},Vector{BlockSparseMatrix{ValType}},Index
-} where {N,C,Ti}
+} where {ValType<:Number,N,C,Ti}
   has_qns = hasqns(sites)
 
   if n > 1
@@ -515,7 +612,14 @@ components are iterated over using threads. The returned tuple contains:
     "  The graph is $(left_size(g)) × $(right_size(g)) with $(num_edges(g)) edges and $(nccs) connected components. tol = $(@sprintf("%.2E", tol))",
   )
 
-  use_vertex_cover = true
+  next_op_of_rv_id = Ti[]
+  if use_vertex_cover
+    resize!(next_op_of_rv_id, right_size(g))
+
+    Threads.@threads for rv_id in 1:right_size(g)
+      next_op_of_rv_id[rv_id] = get_onsite_op(right_vertex(g, rv_id), n + 1)
+    end
+  end
 
   for cc in 1:nccs
     ## A specialization for when there is only one vertex on the left. This is
@@ -538,73 +642,23 @@ components are iterated over using threads. The returned tuple contains:
     end
 
     if use_vertex_cover
-      left_cover, right_cover = minimum_vertex_cover(g, ccs, cc)
-
-      rank = length(left_cover) + length(right_cover)
-      rank_of_cc[cc] = rank
-
-      ## Compute and store the QN of this component
-      if has_qns
-        first_rv_id = isempty(right_cover) ? g.right_vertex_ids_from_left[left_cover[1]][1] : right_cover[1]
-        qi_of_cc[cc] = flux(right_vertex(g, first_rv_id), n + 1, op_cache_vec) => rank
-      end
-
-      for lv_id in ccs.lvs_of_component[cc]
-        lv = left_vertex(g, lv_id)
-        local_op = op_cache_vec[n][lv.op_id].matrix
-
-        m = searchsortedfirst(left_cover, lv_id)
-        if m <= length(left_cover) && left_cover[m] == lv_id
-          matrix_element = get!(matrix_of_cc[cc], (lv.link, m)) do
-            return zeros(C, dim(sites[n]), dim(sites[n]))
-          end
-
-          add_to_local_matrix!(matrix_element, one(C), local_op, lv.needs_JW_string)
-        else
-          for (rv_id, weight) in weighted_edge_iterator(g, lv_id)
-            m = searchsortedfirst(right_cover, rv_id)
-            @assert m <= length(right_cover) && right_cover[m] == rv_id
-            m += length(left_cover)
-
-            matrix_element = get!(matrix_of_cc[cc], (lv.link, m)) do
-              return zeros(C, dim(sites[n]), dim(sites[n]))
-            end
-
-            add_to_local_matrix!(matrix_element, weight, local_op, lv.needs_JW_string)
-          end
-        end
-      end
-
-      n == length(sites) && continue
-
-      ## Build the graph for the next site out of this component.
-      next_edges = Matrix{Tuple{Vector{Int},Vector{C}}}(
-        undef, rank, length(op_cache_vec[n + 1])
+      rank, next_edges, qn = process_vertex_cover_cc!(
+        matrix_of_cc[cc],
+        g,
+        next_op_of_rv_id,
+        ccs,
+        cc,
+        n,
+        sites,
+        op_cache_vec,
       )
-      for i in eachindex(next_edges)
-        next_edges[i] = Int[], C[]
-      end
 
-      for (m, lv_id) in enumerate(left_cover)
-        for (rv_id, weight) in weighted_edge_iterator(g, lv_id)
-          op_id = get_onsite_op(right_vertex(g, rv_id), n + 1)
-
-          next_right_vertex_ids, next_edge_weights = next_edges[m, op_id]
-          push!(next_right_vertex_ids, rv_id)
-          push!(next_edge_weights, weight)
-        end
-      end
-
-      for (m, rv_id) in enumerate(right_cover)
-        m += length(left_cover)
-        op_id = get_onsite_op(right_vertex(g, rv_id), n + 1)
-
-        next_right_vertex_ids, next_edge_weights = next_edges[m, op_id]
-        push!(next_right_vertex_ids, rv_id)
-        push!(next_edge_weights, one(C))
-      end
-
+      rank_of_cc[cc] = rank
       next_edges_of_cc[cc] = next_edges
+
+      if has_qns
+        qi_of_cc[cc] = qn => rank
+      end
 
       continue
     end
@@ -726,7 +780,11 @@ components are iterated over using threads. The returned tuple contains:
   end
 
   if has_qns
-    outgoing_link = Index(qi_of_cc...; tags="Link,l=$n", dir=ITensors.Out)
+    if splitblocks
+      qi_of_cc = split_qi(qi_of_cc, cur_offset)
+    end
+
+    outgoing_link = Index(qi_of_cc; tags="Link,l=$n", dir=ITensors.Out)
     output_level > 1 && println(
       "    Total rank is $cur_offset with $(length(qi_of_cc)) different QN sectors."
     )

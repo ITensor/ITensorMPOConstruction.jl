@@ -403,7 +403,7 @@ end
 # | 64            | 1            | 33s          | 1177s    |
 #
 # # Writing a Checkpoint File
-#
+# TODO: Update
 # In certain cases (such as for the ``10 \times 10`` and ``12 \times 12`` systems), MPO construction can take so long that it is prudent to write out a checkpoint file in case of catastrophic failure. This can be accomplished by the `call_back` parameter to `MPO_new`, construction can be resumed later by calling `resume_MPO_construction`. This functionality is demonstrated below. 
 
 using Serialization

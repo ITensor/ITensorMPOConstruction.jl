@@ -143,3 +143,20 @@ function to_sparse_itensor(
 
   return itensor(T)
 end
+
+function to_dense_itensor(
+  offsets::Vector{Int},
+  block_sparse_matrices::Vector{BlockSparseMatrix{C}},
+  llink::Index,
+  rlink::Index,
+  site::Index
+)::ITensor where {C}
+  tensor = zeros(C, dim(llink), dim(rlink), dim(prime(site)), dim(site))
+  for (offset, matrix) in zip(offsets, block_sparse_matrices)
+    for ((left_link, right_link), block) in matrix
+      tensor[left_link, right_link + offset, :, :] = block
+    end
+  end
+
+  return itensor(tensor, llink, rlink, prime(site), site)
+end

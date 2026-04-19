@@ -1,6 +1,16 @@
-using ITensorMPOConstruction
-using ITensorMPS
-using ITensors
+try
+  using MKL
+catch
+end
+
+using LinearAlgebra
+BLAS.set_num_threads(1)
+
+@show Threads.nthreads()
+@show BLAS.get_num_threads()
+
+using ITensors, ITensorMPS, ITensorMPOConstruction
+using TimerOutputs
 using PyCall
 
 function get_coefficients(N::Int)::Tuple{Array{Float64,2},Array{Float64,8}}
