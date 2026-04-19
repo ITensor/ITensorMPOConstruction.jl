@@ -84,21 +84,14 @@ end
   H = MPO(sites)
 
   Threads.@threads for n in 1:length(sites)
-    if hasqns(sites)
-      H[n] = my_ITensor_old(
-        offsets[n],
-        block_sparse_matrices[n],
-        dag(llinks[n]),
-        llinks[n + 1],
-        prime(sites[n]),
-        dag(sites[n]);
-        checkflux=true,
-      )
-    else
-      H[n] = to_dense_itensor(
-        offsets[n], block_sparse_matrices[n], llinks[n], llinks[n + 1], sites[n]
-      )
-    end
+    H[n] = to_ITensor(
+      offsets[n],
+      block_sparse_matrices[n],
+      llinks[n],
+      llinks[n + 1],
+      sites[n];
+      checkflux=true,
+    )
   end
 
   # Remove the dummy link indices from the left and right.
