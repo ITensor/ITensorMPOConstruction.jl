@@ -486,14 +486,18 @@ Process every connected component using the minimum-vertex-cover specialization.
 
   nccs = num_connected_components(ccs)
   @timeit "Loop over ccs" for cc in 1:nccs
-    @timeit "minimum_vertex_cover" left_cover, right_cover = minimum_vertex_cover(g, ccs, cc)
+    matrix = matrix_of_cc[cc]
+    lvs_of_component = ccs.lvs_of_component[cc]
+    component_position_of_rvs = ccs.component_position_of_rvs
+
+    @timeit "minimum_vertex_cover" left_cover, right_cover =
+      _minimum_vertex_cover_local(g, ccs, cc)
 
     rank = length(left_cover) + length(right_cover)
     rank_of_cc[cc] = rank
-    matrix = matrix_of_cc[cc]
 
     @timeit "building tensor from left" for m in eachindex(left_cover)
-      lv_id = left_cover[m]
+      lv_id = lvs_of_component[left_cover[m]]
       lv = left_vertex(g, lv_id)
       local_op = op_cache_vec[n][lv.op_id].matrix
 
@@ -502,19 +506,26 @@ Process every connected component using the minimum-vertex-cover specialization.
       matrix[lv.link, m] = matrix_element
     end
 
-    @timeit "building tensor from right" for lv_id in ccs.lvs_of_component[cc]
+    @timeit "not_in_left_cover" not_in_left_cover = [lvs_of_component[i] for i in eachindex(lvs_of_component) if i ∉ left_cover]
+
+    rvs_of_component = Vector{Int}(undef, ccs.rv_size_of_component[cc])
+    @timeit "rvs_of_component" for lv_id in lvs_of_component
+      for rv_id in g.right_vertex_ids_from_left[lv_id]
+        rvs_of_component[component_position_of_rvs[rv_id]] = rv_id
+      end
+    end
+
+    rv_position_in_cover = Vector{Int}(undef, ccs.rv_size_of_component[cc])
+    @timeit "rv_position_in_cover" for (i, local_id) in enumerate(right_cover)
+      rv_position_in_cover[local_id] = i
+    end
+
+    @timeit "building tensor from right" for lv_id in not_in_left_cover
       lv = left_vertex(g, lv_id)
       local_op = op_cache_vec[n][lv.op_id].matrix
 
-      m = searchsortedfirst(left_cover, lv_id)
-      if m <= length(left_cover) && left_cover[m] == lv_id
-        continue
-      end
-
       for (rv_id, weight) in weighted_edge_iterator(g, lv_id)
-        m = searchsortedfirst(right_cover, rv_id)
-        @assert m <= length(right_cover) && right_cover[m] == rv_id
-        m += length(left_cover)
+        m = rv_position_in_cover[component_position_of_rvs[rv_id]] + length(left_cover)
 
         matrix_element = get!(matrix, (lv.link, m)) do
           return zeros(C, dim(sites[n]), dim(sites[n]))
@@ -532,7 +543,7 @@ Process every connected component using the minimum-vertex-cover specialization.
     end
 
     @timeit "left_cover" Threads.@threads for m in eachindex(left_cover)
-      lv_id = left_cover[m]
+      lv_id = lvs_of_component[left_cover[m]]
       for (rv_id, weight) in weighted_edge_iterator(g, lv_id)
         op_id = next_op_of_rv_id[rv_id]
 
@@ -543,7 +554,7 @@ Process every connected component using the minimum-vertex-cover specialization.
     end
 
     @timeit "right_cover" Threads.@threads for m in eachindex(right_cover)
-      rv_id = right_cover[m]
+      rv_id = rvs_of_component[right_cover[m]]
       m += length(left_cover)
 
       op_id = next_op_of_rv_id[rv_id]

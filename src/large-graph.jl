@@ -347,7 +347,7 @@ Fields:
 """
 struct BipartiteGraphConnectedComponents
   lvs_of_component::Vector{Vector{Int}}
-  component_position_of_rvs::Vector{Int}
+  component_position_of_rvs::Vector{Int} # TODO: Change to position_of_rvs_in_component
   rv_size_of_component::Vector{Int}
 end
 
@@ -450,19 +450,7 @@ function left_size(ccs::BipartiteGraphConnectedComponents, cc::Int)
   length(ccs.lvs_of_component[cc])
 end
 
-"""
-    minimum_vertex_cover(
-      g::BipartiteGraph, ccs::BipartiteGraphConnectedComponents, cc::Int
-    ) -> Tuple{Vector{Int},Vector{Int}}
-
-Return a minimum-cardinality vertex cover of connected component `cc` of the
-unweighted bipartite graph underlying `g`.
-
-The result is a pair `(left_ids, right_ids)` of ascending global vertex ids on
-the left and right sides belonging to component `cc` whose union touches every
-edge in that component. Edge weights are ignored.
-"""
-function minimum_vertex_cover(
+function _minimum_vertex_cover_local(
   g::BipartiteGraph{L,R,C}, ccs::BipartiteGraphConnectedComponents, cc::Int
 )::Tuple{Vector{Int},Vector{Int}} where {L,R,C}
   left_map = ccs.lvs_of_component[cc]
@@ -470,16 +458,13 @@ function minimum_vertex_cover(
   num_right = ccs.rv_size_of_component[cc]
 
   right_vertex_ids_from_left = Vector{Vector{Int}}(undef, length(left_map))
-  right_map = Vector{Int}(undef, num_right)
 
   @inbounds for (i, lv_id) in enumerate(left_map)
     global_right_vertex_ids = g.right_vertex_ids_from_left[lv_id]
     local_right_vertex_ids = Vector{Int}(undef, length(global_right_vertex_ids))
     for edge_id in eachindex(global_right_vertex_ids)
       rv_id = global_right_vertex_ids[edge_id]
-      j = component_position_of_rvs[rv_id]
-      local_right_vertex_ids[edge_id] = j
-      right_map[j] = rv_id
+      local_right_vertex_ids[edge_id] = component_position_of_rvs[rv_id]
     end
     right_vertex_ids_from_left[i] = local_right_vertex_ids
   end
@@ -491,6 +476,27 @@ function minimum_vertex_cover(
     right_vertex_ids_from_left, matched_right_of_left, matched_left_of_right
   )
 
+  @assert issorted(local_left_ids)
+  @assert issorted(local_right_ids)
+
+  return local_left_ids, local_right_ids
+end
+
+function minimum_vertex_cover(
+  g::BipartiteGraph{L,R,C}, ccs::BipartiteGraphConnectedComponents, cc::Int
+)::Tuple{Vector{Int},Vector{Int}} where {L,R,C}
+  left_map = ccs.lvs_of_component[cc]
+  component_position_of_rvs = ccs.component_position_of_rvs
+  num_right = ccs.rv_size_of_component[cc]
+  right_map = Vector{Int}(undef, num_right)
+
+  @inbounds for lv_id in left_map
+    for rv_id in g.right_vertex_ids_from_left[lv_id]
+      right_map[component_position_of_rvs[rv_id]] = rv_id
+    end
+  end
+
+  local_left_ids, local_right_ids = _minimum_vertex_cover_local(g, ccs, cc)
   left_ids = Int[left_map[lv_id] for lv_id in local_left_ids]
   right_ids = Int[right_map[rv_id] for rv_id in local_right_ids]
   sort!(left_ids)
