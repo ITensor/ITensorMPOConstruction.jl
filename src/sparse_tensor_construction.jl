@@ -47,14 +47,68 @@ end
   return Block((left_block, right_block, site_prime_block, site_block))
 end
 
+function _to_ITensor_splitblocks(
+  offsets::Vector{Int},
+  block_sparse_matrices::Vector{Dict{Tuple{Int,Int},Matrix{C}}},
+  llink::ITensors.QNIndex,
+  rlink::ITensors.QNIndex,
+  site::ITensors.QNIndex;
+)::ITensor where {C}
+  llink = ITensors.splitblocks(llink)
+  rlink = ITensors.splitblocks(rlink)
+  site = ITensors.splitblocks(site)
+
+  inds = (dag(llink), rlink, prime(site), dag(site))
+
+  num_nonzero_entries = sum(
+    count(value -> !iszero(value), block) for
+    matrix in block_sparse_matrices for block in values(matrix)
+  )
+
+  num_nonzero_entries == 0 && return itensor(ITensors.BlockSparseTensor(C, Block{4}[], inds))
+
+  blocks = sizehint!(Block{4}[], num_nonzero_entries)
+  block_values = sizehint!(Vector{C}(), num_nonzero_entries)
+
+  for (offset, matrix) in zip(offsets, block_sparse_matrices)
+    for ((left_link, right_link), block) in matrix
+      shifted_right_link = right_link + offset
+
+      @inbounds for i in axes(block, 1), j in axes(block, 2)
+        value = block[i, j]
+        iszero(value) && continue
+
+        push!(blocks, Block((left_link, shifted_right_link, i, j)))
+        push!(block_values, value)
+      end
+    end
+  end
+
+  block_offsets = ITensors.NDTensors.BlockOffsets{4}()
+  for (n, block) in enumerate(blocks)
+    insert!(block_offsets, block, n - 1)
+  end
+
+  T = ITensors.BlockSparseTensor(C, undef, block_offsets, inds)
+  copyto!(ITensors.NDTensors.data(storage(T)), block_values)
+
+  return itensor(T)
+end
+
 function to_ITensor(
   offsets::Vector{Int},
   block_sparse_matrices::Vector{Dict{Tuple{Int,Int},Matrix{C}}},
   llink::ITensors.QNIndex,
   rlink::ITensors.QNIndex,
   site::ITensors.QNIndex;
-  checkflux::Bool=true
+  splitblocks::Bool=false,
 )::ITensor where {C}
+  if splitblocks
+    return _to_ITensor_splitblocks(
+      offsets, block_sparse_matrices, llink, rlink, site
+    )
+  end
+
   inds = (dag(llink), rlink, prime(site), dag(site))
 
   left_blocks, left_offsets = _qn_position_map(first(inds))
@@ -145,8 +199,6 @@ function to_ITensor(
     end
   end
 
-  checkflux && ITensors.checkflux(T)
-
   return itensor(T)
 end
 
@@ -156,7 +208,7 @@ function to_ITensor(
   llink::Index,
   rlink::Index,
   site::Index;
-  checkflux::Bool=true
+  splitblocks::Bool=false,
 )::ITensor where {C}
   tensor = zeros(C, dim(llink), dim(rlink), dim(prime(site)), dim(site))
   for (offset, matrix) in zip(offsets, block_sparse_matrices)

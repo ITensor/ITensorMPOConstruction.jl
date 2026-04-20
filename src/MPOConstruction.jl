@@ -79,7 +79,8 @@ end
   offsets::Vector{Vector{Int}},
   block_sparse_matrices::Vector{Vector{BlockSparseMatrix{ValType}}},
   sites::Vector{<:Index},
-  llinks::Vector{<:Index},
+  llinks::Vector{<:Index};
+  splitblocks::Bool=true,
 )::MPO where {ValType<:Number}
   H = MPO(sites)
 
@@ -90,6 +91,7 @@ end
       llinks[n],
       llinks[n + 1],
       sites[n];
+      splitblocks,
       checkflux=true,
     )
   end
