@@ -26,7 +26,7 @@ function normalized_diff(A::MPO, B::MPO)
   return 2 * (1 - real(inner(A, B)))
 end
 
-function compare_MPOs(A::MPO, B::MPO; tol::Real=1e-7)::Nothing
+function compare_MPOs(A::MPO, B::MPO, compare_linkdims::Bool; tol::Real=1e-7)::Nothing
   normalizedDiff = normalized_diff(A, B)
 
   relativeDiffFromLog = norm2_of_difference(B, A; relativeNorm=true)
@@ -36,30 +36,37 @@ function compare_MPOs(A::MPO, B::MPO; tol::Real=1e-7)::Nothing
   AmB = add(A, -B; alg="directsum")
   diff = inner(AmB, AmB) / inner(A, A)
 
-  println(
-    "normalized difference = $normalizedDiff, relative difference (log) = $relativeDiffFromLog, relative diff = $relativeDiff, |A - B|^2 = $diff",
-  )
+  if abs(diff) >= tol
+    println(
+      "normalized difference = $normalizedDiff, relative difference (log) = $relativeDiffFromLog, relative diff = $relativeDiff, |A - B|^2 = $diff",
+    )
+  end
 
   @test abs(diff) < tol
+
+  if compare_linkdims
+    @test all(linkdims(A) .<= linkdims(B))
+  end
+
   return nothing
 end
 
 function test_from_OpSum(
   os::OpSum,
   sites::Vector{<:Index},
-  basis_op_cache_vec::Union{Nothing,OpCacheVec},
-  tol::Real;
+  alg::String,
+  compare_linkdims_if_VC::Bool;
+  basis_op_cache_vec::Union{Nothing,OpCacheVec} = nothing,
   splitblocks::Bool=false,
   combine_qn_sectors::Bool=false,
-  use_vertex_cover::Bool=true # TODO: Forward this to MPO_new and create dual tests
 )::Tuple{MPO,MPO}
-  mpo = MPO_new(os, sites; tol, basis_op_cache_vec, splitblocks, combine_qn_sectors, output_level=0)
+  mpo = MPO_new(
+    os, sites; alg, basis_op_cache_vec, splitblocks, combine_qn_sectors, output_level=0
+  )
 
   mpoFromITensor = MPO(os, sites)
 
-  !use_vertex_cover && @test all(linkdims(mpo) .<= linkdims(mpoFromITensor))
-
-  compare_MPOs(mpo, mpoFromITensor)
+  compare_MPOs(mpo, mpoFromITensor, alg == "QR" || compare_linkdims_if_VC)
 
   return mpo, mpoFromITensor
 end
@@ -68,7 +75,7 @@ function random_complex()::ComplexF64
   return 2 * rand(ComplexF64) - ComplexF64(1, 1)
 end
 
-function test_IXYZ(N::Int64, tol::Real)
+function test_IXYZ(N::Int64, alg::String)
   β = zeros(ComplexF64, N, 4)
   for i in eachindex(β)
     β[i] = random_complex()
@@ -94,7 +101,7 @@ function test_IXYZ(N::Int64, tol::Real)
   end
 
   sites = siteinds("Qubit", N)
-  algMPO = MPO_new(os, sites; tol, output_level=0)
+  algMPO = MPO_new(os, sites; alg)
 
   exact = MPO(sites)
 
@@ -123,12 +130,12 @@ function test_IXYZ(N::Int64, tol::Real)
   exact[1] *= L
   exact[N] *= R
 
-  compare_MPOs(algMPO, exact)
+  compare_MPOs(algMPO, exact, alg=="QR")
 
   return nothing
 end
 
-function test_weight_one(N::Integer, tol::Real)
+function test_weight_one(N::Integer, alg::String)
   localOps = ["X", "Y", "Z"]
 
   ops = Tuple{ComplexF64,String}[]
@@ -142,7 +149,7 @@ function test_weight_one(N::Integer, tol::Real)
   end
 
   sites = siteinds("Qubit", N)
-  algMPO = MPO_new(os, sites; tol, output_level=0)
+  algMPO = MPO_new(os, sites; alg)
 
   exact = MPO(sites)
 
@@ -189,7 +196,7 @@ function test_weight_one(N::Integer, tol::Real)
     )
   end
 
-  compare_MPOs(algMPO, exact; tol=2 * N^2 * 1e-17)
+  compare_MPOs(algMPO, exact, true; tol=2 * N^2 * 1e-17)
 
   return nothing
 end
@@ -226,7 +233,7 @@ function all_ops_of_weight_or_less(N::Integer, weight::Integer)::Vector
   return ops
 end
 
-function test_random_operator(N::Integer, maxWeight::Integer, tol::Real)::Nothing
+function test_random_operator(N::Integer, maxWeight::Integer, alg::String)::Nothing
   ops = all_ops_of_weight_or_less(N, maxWeight)
 
   os = OpSum()
@@ -235,35 +242,35 @@ function test_random_operator(N::Integer, maxWeight::Integer, tol::Real)::Nothin
   end
 
   sites = siteinds("Qubit", N)
-  test_from_OpSum(os, sites, nothing, tol)
+  test_from_OpSum(os, sites, alg, true)
 
   return nothing
 end
 
-function test_non_zero_flux()::Nothing
+function test_non_zero_flux(alg::String)::Nothing
   sites = siteinds("Qubit", 4; conserve_number=true)
 
   os = OpSum()
   os .+= 1.0, "S-", 1, "S-", 4
   os .+= 1.0, "S-", 2, "S-", 3
-  O = MPO_new(os, sites; splitblocks=true) # TODO: remove splitblocks = true after warning.
+  O = MPO_new(os, sites; alg, splitblocks=true) # TODO: remove splitblocks = true after warning.
 
   @test flux(O) == QN(("Number", 2))
 
   mpoFromITensor = MPO(os, sites)
-  compare_MPOs(O, mpoFromITensor)
+  compare_MPOs(O, mpoFromITensor, true)
 
   let
     os = OpSum()
     os .+= 1.0, "S-", 1
     os .+= 1.0, "S-", 2, "S-", 3
-    @test_throws "Inconsistent flux found!" MPO_new(os, sites; splitblocks=true) # TODO: remove splitblocks = true after warning.
+    @test_throws "Inconsistent flux found!" MPO_new(os, sites; alg, splitblocks=true) # TODO: remove splitblocks = true after warning.
   end
 
   return nothing
 end
 
-function test_Fermi_Hubbard_real_space(N::Int, tol::Real, combine_qn_sectors::Bool)::Nothing
+function test_Fermi_Hubbard_real_space(N::Int, alg::String, splitblocks::Bool, combine_qn_sectors::Bool)::Nothing
   t, U = 1, 4
   sites = siteinds("Electron", N; conserve_qns=true)
   
@@ -277,11 +284,11 @@ function test_Fermi_Hubbard_real_space(N::Int, tol::Real, combine_qn_sectors::Bo
     os .+= U, "Nup * Ndn", i
   end
 
-  test_from_OpSum(os, sites, nothing, tol; combine_qn_sectors)
+  test_from_OpSum(os, sites, alg, true; splitblocks, combine_qn_sectors)
   return nothing
 end
 
-function test_Fermi_Hubbard(N::Int, tol::Real, combine_qn_sectors::Bool)::Nothing
+function test_Fermi_Hubbard(N::Int, alg::String, splitblocks::Bool, combine_qn_sectors::Bool)::Nothing
   t, U = 1, 1e-10
   sites = siteinds("Electron", N; conserve_qns=true)
 
@@ -325,7 +332,7 @@ function test_Fermi_Hubbard(N::Int, tol::Real, combine_qn_sectors::Bool)::Nothin
     n in eachindex(sites)
   ]
 
-  test_from_OpSum(os, sites, op_cache_vec, tol; combine_qn_sectors)
+  test_from_OpSum(os, sites, alg, false; basis_op_cache_vec=op_cache_vec, splitblocks, combine_qn_sectors)
   return nothing
 end
 
@@ -337,7 +344,7 @@ ITensors.op(::OpName"10", ::SiteType"Qubit") = [0 0; 1 0]
 
 ITensors.op(::OpName"11", ::SiteType"Qubit") = [0 0; 0 1]
 
-function test_qft(N::Int64, applyR::Bool, tol::Real)
+function test_qft(N::Int64, applyR::Bool, alg::String)
   function bits_to_int(bits)
     N = length(bits)
     return sum(bitj << (N - j) for (j, bitj) in enumerate(bits))
@@ -370,36 +377,34 @@ function test_qft(N::Int64, applyR::Bool, tol::Real)
   end
 
   sites = siteinds("Qubit", N)
-  return algMPO, iTensorMPO = test_from_OpSum(os, sites, nothing, tol)
+  return algMPO, iTensorMPO = test_from_OpSum(os, sites, alg, !applyR)
 end
 
 @testset "MPOConstruction" begin
-  test_IXYZ(8, 1.0)
-  println()
+  for alg in ("QR", "VC")
+    @testset "$alg: IXYZ" test_IXYZ(8, alg)
 
-  test_weight_one(100, 1.0)
-  println()
+    @testset "$alg: weight one" begin
+      test_weight_one(100, alg)
+      test_weight_one(200, alg)
+    end
+    
+    @testset "$alg: random operator" test_random_operator(8, 4, alg)
 
-  test_weight_one(200, 1.0)
-  println()
+    @testset "$alg: non zero flux" test_non_zero_flux(alg)
 
-  test_random_operator(8, 4, 1.0)
-  println()
+    @testset "$alg: qft" begin
+      test_qft(6, false, alg)
+      test_qft(6, true, alg)
+    end
 
-  test_non_zero_flux()
-  println()
-
-  test_qft(6, false, 1.0)
-  println()
-
-  test_qft(6, true, 1.0)
-  println()
-
-  test_Fermi_Hubbard_real_space(20, 1.0, false)
-  println()
-
-  test_Fermi_Hubbard(12, 1.0, false)
-  println()
-
-  test_Fermi_Hubbard(12, 1.0, true)
+    @testset "$alg: Fermi Hubbard" begin
+      for splitblocks in (false, true)
+        for combine_qn_sectors in (false, true)
+          test_Fermi_Hubbard_real_space(20, alg, splitblocks, combine_qn_sectors)
+          test_Fermi_Hubbard(12, alg, splitblocks, combine_qn_sectors)
+        end
+      end
+    end
+  end
 end

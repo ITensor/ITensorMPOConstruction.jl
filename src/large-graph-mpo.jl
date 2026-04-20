@@ -831,11 +831,7 @@ returned tuple contains:
 } where {ValType<:Number,N,C,Ti}
   has_qns = hasqns(sites)
 
-  if n > 1
-    workspace = combine_duplicate_adjacent_right_vertices!(g, terms_eq_from(n + 1))
-  else
-    workspace = Vector{Int}(undef, right_size(g))
-  end
+  workspace = combine_duplicate_adjacent_right_vertices!(g, terms_eq_from(n + 1))
 
   ccs = compute_connected_components(g, workspace)
   nccs = num_connected_components(ccs)
