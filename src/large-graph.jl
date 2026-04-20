@@ -340,14 +340,14 @@ Struct containing the connected components of a `BipartiteGraph`.
 Fields:
 - `lvs_of_component`: for each connected component, the global ids of its left
   vertices.
-- `component_position_of_rvs`: for each global right vertex id, its local id
+- `position_of_rvs_in_component`: for each global right vertex id, its local id
   (position) within its connected component, or an unused sentinel for isolated
   right vertices.
 - `rv_size_of_component`: number of right vertices in each component.
 """
 struct BipartiteGraphConnectedComponents
   lvs_of_component::Vector{Vector{Int}}
-  component_position_of_rvs::Vector{Int} # TODO: Change to position_of_rvs_in_component
+  position_of_rvs_in_component::Vector{Int}
   rv_size_of_component::Vector{Int}
 end
 
@@ -455,7 +455,7 @@ function _minimum_vertex_cover_local(
   g::BipartiteGraph{L,R,C}, ccs::BipartiteGraphConnectedComponents, cc::Int
 )::Tuple{Vector{Int},Vector{Int}} where {L,R,C}
   left_map = ccs.lvs_of_component[cc]
-  component_position_of_rvs = ccs.component_position_of_rvs
+  position_of_rvs_in_component = ccs.position_of_rvs_in_component
   num_right = ccs.rv_size_of_component[cc]
 
   right_vertex_ids_from_left = Vector{Vector{Int}}(undef, length(left_map))
@@ -465,7 +465,7 @@ function _minimum_vertex_cover_local(
     local_right_vertex_ids = Vector{Int}(undef, length(global_right_vertex_ids))
     for edge_id in eachindex(global_right_vertex_ids)
       rv_id = global_right_vertex_ids[edge_id]
-      local_right_vertex_ids[edge_id] = component_position_of_rvs[rv_id]
+      local_right_vertex_ids[edge_id] = position_of_rvs_in_component[rv_id]
     end
     right_vertex_ids_from_left[i] = local_right_vertex_ids
   end
@@ -487,13 +487,13 @@ function minimum_vertex_cover(
   g::BipartiteGraph{L,R,C}, ccs::BipartiteGraphConnectedComponents, cc::Int
 )::Tuple{Vector{Int},Vector{Int}} where {L,R,C}
   left_map = ccs.lvs_of_component[cc]
-  component_position_of_rvs = ccs.component_position_of_rvs
+  position_of_rvs_in_component = ccs.position_of_rvs_in_component
   num_right = ccs.rv_size_of_component[cc]
   right_map = Vector{Int}(undef, num_right)
 
   @inbounds for lv_id in left_map
     for rv_id in g.right_vertex_ids_from_left[lv_id]
-      right_map[component_position_of_rvs[rv_id]] = rv_id
+      right_map[position_of_rvs_in_component[rv_id]] = rv_id
     end
   end
 
@@ -531,14 +531,14 @@ function get_cc_matrix(
   left_map = ccs.lvs_of_component[cc]
   num_left = length(left_map)
   num_right = ccs.rv_size_of_component[cc]
-  component_position_of_rvs = ccs.component_position_of_rvs
+  position_of_rvs_in_component = ccs.position_of_rvs_in_component
 
   ## Count entries in each column and record the local-to-global right-vertex map.
   colptr = zeros(Int, num_right + 1)
   right_map = Vector{Int}(undef, num_right)
   @inbounds for lv_id in left_map
     for rv_id in g.right_vertex_ids_from_left[lv_id]
-      j = component_position_of_rvs[rv_id]
+      j = position_of_rvs_in_component[rv_id]
       colptr[j + 1] += 1
       right_map[j] = rv_id
     end
@@ -562,7 +562,7 @@ function get_cc_matrix(
     for edge_id in eachindex(right_vertex_ids)
       rv_id = right_vertex_ids[edge_id]
       weight = edge_weights[edge_id]
-      j = component_position_of_rvs[rv_id]
+      j = position_of_rvs_in_component[rv_id]
       pos = next_position[j]
       rowvals[pos] = i
       nzvals[pos] = weight

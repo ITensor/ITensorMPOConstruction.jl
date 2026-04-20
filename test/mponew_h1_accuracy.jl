@@ -125,7 +125,7 @@ end
   @test maximum(abs, H .- transpose(H)) <= 1e-12
 
   sites = siteinds("Fermion", N; conserve_qns=true, conserve_nf=true)
-  H_new = MPO_new(build_h1_opsum(terms), sites; tol=1.0)
+  H_new = MPO_new(build_h1_opsum(terms), sites; tol=1.0, splitblocks=true) # TODO: remove splitblocks=true after removing warning
 
   tests = make_test_orbitals(N; n_basis=8, n_random=4, seed=1234)
   max_delta = 0.0

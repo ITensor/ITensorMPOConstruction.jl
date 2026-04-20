@@ -155,7 +155,7 @@ function MPO_new(
 )::MPO
   if isnothing(splitblocks) # TODO: Remove warning some time after v0.2.1 release
     splitblocks = true
-    Base.depwarn("`splitblocks` not specified. The default is `true`, which is a change from prior behavior.", :MPO_new; force=true)
+    hasqns(sites) && Base.depwarn("`splitblocks` not specified. The default is `true`, which is a change from prior behavior.", :MPO_new; force=true)
   end
 
   prepare_opID_sum!(os, to_OpCacheVec(sites, basis_op_cache_vec))

@@ -84,7 +84,7 @@ function test_get_connected_components_worst_case(nl::Int)
   @test sort(ccs.lvs_of_component[1]) == [i for i in 1:nl]
 
   @test ccs.rv_size_of_component[1] == nl
-  @test sort(ccs.component_position_of_rvs) == [i for i in 1:nl]
+  @test sort(ccs.position_of_rvs_in_component) == [i for i in 1:nl]
 end
 
 function test_get_cc_matrix()
@@ -203,7 +203,7 @@ function component_adjacency(
     local_right_vertex_ids = Vector{Int}(undef, length(global_right_vertex_ids))
     for edge_id in eachindex(global_right_vertex_ids)
       rv_id = global_right_vertex_ids[edge_id]
-      j = ccs.component_position_of_rvs[rv_id]
+      j = ccs.position_of_rvs_in_component[rv_id]
       local_right_vertex_ids[edge_id] = j
       right_map[j] = rv_id
     end

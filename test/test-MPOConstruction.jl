@@ -49,10 +49,11 @@ function test_from_OpSum(
   sites::Vector{<:Index},
   basis_op_cache_vec::Union{Nothing,OpCacheVec},
   tol::Real;
+  splitblocks::Bool=false,
   combine_qn_sectors::Bool=false,
   use_vertex_cover::Bool=true # TODO: Forward this to MPO_new and create dual tests
 )::Tuple{MPO,MPO}
-  mpo = MPO_new(os, sites; tol, basis_op_cache_vec, combine_qn_sectors, output_level=0)
+  mpo = MPO_new(os, sites; tol, basis_op_cache_vec, splitblocks, combine_qn_sectors, output_level=0)
 
   mpoFromITensor = MPO(os, sites)
 
@@ -245,7 +246,7 @@ function test_non_zero_flux()::Nothing
   os = OpSum()
   os .+= 1.0, "S-", 1, "S-", 4
   os .+= 1.0, "S-", 2, "S-", 3
-  O = MPO_new(os, sites)
+  O = MPO_new(os, sites; splitblocks=true) # TODO: remove splitblocks = true after warning.
 
   @test flux(O) == QN(("Number", 2))
 
@@ -256,7 +257,7 @@ function test_non_zero_flux()::Nothing
     os = OpSum()
     os .+= 1.0, "S-", 1
     os .+= 1.0, "S-", 2, "S-", 3
-    @test_throws "Inconsistent flux found!" MPO_new(os, sites)
+    @test_throws "Inconsistent flux found!" MPO_new(os, sites; splitblocks=true) # TODO: remove splitblocks = true after warning.
   end
 
   return nothing
