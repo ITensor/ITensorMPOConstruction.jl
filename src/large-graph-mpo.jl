@@ -538,13 +538,13 @@ function process_single_left_vertex_cc!(
 end
 
 """
-    process_vertex_cover_cc!(
+    process_vertex_cover!(
       matrix_of_cc, rank_of_cc, next_edges_of_cc, g, ccs, n, sites, op_cache_vec
     ) -> Nothing
 
 Process every connected component using the minimum-vertex-cover specialization.
 """
-@timeit function process_vertex_cover_cc!(
+@timeit function process_vertex_cover!(
   matrix_of_cc::Vector{BlockSparseMatrix{ValType}},
   rank_of_cc::Vector{Int},
   next_edges_of_cc::Vector{Matrix{Tuple{Vector{Int},Vector{C}}}},
@@ -672,13 +672,13 @@ Process every connected component using the minimum-vertex-cover specialization.
 end
 
 """
-    process_sparse_qr_cc!(
+    process_qr(
       matrix_of_cc, rank_of_cc, next_edges_of_cc, g, ccs, n, sites, tol, absolute_tol, op_cache_vec
     ) -> Nothing
 
 Process every connected component using the sparse-QR path.
 """
-@timeit function process_sparse_qr_cc!(
+@timeit function process_qr(
   matrix_of_cc::Vector{BlockSparseMatrix{ValType}},
   rank_of_cc::Vector{Int},
   next_edges_of_cc::Vector{Matrix{Tuple{Vector{Int},Vector{C}}}},
@@ -822,8 +822,8 @@ returned tuple contains:
   sites::Vector{<:Index},
   tol::Real,
   absolute_tol::Bool,
-  op_cache_vec::OpCacheVec;
-  use_vertex_cover::Bool = true, # TODO: Propogate this up the call chain, document, and change defaults.
+  op_cache_vec::OpCacheVec,
+  alg::String;
   combine_qn_sectors::Bool,
   output_level::Int=0,
 )::Tuple{
@@ -865,19 +865,8 @@ returned tuple contains:
     "  The graph is $(left_size(g)) × $(right_size(g)) with $(num_edges(g)) edges and $(nccs) connected components. tol = $(@sprintf("%.2E", tol))",
   )
 
-  if use_vertex_cover
-    process_vertex_cover_cc!(
-      matrix_of_cc,
-      rank_of_cc,
-      next_edges_of_cc,
-      g,
-      ccs,
-      n,
-      sites,
-      op_cache_vec,
-    )
-  else
-    process_sparse_qr_cc!(
+  if alg == "QR"
+    process_qr(
       matrix_of_cc,
       rank_of_cc,
       next_edges_of_cc,
@@ -889,6 +878,19 @@ returned tuple contains:
       absolute_tol,
       op_cache_vec,
     )
+  elseif alg == "VC"
+    process_vertex_cover!(
+      matrix_of_cc,
+      rank_of_cc,
+      next_edges_of_cc,
+      g,
+      ccs,
+      n,
+      sites,
+      op_cache_vec,
+    )
+  else
+    throw(ArgumentError("The supported algorithms are 'QR' and 'VC': $alg"))
   end
 
   for cc in 1:nccs
