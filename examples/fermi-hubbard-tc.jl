@@ -389,7 +389,7 @@ for grid_size in ((2, 2), (6, 6))
     @time "Constructing OpIDSum" sites, os = transcorrelated_fermi_hubbard(t, U, J, mapping)
     reset_timer!()
     @time "Constructing MPO" H = MPO_new(
-      os, sites; combine_qn_sectors=true, output_level=0, check_for_errors=false
+      os, sites; splitblocks=false, combine_qn_sectors=true, output_level=0, check_for_errors=false
     )
     grid_size != (2, 2) && print_timer()
   end

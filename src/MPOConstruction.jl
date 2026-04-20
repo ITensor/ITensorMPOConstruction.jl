@@ -1,28 +1,32 @@
 _resume_MPO_kwargs = """
-- `tol=1`: A multiplicative modifier to the default tolerance used in the SPQR,
+- `combine_qn_sectors=false`: When `true`, the blocks of the MPO tensors corresponding to the same
+  quantum numbers are merged together into a single block. This can decrease the resulting sparsity,
+  but can offer performance gains.
+- alg="QR": The decomposition algorithm to use. The options are "QR", which ueses the rank decomposition
+  algorithm based on the sparse QR decomposition, and "VC", which uses the vertex cover algorithm. When
+  the vertex cover algorithm is used, all tolerance arguments are ignored.
+- `tol=1`: A multiplicative modifier to the default tolerance used in SPQR's sparse QR decomposition,
   see [SPQR user guide Section 2.3](https://fossies.org/linux/SuiteSparse/SPQR/Doc/spqr_user_guide.pdf).
   The value of the default tolerance depends on the input matrix, which means a different
   tolerance is used for each decomposition. In the cases we have examined, the default 
   tolerance works great for producing accurate MPOs.
 - `absolute_tol=false`: If true, override the default adaptive tolerance scheme outlined above,
   and use the value of `tol` as the single tolerance for each decomposition.
-- `combine_qn_sectors=false`: When `true`, the blocks of the MPO corresponding to the same
-  quantum numbers are merged together into a single block. This can decrease the resulting sparsity.
 - `call_back`: A function that is called after constructing the MPO tensor at `cur_site`.
-  Called as `call_back(cur_site, H, sites, llinks, cur_graph, op_cache_vec)`.
+  Called as `call_back(n, offsets, block_sparse_matrices, sites, llinks, g, op_cache_vec)`.
   Primarily used for writing checkpoints to disk for large calculations.
 - `output_level=0`: Controls progress and timing output.
 """
 
 @doc """
     resume_MPO_construction!(ValType, n_init, H, sites, llinks, g, op_cache_vec;
-      tol=1, absolute_tol=false, combine_qn_sectors=false, call_back=..., output_level=0) -> MPO
+      tol=1, absolute_tol=false, combine_qn_sectors=false, call_back=..., output_level=0) -> Nothing
 
 Continue MPO construction starting from site `n_init` using the current graph
 state `g`.
 
 This is the low-level driver underlying `MPO_new`. At each site it factors the
-current graph with `at_site!`, builds the local MPO tensor, stores it into `H`, 
+current graph with `at_site!`, builds the local MPO tensor, 
 and advances to the next-site graph. The callback is invoked after each site is completed.
 
 Keyword arguments:
@@ -36,9 +40,10 @@ function resume_MPO_construction!(
   llinks::Vector{<:Index},
   g::MPOGraph,
   op_cache_vec::OpCacheVec;
+  combine_qn_sectors::Bool=false,
+  alg::String="QR",
   tol::Real=1,
   absolute_tol::Bool=false,
-  combine_qn_sectors::Bool=false,
   call_back::Function=(
     cur_site::Int,
     offsets::Vector{Vector{Int}},
@@ -64,7 +69,8 @@ function resume_MPO_construction!(
       sites,
       tol,
       absolute_tol,
-      op_cache_vec;
+      op_cache_vec,
+      alg;
       combine_qn_sectors,
       output_level,
     )
@@ -75,16 +81,17 @@ function resume_MPO_construction!(
   return nothing
 end
 
-@timeit function instantiate_MPO(
+function instantiate_MPO(
   offsets::Vector{Vector{Int}},
   block_sparse_matrices::Vector{Vector{BlockSparseMatrix{ValType}}},
   sites::Vector{<:Index},
   llinks::Vector{<:Index};
-  splitblocks::Bool=true,
+  splitblocks::Bool,
+  checkflux::Bool
 )::MPO where {ValType<:Number}
   H = MPO(sites)
 
-  Threads.@threads for n in 1:length(sites)
+  @timeit "to_ITensor" Threads.@threads for n in 1:length(sites)
     H[n] = to_ITensor(
       offsets[n],
       block_sparse_matrices[n],
@@ -92,7 +99,6 @@ end
       llinks[n + 1],
       sites[n];
       splitblocks,
-      checkflux=true,
     )
   end
 
@@ -105,6 +111,12 @@ end
 
   H[1] *= L
   H[length(sites)] *= R
+
+  if checkflux
+    @timeit "checkflux" Threads.@threads for n in 1:length(sites)
+      ITensors.checkflux(H[n])
+    end
+  end
 
   return H
 end
@@ -124,6 +136,10 @@ Keyword arguments:
   a basis is inferred from the input and no basis transformation occurs.
 - `check_for_errors=true`: Check the input OpSum for errors, this can be expensive
   for larger problems.
+- `checkflux=true`: Check that the resulting MPO tensors all have a well defined flux.
+  can be expensive for larger problems when `splitblocks=true`.
+- `splitblocks=true`: Split the QN sectors into blocks of size one. This not only effects
+  the sparsity of the resulting MPO, but can also slow down construction.
 $_resume_MPO_kwargs
 """
 function MPO_new(
@@ -132,9 +148,16 @@ function MPO_new(
   sites::Vector{<:Index};
   basis_op_cache_vec=nothing,
   check_for_errors::Bool=true,
+  checkflux::Bool=true,
+  splitblocks::Union{Bool, Nothing}=nothing,
   output_level::Int=0,
   kwargs...,
 )::MPO
+  if isnothing(splitblocks) # TODO: Remove warning some time after v0.2.1 release
+    splitblocks = true
+    Base.depwarn("`splitblocks` not specified. The default is `true`, which is a change from prior behavior.", :MPO_new; force=true)
+  end
+
   prepare_opID_sum!(os, to_OpCacheVec(sites, basis_op_cache_vec))
   check_for_errors && check_os_for_errors(os)
 
@@ -154,7 +177,9 @@ function MPO_new(
     1, offsets, block_sparse_matrices, sites, llinks, g, os.op_cache_vec; output_level, kwargs...
   )
 
-  return instantiate_MPO(offsets, block_sparse_matrices, sites, llinks)
+  @time_if output_level 0 "instantiate_MPO" H = instantiate_MPO(offsets, block_sparse_matrices, sites, llinks; splitblocks, checkflux)
+
+  return H
 end
 
 """
