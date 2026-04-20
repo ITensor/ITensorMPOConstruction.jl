@@ -384,7 +384,7 @@ function build_tensor_from_right!(
   g::MPOGraph{N,C,Ti},
   uncovered_left_ids::Vector{Int},
   right_cover_col::Vector{Int},
-  component_position_of_rvs::Vector{Int},
+  position_of_rvs_in_component::Vector{Int},
   op_cache_site,
   site_dim::Int,
 )::Nothing where {ValType,N,C,Ti}
@@ -403,7 +403,7 @@ function build_tensor_from_right!(
       for edge_id in eachindex(right_vertex_ids)
         rv_id = right_vertex_ids[edge_id]
         weight = edge_weights[edge_id]
-        m = right_cover_col[component_position_of_rvs[rv_id]]
+        m = right_cover_col[position_of_rvs_in_component[rv_id]]
 
         matrix_element = get!(matrix, (lv.link, m)) do
           zeros(ValType, site_dim, site_dim)
@@ -429,7 +429,7 @@ function build_tensor_from_right!(
     @inbounds for edge_id in eachindex(right_vertex_ids)
       rv_id = right_vertex_ids[edge_id]
       weight = edge_weights[edge_id]
-      m = right_cover_col[component_position_of_rvs[rv_id]]
+      m = right_cover_col[position_of_rvs_in_component[rv_id]]
 
       matrix_element = get!(local_matrix, (lv.link, m)) do
         zeros(ValType, site_dim, site_dim)
@@ -572,7 +572,7 @@ Process every connected component using the minimum-vertex-cover specialization.
   @timeit "Loop over ccs" for cc in 1:nccs
     matrix = matrix_of_cc[cc]
     lvs_of_component = ccs.lvs_of_component[cc]
-    component_position_of_rvs = ccs.component_position_of_rvs
+    position_of_rvs_in_component = ccs.position_of_rvs_in_component
     rv_size_of_component = ccs.rv_size_of_component[cc]
 
     @timeit "minimum_vertex_cover" left_cover, right_cover = _minimum_vertex_cover_local(g, ccs, cc)
@@ -615,7 +615,7 @@ Process every connected component using the minimum-vertex-cover specialization.
       right_vertex_ids = right_vertex_ids_from_left[lv_id]
       @inbounds for edge_id in eachindex(right_vertex_ids)
         rv_id = right_vertex_ids[edge_id]
-        rvs_of_component[component_position_of_rvs[rv_id]] = rv_id
+        rvs_of_component[position_of_rvs_in_component[rv_id]] = rv_id
       end
     end
 
@@ -629,7 +629,7 @@ Process every connected component using the minimum-vertex-cover specialization.
       g,
       uncovered_left_ids,
       right_cover_col,
-      component_position_of_rvs,
+      position_of_rvs_in_component,
       op_cache_site,
       site_dim,
     )
