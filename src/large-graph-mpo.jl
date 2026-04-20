@@ -474,20 +474,6 @@ function merge_qn_sectors(
   return new_order, new_qi
 end
 
-function split_qi(qi_of_cc::Vector{Pair{QN,Int}}, total_dim::Int)::Vector{Pair{QN,Int}}
-  new_qi = Vector{Pair{QN,Int}}(undef, total_dim)
-  
-  i = 1
-  for (qn, dim) in qi_of_cc
-    for _ in 1:dim
-      new_qi[i] = qn => 1
-      i += 1
-    end
-  end
-
-  return new_qi
-end
-
 """
     process_single_left_vertex_cc!(
       matrix_of_cc, qi_of_cc, rank_of_cc, next_edges_of_cc, g, ccs, cc, n, sites, op_cache_vec
@@ -573,9 +559,9 @@ Process every connected component using the minimum-vertex-cover specialization.
   oneVal = one(ValType)
   oneC = one(C)
   has_next_site = n != length(sites)
-  next_op_count = has_next_site ? length(op_cache_vec[n + 1]) : 0
-  next_op_of_rv_id = Vector{Ti}(undef, has_next_site ? right_size(g) : 0)
+  next_op_of_rv_id = Ti[]
   if has_next_site
+    resize!(next_op_of_rv_id, right_size(g))
     Threads.@threads for rv_id in 1:right_size(g)
       next_op_of_rv_id[rv_id] = get_onsite_op(right_vertex(g, rv_id), n + 1)
     end
@@ -650,11 +636,12 @@ Process every connected component using the minimum-vertex-cover specialization.
 
     !has_next_site && continue
 
-    next_edges = Matrix{Tuple{Vector{Int},Vector{C}}}(undef, rank, next_op_count)
+    next_edges = Matrix{Tuple{Vector{Int},Vector{C}}}(undef, rank, length(op_cache_vec[n + 1]))
     for i in eachindex(next_edges)
       next_edges[i] = (Int[], C[])
     end
 
+    # TODO: Preallocate next_edges[m, op_id] in left_cover
     @timeit "left_cover" Threads.@threads for m in eachindex(left_cover)
       lv_id = lvs_of_component[left_cover[m]]
       for (rv_id, weight) in weighted_edge_iterator(g, lv_id)
@@ -836,8 +823,7 @@ returned tuple contains:
   tol::Real,
   absolute_tol::Bool,
   op_cache_vec::OpCacheVec;
-  use_vertex_cover::Bool = true, # TODO: Propogate this and splitblocks up the call chain, document, and change defaults.
-  splitblocks::Bool = false,
+  use_vertex_cover::Bool = true, # TODO: Propogate this up the call chain, document, and change defaults.
   combine_qn_sectors::Bool,
   output_level::Int=0,
 )::Tuple{
@@ -927,10 +913,6 @@ returned tuple contains:
   end
 
   if has_qns
-    if splitblocks
-      qi_of_cc = split_qi(qi_of_cc, cur_offset)
-    end
-
     outgoing_link = Index(qi_of_cc; tags="Link,l=$n", dir=ITensors.Out)
     output_level > 1 && println(
       "    Total rank is $cur_offset with $(length(qi_of_cc)) different QN sectors."
