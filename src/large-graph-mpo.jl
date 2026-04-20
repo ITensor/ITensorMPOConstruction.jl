@@ -401,8 +401,7 @@ end
 
 """
     process_single_left_vertex_cc!(
-      matrix_of_cc, qi_of_cc, rank_of_cc, next_edges_of_cc, g, ccs, cc, n, sites,
-      has_qns, op_cache_vec
+      matrix_of_cc, qi_of_cc, rank_of_cc, next_edges_of_cc, g, ccs, cc, n, sites, op_cache_vec
     ) -> Nothing
 
 Handle the common connected-component case with exactly one left vertex.
@@ -413,7 +412,6 @@ builds the outgoing edges for the next site.
 """
 function process_single_left_vertex_cc!(
   matrix_of_cc::Vector{BlockSparseMatrix{ValType}},
-  qi_of_cc::Vector{Pair{QN,Int}},
   rank_of_cc::Vector{Int},
   next_edges_of_cc::Vector{Matrix{Tuple{Vector{Int},Vector{C}}}},
   g::MPOGraph{N,C,Ti},
@@ -426,9 +424,6 @@ function process_single_left_vertex_cc!(
   lv_id = only(ccs.lvs_of_component[cc])
   rank = 1
   rank_of_cc[cc] = rank
-
-  first_rv_id = g.right_vertex_ids_from_left[lv_id][1]
-  qi_of_cc[cc] = flux(right_vertex(g, first_rv_id), n + 1, op_cache_vec) => rank
 
   lv = left_vertex(g, lv_id)
   local_op = op_cache_vec[n][lv.op_id].matrix
@@ -469,15 +464,13 @@ end
 
 """
     process_vertex_cover_cc!(
-      matrix_of_cc, qi_of_cc, rank_of_cc, next_edges_of_cc, g, ccs, n, sites,
-      has_qns, op_cache_vec
+      matrix_of_cc, rank_of_cc, next_edges_of_cc, g, ccs, n, sites, op_cache_vec
     ) -> Nothing
 
 Process every connected component using the minimum-vertex-cover specialization.
 """
 @timeit function process_vertex_cover_cc!(
   matrix_of_cc::Vector{BlockSparseMatrix{ValType}},
-  qi_of_cc::Vector{Pair{QN,Int}},
   rank_of_cc::Vector{Int},
   next_edges_of_cc::Vector{Matrix{Tuple{Vector{Int},Vector{C}}}},
   g::MPOGraph{N,C,Ti},
@@ -497,11 +490,6 @@ Process every connected component using the minimum-vertex-cover specialization.
 
     rank = length(left_cover) + length(right_cover)
     rank_of_cc[cc] = rank
-
-    first_rv_id = isempty(right_cover) ? g.right_vertex_ids_from_left[left_cover[1]][1] : right_cover[1]
-    qn = flux(right_vertex(g, first_rv_id), n + 1, op_cache_vec)
-    qi_of_cc[cc] = qn => rank
-
     matrix = matrix_of_cc[cc]
 
     @timeit "building tensor from left" for m in eachindex(left_cover)
@@ -570,15 +558,13 @@ end
 
 """
     process_sparse_qr_cc!(
-      matrix_of_cc, qi_of_cc, rank_of_cc, next_edges_of_cc, g, ccs, n, sites,
-      has_qns, tol, absolute_tol, op_cache_vec
+      matrix_of_cc, rank_of_cc, next_edges_of_cc, g, ccs, n, sites, tol, absolute_tol, op_cache_vec
     ) -> Nothing
 
 Process every connected component using the sparse-QR path.
 """
 @timeit function process_sparse_qr_cc!(
   matrix_of_cc::Vector{BlockSparseMatrix{ValType}},
-  qi_of_cc::Vector{Pair{QN,Int}},
   rank_of_cc::Vector{Int},
   next_edges_of_cc::Vector{Matrix{Tuple{Vector{Int},Vector{C}}}},
   g::MPOGraph{N,C,Ti},
@@ -595,7 +581,6 @@ Process every connected component using the sparse-QR path.
     if left_size(ccs, cc) == 1
       process_single_left_vertex_cc!(
         matrix_of_cc,
-        qi_of_cc,
         rank_of_cc,
         next_edges_of_cc,
         g,
@@ -616,8 +601,6 @@ Process every connected component using the sparse-QR path.
     W = nothing
 
     rank_of_cc[cc] = rank
-    qn = flux(right_vertex(g, right_map[1]), n + 1, op_cache_vec)
-    qi_of_cc[cc] = qn => rank
 
     ## Form the local transformation tensor.
     for_non_zeros_batch(Q, rank) do weights::AbstractVector{C}, m::Int
@@ -751,7 +734,13 @@ returned tuple contains:
   matrix_of_cc = [BlockSparseMatrix{ValType}() for _ in 1:nccs]
 
   ## The QN of each component
-  qi_of_cc = Pair{QN,Int}[QN() => 0 for _ in 1:nccs]
+  qi_of_cc = Vector{Pair{QN,Int}}(undef, nccs)
+  has_qns && for cc in 1:nccs
+    first_lv_id = ccs.lvs_of_component[cc][1]
+    first_rv_id = g.right_vertex_ids_from_left[first_lv_id][1]
+    qn = flux(right_vertex(g, first_rv_id), n + 1, op_cache_vec)
+    qi_of_cc[cc] = qn => -1
+  end
 
   ## A map from the incoming link to the next site (outgoing link from this site) and the
   ## operator on the next site (this uniquely specifies the left vertex of the next site)
@@ -765,7 +754,6 @@ returned tuple contains:
   if use_vertex_cover
     process_vertex_cover_cc!(
       matrix_of_cc,
-      qi_of_cc,
       rank_of_cc,
       next_edges_of_cc,
       g,
@@ -777,7 +765,6 @@ returned tuple contains:
   else
     process_sparse_qr_cc!(
       matrix_of_cc,
-      qi_of_cc,
       rank_of_cc,
       next_edges_of_cc,
       g,
@@ -790,7 +777,11 @@ returned tuple contains:
     )
   end
 
-  ## If we are merging the connected components by the quantum numbers.
+  for cc in 1:nccs
+    qn = first(qi_of_cc[cc])
+    qi_of_cc[cc] = qn => rank_of_cc[cc]
+  end
+
   cc_order = [i for i in 1:nccs]
   if combine_qn_sectors && has_qns
     cc_order, qi_of_cc = merge_qn_sectors(qi_of_cc)
