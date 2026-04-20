@@ -114,7 +114,7 @@ for N in [10, 30]
     @time "Constructing OpIDSum" sites, os = electronic_structure_OpIDSum(N, get_coefficients(N)...)
 
     reset_timer!()
-    @time "Constructing MPO" H = MPO_new(os, sites; alg, basis_op_cache_vec=os.op_cache_vec, check_for_errors=false, checkflux=false)
+    @time "Constructing MPO" H = MPO_new(os, sites; alg, basis_op_cache_vec=os.op_cache_vec, splitblocks=true, check_for_errors=false, checkflux=false) # TODO: remove splitblocks=true after warning
     N > 10 && print_timer()
 
     println("The maximum bond dimension is $(maxlinkdim(H)), sparsity = $(ITensorMPOConstruction.sparsity(H))")
