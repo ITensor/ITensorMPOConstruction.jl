@@ -64,23 +64,6 @@ function weighted_edge_iterator(g::BipartiteGraph, lv_id::Integer)
   return zip(g.right_vertex_ids_from_left[lv_id], g.edge_weights_from_left[lv_id])
 end
 
-function minimum_vertex_cover(g::BipartiteGraph)::Tuple{Vector{Int},Vector{Int}}
-  ccs = compute_connected_components(g)
-  left_ids = Int[]
-  right_ids = Int[]
-
-  for cc in 1:num_connected_components(ccs)
-    component_left_ids, component_right_ids = minimum_vertex_cover(g, ccs, cc)
-    append!(left_ids, component_left_ids)
-    append!(right_ids, component_right_ids)
-  end
-
-  sort!(left_ids)
-  sort!(right_ids)
-
-  return left_ids, right_ids
-end
-
 function _minimum_vertex_cover_from_matching(
   right_vertex_ids_from_left::AbstractVector{<:AbstractVector{Int}},
   matched_right_of_left::Vector{Int},
@@ -481,29 +464,6 @@ function _minimum_vertex_cover_local(
   @assert issorted(local_right_ids)
 
   return local_left_ids, local_right_ids
-end
-
-function minimum_vertex_cover(
-  g::BipartiteGraph{L,R,C}, ccs::BipartiteGraphConnectedComponents, cc::Int
-)::Tuple{Vector{Int},Vector{Int}} where {L,R,C}
-  left_map = ccs.lvs_of_component[cc]
-  position_of_rvs_in_component = ccs.position_of_rvs_in_component
-  num_right = ccs.rv_size_of_component[cc]
-  right_map = Vector{Int}(undef, num_right)
-
-  @inbounds for lv_id in left_map
-    for rv_id in g.right_vertex_ids_from_left[lv_id]
-      right_map[position_of_rvs_in_component[rv_id]] = rv_id
-    end
-  end
-
-  local_left_ids, local_right_ids = _minimum_vertex_cover_local(g, ccs, cc)
-  left_ids = Int[left_map[lv_id] for lv_id in local_left_ids]
-  right_ids = Int[right_map[rv_id] for rv_id in local_right_ids]
-  sort!(left_ids)
-  sort!(right_ids)
-
-  return left_ids, right_ids
 end
 
 """

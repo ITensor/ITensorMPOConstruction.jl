@@ -1,11 +1,11 @@
 using ITensorMPOConstruction:
+  _minimum_vertex_cover_local,
   BipartiteGraph,
   OpID,
   combine_duplicate_adjacent_right_vertices!,
   compute_connected_components,
   left_size,
   get_cc_matrix,
-  minimum_vertex_cover,
   num_connected_components,
   right_size
 
@@ -223,40 +223,40 @@ function test_minimum_vertex_cover_case(g::BipartiteGraph)
   left_ids_by_component = Int[]
   right_ids_by_component = Int[]
   for cc in 1:num_connected_components(ccs)
-    component_left_ids, component_right_ids = minimum_vertex_cover(g, ccs, cc)
+    component_left_ids, component_right_ids = _minimum_vertex_cover_local(g, ccs, cc)
     component_adj, left_map, right_map = component_adjacency(g, ccs, cc)
 
     @test issorted(component_left_ids)
     @test issorted(component_right_ids)
     @test allunique(component_left_ids)
     @test allunique(component_right_ids)
-    @test all(lv_id -> lv_id ∈ left_map, component_left_ids)
-    @test all(rv_id -> rv_id ∈ right_map, component_right_ids)
+    @test all(lv_id -> 1 <= lv_id <= length(left_map), component_left_ids)
+    @test all(rv_id -> 1 <= rv_id <= length(right_map), component_right_ids)
 
     left_in_cover = Set(component_left_ids)
     right_in_cover = Set(component_right_ids)
-    for (local_lv_id, global_lv_id) in enumerate(left_map)
+    for local_lv_id in eachindex(left_map)
       for local_rv_id in component_adj[local_lv_id]
-        @test (global_lv_id in left_in_cover) || (right_map[local_rv_id] in right_in_cover)
+        @test (local_lv_id in left_in_cover) || (local_rv_id in right_in_cover)
       end
     end
 
     @test length(component_left_ids) + length(component_right_ids) ==
       brute_force_minimum_vertex_cover_size(component_adj, length(right_map))
 
-    append!(left_ids_by_component, component_left_ids)
-    append!(right_ids_by_component, component_right_ids)
+    append!(left_ids_by_component, (left_map[lv_id] for lv_id in component_left_ids))
+    append!(right_ids_by_component, (right_map[rv_id] for rv_id in component_right_ids))
   end
   sort!(left_ids_by_component)
   sort!(right_ids_by_component)
-
-  left_ids, right_ids = minimum_vertex_cover(g)
 
   @test g.left_vertices == left_vertices_before
   @test g.right_vertices == right_vertices_before
   @test g.right_vertex_ids_from_left == right_vertex_ids_before
   @test g.edge_weights_from_left == edge_weights_before
 
+  left_ids = left_ids_by_component
+  right_ids = right_ids_by_component
   @test issorted(left_ids)
   @test issorted(right_ids)
   @test allunique(left_ids)
@@ -289,8 +289,6 @@ function test_minimum_vertex_cover_case(g::BipartiteGraph)
     right_degree[rv_id] == 0 && @test !right_in_cover[rv_id]
   end
 
-  @test left_ids == left_ids_by_component
-  @test right_ids == right_ids_by_component
   @test length(left_ids) + length(right_ids) == brute_force_minimum_vertex_cover_size(g)
 end
 
@@ -341,13 +339,20 @@ function test_minimum_vertex_cover()
 end
 
 @testset "BipartiteGraph" begin
-  test_get_connected_components(4, 4, 2)
-  test_get_connected_components(10, 10, 4)
-  test_get_connected_components(187, 294, 18)
-  test_get_connected_components(8 * 10^3, 3 * 10^6, 9 * 10^2)
-  test_get_connected_components_worst_case(1000)
-  test_combine_duplicate_adjacent_right_vertices()
-  test_get_cc_matrix()
-  test_get_cc_matrix_duplicate_edges()
-  test_minimum_vertex_cover()
+  @testset "connected components" begin
+    test_get_connected_components(4, 4, 2)
+    test_get_connected_components(10, 10, 4)
+    test_get_connected_components(187, 294, 18)
+    test_get_connected_components(8 * 10^3, 3 * 10^6, 9 * 10^2)
+    test_get_connected_components_worst_case(1000)
+  end
+
+  @testset "combine duplicates" test_combine_duplicate_adjacent_right_vertices()
+  
+  @testset "get conected component matrix" begin
+    test_get_cc_matrix()
+    test_get_cc_matrix_duplicate_edges()
+  end
+
+  @testset "minimum vertex cover" test_minimum_vertex_cover()
 end
