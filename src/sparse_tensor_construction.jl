@@ -47,6 +47,32 @@ end
   return Block((left_block, right_block, site_prime_block, site_block))
 end
 
+function _fill_splitblocks!(
+  blocks::Vector{Block{4}},
+  block_values::Vector{C},
+  offsets::Vector{Int},
+  block_sparse_matrices::Vector{Dict{Tuple{Int,Int},Matrix{C}}},
+) where {C}
+  entry = 0
+
+  for (offset, matrix) in zip(offsets, block_sparse_matrices)
+    for ((left_link, right_link), block) in matrix
+      shifted_right_link = right_link + offset
+
+      @inbounds for i in axes(block, 1), j in axes(block, 2)
+        value = block[i, j]
+        iszero(value) && continue
+
+        entry += 1
+        blocks[entry] = Block((left_link, shifted_right_link, i, j))
+        block_values[entry] = value
+      end
+    end
+  end
+
+  return nothing
+end
+
 function _to_ITensor_splitblocks(
   offsets::Vector{Int},
   block_sparse_matrices::Vector{Dict{Tuple{Int,Int},Matrix{C}}},
@@ -67,27 +93,14 @@ function _to_ITensor_splitblocks(
 
   num_nonzero_entries == 0 && return itensor(ITensors.BlockSparseTensor(C, Block{4}[], inds))
 
-  blocks = sizehint!(Block{4}[], num_nonzero_entries)
-  block_values = sizehint!(Vector{C}(), num_nonzero_entries)
+  blocks = Vector{Block{4}}(undef, num_nonzero_entries)
+  block_values = Vector{C}(undef, num_nonzero_entries)
 
-  for (offset, matrix) in zip(offsets, block_sparse_matrices)
-    for ((left_link, right_link), block) in matrix
-      shifted_right_link = right_link + offset
+  _fill_splitblocks!(blocks, block_values, offsets, block_sparse_matrices)
 
-      @inbounds for i in axes(block, 1), j in axes(block, 2)
-        value = block[i, j]
-        iszero(value) && continue
-
-        push!(blocks, Block((left_link, shifted_right_link, i, j)))
-        push!(block_values, value)
-      end
-    end
-  end
-
-  block_offsets = ITensors.NDTensors.BlockOffsets{4}()
-  for (n, block) in enumerate(blocks)
-    insert!(block_offsets, block, n - 1)
-  end
+  block_offsets = ITensors.NDTensors.BlockOffsets{4}(
+    blocks, 0:(num_nonzero_entries - 1)
+  )
 
   T = ITensors.BlockSparseTensor(C, undef, block_offsets, inds)
   copyto!(ITensors.NDTensors.data(storage(T)), block_values)
