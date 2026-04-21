@@ -402,7 +402,7 @@ product cannot be represented by a single basis operator.
     end
   end
 
-  for i in eachindex(os)
+  Threads.@threads for i in eachindex(os)
     scalar, ops = os[i]
 
     for_equal_sites(ops) do a, b
@@ -429,10 +429,10 @@ product cannot be represented by a single basis operator.
       end
     end
 
+    sort!(ops, by=op -> op.n)
     os.scalars[i] = scalar
   end
 
-  sort!(os.terms; dims=1, by=op -> op.n)
   os.op_cache_vec = basis_op_cache_vec
 
   return os

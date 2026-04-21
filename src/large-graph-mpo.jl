@@ -357,95 +357,6 @@ function add_to_local_matrix!(
   return nothing
 end
 
-function add_matrix!(dest::Matrix{ValType}, src::Matrix{ValType})::Nothing where {ValType}
-  @inbounds for i in CartesianIndices(dest)
-    dest[i] += src[i]
-  end
-
-  return nothing
-end
-
-function merge_block_sparse_matrix!(
-  dest::BlockSparseMatrix{ValType}, src::BlockSparseMatrix{ValType}
-)::Nothing where {ValType}
-  for (key, src_block) in src
-    if haskey(dest, key)
-      add_matrix!(dest[key], src_block)
-    else
-      dest[key] = src_block
-    end
-  end
-
-  return nothing
-end
-
-function build_tensor_from_right!(
-  matrix::BlockSparseMatrix{ValType},
-  g::MPOGraph{N,C,Ti},
-  uncovered_left_ids::Vector{Int},
-  right_cover_col::Vector{Int},
-  position_of_rvs_in_component::Vector{Int},
-  op_cache_site,
-  site_dim::Int,
-)::Nothing where {ValType,N,C,Ti}
-  num_threads = Threads.nthreads()
-  right_vertex_ids_from_left = g.right_vertex_ids_from_left
-  edge_weights_from_left = g.edge_weights_from_left
-
-  if num_threads == 1 || length(uncovered_left_ids) < 2 * num_threads
-    @inbounds for uncovered_id in eachindex(uncovered_left_ids)
-      lv_id = uncovered_left_ids[uncovered_id]
-      lv = left_vertex(g, lv_id)
-      local_op = op_cache_site[lv.op_id].matrix
-      right_vertex_ids = right_vertex_ids_from_left[lv_id]
-      edge_weights = edge_weights_from_left[lv_id]
-
-      for edge_id in eachindex(right_vertex_ids)
-        rv_id = right_vertex_ids[edge_id]
-        weight = edge_weights[edge_id]
-        m = right_cover_col[position_of_rvs_in_component[rv_id]]
-
-        matrix_element = get!(matrix, (lv.link, m)) do
-          zeros(ValType, site_dim, site_dim)
-        end
-
-        add_to_local_matrix!(matrix_element, weight, local_op, lv.needs_JW_string)
-      end
-    end
-
-    return nothing
-  end
-
-  local_matrices = [BlockSparseMatrix{ValType}() for _ in 1:num_threads]
-
-  Threads.@threads :static for uncovered_id in eachindex(uncovered_left_ids)
-    local_matrix = local_matrices[Threads.threadid()]
-    lv_id = uncovered_left_ids[uncovered_id]
-    lv = left_vertex(g, lv_id)
-    local_op = op_cache_site[lv.op_id].matrix
-    right_vertex_ids = right_vertex_ids_from_left[lv_id]
-    edge_weights = edge_weights_from_left[lv_id]
-
-    @inbounds for edge_id in eachindex(right_vertex_ids)
-      rv_id = right_vertex_ids[edge_id]
-      weight = edge_weights[edge_id]
-      m = right_cover_col[position_of_rvs_in_component[rv_id]]
-
-      matrix_element = get!(local_matrix, (lv.link, m)) do
-        zeros(ValType, site_dim, site_dim)
-      end
-
-      add_to_local_matrix!(matrix_element, weight, local_op, lv.needs_JW_string)
-    end
-  end
-
-  for local_matrix in local_matrices
-    merge_block_sparse_matrix!(matrix, local_matrix)
-  end
-
-  return nothing
-end
-
 """
     merge_qn_sectors(qi_of_cc::Vector{Pair{QN,Int}})
         -> Tuple{Vector{Int},Vector{Pair{QN,Int}}}
@@ -555,52 +466,47 @@ Process every connected component using the minimum-vertex-cover specialization.
   op_cache_vec::OpCacheVec,
 )::Nothing where {ValType<:Number,N,C,Ti}
   site_dim = dim(sites[n])
-  op_cache_site = op_cache_vec[n]
-  oneVal = one(ValType)
-  oneC = one(C)
-  has_next_site = n != length(sites)
+  op_cache = op_cache_vec[n]
+
   next_op_of_rv_id = Ti[]
-  if has_next_site
+  if n != length(sites)
     resize!(next_op_of_rv_id, right_size(g))
     Threads.@threads for rv_id in 1:right_size(g)
       next_op_of_rv_id[rv_id] = get_onsite_op(right_vertex(g, rv_id), n + 1)
     end
   end
 
-  nccs = num_connected_components(ccs)
-  right_vertex_ids_from_left = g.right_vertex_ids_from_left
-  @timeit "Loop over ccs" for cc in 1:nccs
+  Threads.@threads for cc in 1:num_connected_components(ccs)
     matrix = matrix_of_cc[cc]
-    lvs_of_component = ccs.lvs_of_component[cc]
+    lvs_of_component::Vector{Int} = ccs.lvs_of_component[cc]
     position_of_rvs_in_component = ccs.position_of_rvs_in_component
     rv_size_of_component = ccs.rv_size_of_component[cc]
 
-    @timeit "minimum_vertex_cover" left_cover, right_cover = _minimum_vertex_cover_local(g, ccs, cc)
+    ## No idea why, but these need to be typed or allocations go nuts.
+    left_cover::Vector{Int}, right_cover::Vector{Int} = _minimum_vertex_cover_local(g, ccs, cc)
 
-    left_cover_len = length(left_cover)
-    right_cover_len = length(right_cover)
-    rank = left_cover_len + right_cover_len
+    rank = length(left_cover) + length(right_cover)
     rank_of_cc[cc] = rank
 
-    @timeit "building tensor from left" for m in eachindex(left_cover)
+    ## Construct the tensor from the left cover.
+    @inbounds for m in eachindex(left_cover)
       lv_id = lvs_of_component[left_cover[m]]
       lv = left_vertex(g, lv_id)
-      local_op = op_cache_site[lv.op_id].matrix
+      local_op = op_cache[lv.op_id].matrix
 
       matrix_element = zeros(ValType, site_dim, site_dim)
-      add_to_local_matrix!(matrix_element, oneVal, local_op, lv.needs_JW_string)
+      add_to_local_matrix!(matrix_element, one(ValType), local_op, lv.needs_JW_string)
       matrix[lv.link, m] = matrix_element
     end
 
-    in_left_cover = falses(0)
-    uncovered_left_ids = Vector{Int}(undef, length(lvs_of_component) - left_cover_len)
+    ## Construct the tensor from the right cover.
     let
       in_left_cover = falses(length(lvs_of_component))
-
       @inbounds for local_id in left_cover
         in_left_cover[local_id] = true
       end
 
+      uncovered_left_ids = Vector{Int}(undef, length(lvs_of_component) - length(left_cover))
       next_uncovered = 1
       @inbounds for local_id in eachindex(lvs_of_component)
         if !in_left_cover[local_id]
@@ -608,41 +514,50 @@ Process every connected component using the minimum-vertex-cover specialization.
           next_uncovered += 1
         end
       end
-    end
 
-    rvs_of_component = Vector{Int}(undef, rv_size_of_component)
-    @timeit "rvs_of_component" Threads.@threads for lv_id in lvs_of_component
-      right_vertex_ids = right_vertex_ids_from_left[lv_id]
-      @inbounds for edge_id in eachindex(right_vertex_ids)
-        rv_id = right_vertex_ids[edge_id]
-        rvs_of_component[position_of_rvs_in_component[rv_id]] = rv_id
+      right_cover_m = Vector{Int}(undef, rv_size_of_component)
+      @inbounds for (m, local_rv) in enumerate(right_cover)
+        right_cover_m[local_rv] = length(left_cover) + m
+      end
+
+      @inbounds for lv_id in uncovered_left_ids
+        lv = left_vertex(g, lv_id)
+        local_op = op_cache[lv.op_id].matrix
+
+        for (rv_id, weight) in weighted_edge_iterator(g, lv_id)
+          m = right_cover_m[position_of_rvs_in_component[rv_id]]
+
+          matrix_element = get!(matrix, (lv.link, m)) do
+            zeros(ValType, site_dim, site_dim)
+          end
+
+          add_to_local_matrix!(matrix_element, weight, local_op, lv.needs_JW_string)
+        end
       end
     end
 
-    right_cover_col = Vector{Int}(undef, rv_size_of_component)
-    for (i, local_id) in enumerate(right_cover)
-      right_cover_col[local_id] = left_cover_len + i
-    end
+    n == length(sites) && continue
 
-    @timeit "building tensor from right" build_tensor_from_right!(
-      matrix,
-      g,
-      uncovered_left_ids,
-      right_cover_col,
-      position_of_rvs_in_component,
-      op_cache_site,
-      site_dim,
-    )
-
-    !has_next_site && continue
-
+    ## Preallocate space for next_edges
     next_edges = Matrix{Tuple{Vector{Int},Vector{C}}}(undef, rank, length(op_cache_vec[n + 1]))
-    for i in eachindex(next_edges)
-      next_edges[i] = (Int[], C[])
+    let
+      next_edge_sizes = zeros(Int, rank, length(op_cache_vec[n + 1]))
+      @inbounds for m in eachindex(left_cover)
+        lv_id = lvs_of_component[left_cover[m]]
+        for rv_id in g.right_vertex_ids_from_left[lv_id]
+          op_id = next_op_of_rv_id[rv_id]
+          next_edge_sizes[m, op_id] += 1
+        end
+      end
+
+      @inbounds for i in eachindex(next_edges)
+        n_edges = next_edge_sizes[i]
+        next_edges[i] = sizehint!(Int[], n_edges), sizehint!(C[], n_edges)
+      end
     end
 
-    # TODO: Preallocate next_edges[m, op_id] in left_cover
-    @timeit "left_cover" Threads.@threads for m in eachindex(left_cover)
+    ## Construct next_edges for the left_cover
+    @inbounds for m in eachindex(left_cover)
       lv_id = lvs_of_component[left_cover[m]]
       for (rv_id, weight) in weighted_edge_iterator(g, lv_id)
         op_id = next_op_of_rv_id[rv_id]
@@ -653,16 +568,29 @@ Process every connected component using the minimum-vertex-cover specialization.
       end
     end
 
-    Threads.@threads for m in eachindex(right_cover)
-      rv_id = rvs_of_component[right_cover[m]]
-      m += left_cover_len
+    ## Construct next_edges for the right_cover
+    let 
+      rvs_of_component = Vector{Int}(undef, rv_size_of_component)
+      @inbounds for lv_id in lvs_of_component
+        right_vertex_ids = g.right_vertex_ids_from_left[lv_id]
+        for edge_id in eachindex(right_vertex_ids)
+          rv_id = right_vertex_ids[edge_id]
+          rvs_of_component[position_of_rvs_in_component[rv_id]] = rv_id
+        end
+      end
 
-      selected_op_id = next_op_of_rv_id[rv_id]
-      next_right_vertex_ids, next_edge_weights = next_edges[m, selected_op_id]
-      resize!(next_right_vertex_ids, 1)
-      resize!(next_edge_weights, 1)
-      next_right_vertex_ids[1] = rv_id
-      next_edge_weights[1] = oneC
+      @inbounds for m in eachindex(right_cover)
+        rv_id = rvs_of_component[right_cover[m]]
+        m += length(left_cover)
+
+        op_id = next_op_of_rv_id[rv_id]
+        next_right_vertex_ids, next_edge_weights = next_edges[m, op_id]
+        resize!(next_right_vertex_ids, 1)
+        resize!(next_edge_weights, 1)
+
+        next_right_vertex_ids[1] = rv_id
+        next_edge_weights[1] = one(C)
+      end
     end
 
     next_edges_of_cc[cc] = next_edges
@@ -690,7 +618,7 @@ Process every connected component using the sparse-QR path.
   absolute_tol::Bool,
   op_cache_vec::OpCacheVec,
 )::Nothing where {ValType<:Number,N,C,Ti}
-  @timeit "Loop over ccs" Threads.@threads for cc in 1:num_connected_components(ccs)
+  Threads.@threads for cc in 1:num_connected_components(ccs)
     ## A specialization for when there is only one vertex on the left. This is
     ## a very common case that can be sped up significantly.
     if left_size(ccs, cc) == 1
@@ -901,7 +829,7 @@ returned tuple contains:
 
   ## Combine the graphs of each component together
   next_graph = MPOGraph{N,C,Ti}([], g.right_vertices, [], [])
-  offset_of_cc = zeros(Int, nccs + 1)
+  offset_of_cc = zeros(Int, nccs)
 
   cur_offset = 0
   for cc in cc_order

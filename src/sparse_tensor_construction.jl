@@ -171,7 +171,10 @@ function to_ITensor(
     fill!(block_views[block_id_list[n]], zero(C))
   end
 
-  for (offset, matrix) in zip(offsets, block_sparse_matrices)
+  Threads.@threads for i in eachindex(block_sparse_matrices)
+    offset = offsets[i]
+    matrix = block_sparse_matrices[i]
+
     for ((left_link, right_link), block) in matrix
       shifted_right_link = right_link + offset
       left_block = left_blocks[left_link]
@@ -211,7 +214,9 @@ function to_ITensor(
   splitblocks::Bool=false,
 )::ITensor where {C}
   tensor = zeros(C, dim(llink), dim(rlink), dim(prime(site)), dim(site))
-  for (offset, matrix) in zip(offsets, block_sparse_matrices)
+  Threads.@threads for i in eachindex(offsets)
+    offset = offsets[i]
+    matrix = block_sparse_matrices[i]
     for ((left_link, right_link), block) in matrix
       tensor[left_link, right_link + offset, :, :] = block
     end

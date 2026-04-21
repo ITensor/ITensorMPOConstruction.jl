@@ -332,7 +332,12 @@ function test_Fermi_Hubbard(N::Int, alg::String, splitblocks::Bool, combine_qn_s
     n in eachindex(sites)
   ]
 
-  test_from_OpSum(os, sites, alg, false; basis_op_cache_vec=op_cache_vec, splitblocks, combine_qn_sectors)
+  algMPO, _ = test_from_OpSum(os, sites, alg, false; basis_op_cache_vec=op_cache_vec, splitblocks, combine_qn_sectors)
+  
+  if alg == "QR" && mod(N, 2) == 0
+    @test maxlinkdim(algMPO) == 10 * N - 4
+  end
+
   return nothing
 end
 
