@@ -292,6 +292,32 @@ function test_minimum_vertex_cover_case(g::BipartiteGraph)
   @test length(left_ids) + length(right_ids) == brute_force_minimum_vertex_cover_size(g)
 end
 
+function test_minimum_vertex_cover_duplicate_edges_in_component()
+  g = BipartiteGraph{Int,Int,Int}(
+    collect(1:4),
+    collect(1:5),
+    [[1, 1, 2, 2], [2, 3], [4, 4, 5], Int[]],
+    [[3, -1, 4, 2], [5, 6], [7, -2, 1], Int[]],
+  )
+
+  ccs = compute_connected_components(g)
+  found_duplicate_component = false
+
+  for cc in 1:num_connected_components(ccs)
+    component_adj, _, right_map = component_adjacency(g, ccs, cc)
+    has_duplicate_edge = any(local_rvs -> length(unique(local_rvs)) < length(local_rvs), component_adj)
+    has_duplicate_edge || continue
+
+    found_duplicate_component = true
+    left_ids, right_ids = minimum_vertex_cover(g, ccs, cc)
+    @test length(left_ids) + length(right_ids) ==
+      brute_force_minimum_vertex_cover_size(component_adj, length(right_map))
+  end
+
+  @test found_duplicate_component
+  test_minimum_vertex_cover_case(g)
+end
+
 function test_minimum_vertex_cover()
   deterministic_cases = [
     BipartiteGraph{Int,Int,Int}(Int[], Int[], Vector{Vector{Int}}(), Vector{Vector{Int}}()),
@@ -316,6 +342,7 @@ function test_minimum_vertex_cover()
   for g in deterministic_cases
     test_minimum_vertex_cover_case(g)
   end
+  test_minimum_vertex_cover_duplicate_edges_in_component()
 
   rng = MersenneTwister(1234)
   for _ in 1:200
