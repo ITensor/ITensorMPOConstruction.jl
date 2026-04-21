@@ -1,5 +1,5 @@
 using ITensorMPOConstruction:
-  _minimum_vertex_cover_local,
+  minimum_vertex_cover,
   BipartiteGraph,
   OpID,
   combine_duplicate_adjacent_right_vertices!,
@@ -223,7 +223,7 @@ function test_minimum_vertex_cover_case(g::BipartiteGraph)
   left_ids_by_component = Int[]
   right_ids_by_component = Int[]
   for cc in 1:num_connected_components(ccs)
-    component_left_ids, component_right_ids = _minimum_vertex_cover_local(g, ccs, cc)
+    component_left_ids, component_right_ids = minimum_vertex_cover(g, ccs, cc)
     component_adj, left_map, right_map = component_adjacency(g, ccs, cc)
 
     @test issorted(component_left_ids)

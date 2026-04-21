@@ -483,7 +483,7 @@ Process every connected component using the minimum-vertex-cover specialization.
     rv_size_of_component = ccs.rv_size_of_component[cc]
 
     ## No idea why, but these need to be typed or allocations go nuts.
-    left_cover::Vector{Int}, right_cover::Vector{Int} = _minimum_vertex_cover_local(g, ccs, cc)
+    left_cover::Vector{Int}, right_cover::Vector{Int} = minimum_vertex_cover(g, ccs, cc)
 
     rank = length(left_cover) + length(right_cover)
     rank_of_cc[cc] = rank
