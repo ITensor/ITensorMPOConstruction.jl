@@ -91,8 +91,6 @@ function _to_ITensor_splitblocks(
     matrix in block_sparse_matrices for block in values(matrix)
   )
 
-  num_nonzero_entries == 0 && return itensor(ITensors.BlockSparseTensor(C, Block{4}[], inds))
-
   blocks = Vector{Block{4}}(undef, num_nonzero_entries)
   block_values = Vector{C}(undef, num_nonzero_entries)
 
@@ -102,9 +100,7 @@ function _to_ITensor_splitblocks(
     blocks, 0:(num_nonzero_entries - 1)
   )
 
-  T = ITensors.BlockSparseTensor(C, undef, block_offsets, inds)
-  copyto!(ITensors.NDTensors.data(storage(T)), block_values)
-
+  T = ITensors.tensor(ITensors.NDTensors.BlockSparse(block_values, block_offsets), inds)
   return itensor(T)
 end
 

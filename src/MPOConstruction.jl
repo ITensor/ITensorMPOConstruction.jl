@@ -59,7 +59,7 @@ function resume_MPO_construction!(
   @assert tol >= 0
 
   for n in n_init:length(sites)
-    output_level > 0 && println(
+    output_level > 1 && println(
       "At site $n/$(length(sites)) the graph takes up $(Base.format_bytes(Base.summarysize(g)))",
     )
     @time_if output_level 1 "at_site!" g, offsets[n], block_sparse_matrices[n], llinks[n + 1] = at_site!(
@@ -161,7 +161,8 @@ function MPO_new(
   prepare_opID_sum!(os, to_OpCacheVec(sites, basis_op_cache_vec))
   check_for_errors && check_os_for_errors(os)
 
-  @time_if output_level 0 "Constructing MPOGraph" g = MPOGraph(os)
+  label = "Constructing MPOGraph from $(length(os)) terms"
+  @time_if output_level 0 label g = MPOGraph(os)
 
   llinks = Vector{Index}(undef, length(sites) + 1)
   if hasqns(sites)
@@ -173,11 +174,11 @@ function MPO_new(
   offsets = Vector{Vector{Int}}(undef, length(sites))
   block_sparse_matrices = Vector{Vector{BlockSparseMatrix{ValType}}}(undef, length(sites))
 
-  resume_MPO_construction!(
+  @time_if output_level 0 "Constructing MPO terms" resume_MPO_construction!(
     1, offsets, block_sparse_matrices, sites, llinks, g, os.op_cache_vec; output_level, kwargs...
   )
 
-  @time_if output_level 0 "instantiate_MPO" H = instantiate_MPO(offsets, block_sparse_matrices, sites, llinks; splitblocks, checkflux)
+  @time_if output_level 0 "Converting to ITensors" H = instantiate_MPO(offsets, block_sparse_matrices, sites, llinks; splitblocks, checkflux)
 
   return H
 end

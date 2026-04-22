@@ -785,8 +785,8 @@ returned tuple contains:
   ## to the right vertices it will connect to along with the weight.
   next_edges_of_cc = [Matrix{Tuple{Vector{Int},Vector{C}}}(undef, 0, 0) for _ in 1:nccs]
 
-  output_level > 0 && println(
-    "  The graph is $(left_size(g)) × $(right_size(g)) with $(num_edges(g)) edges and $(nccs) connected components. tol = $(@sprintf("%.2E", tol))",
+  output_level > 1 && println(
+    "  The graph is $(left_size(g)) × $(right_size(g)) with $(num_edges(g)) edges and $(nccs) connected components.",
   )
 
   if alg == "QR"
@@ -841,7 +841,7 @@ returned tuple contains:
   if has_qns
     outgoing_link = Index(qi_of_cc; tags="Link,l=$n", dir=ITensors.Out)
     output_level > 1 && println(
-      "    Total rank is $cur_offset with $(length(qi_of_cc)) different QN sectors."
+      "  Total rank is $cur_offset with $(length(qi_of_cc)) different QN sectors."
     )
   else
     outgoing_link = Index(cur_offset; tags="Link,l=$n")
