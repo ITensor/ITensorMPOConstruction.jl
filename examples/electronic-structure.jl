@@ -31,39 +31,56 @@ function get_coefficients(N::Int)::Tuple{Array{Float64,2},Array{Float64,8}}
 end
 
 function electronic_structure_OpIDSum(
-  N::Int, one_electron_coeffs::Array{Float64,2}, two_electron_coeffs::Array{Float64,8}
+  N::Int, one_electron_coeffs::Array{Float64,2}, two_electron_coeffs::Array{Float64,8}; electron_sites=true
 )::Tuple{Vector{<:Index}, OpIDSum}
-  sites = siteinds("Electron", N; conserve_qns=true)
-
-  operatorNames = [
-    [
-      "I",
-      "Cdn",
-      "Cup",
-      "Cdagdn",
-      "Cdagup",
-      "Ndn",
-      "Nup",
-      "Cup * Cdn",
-      "Cup * Cdagdn",
-      "Cup * Ndn",
-      "Cdagup * Cdn",
-      "Cdagup * Cdagdn",
-      "Cdagup * Ndn",
-      "Nup * Cdn",
-      "Nup * Cdagdn",
-      "Nup * Ndn",
-    ] for _ in 1:N
-  ]
-
-  op_cache_vec = to_OpCacheVec(sites, operatorNames)
 
   ↓ = false
   ↑ = true
 
-  opC(k::Int, spin::Bool) = OpID{UInt8}(2 + spin, k)
-  opCdag(k::Int, spin::Bool) = OpID{UInt8}(4 + spin, k)
-  opN(k::Int, spin::Bool) = OpID{UInt8}(6 + spin, k)
+  if electron_sites
+    sites = siteinds("Electron", N; conserve_qns=true)
+
+    operatorNames = [
+      [
+        "I",
+        "Cdn",
+        "Cup",
+        "Cdagdn",
+        "Cdagup",
+        "Ndn",
+        "Nup",
+        "Cup * Cdn",
+        "Cup * Cdagdn",
+        "Cup * Ndn",
+        "Cdagup * Cdn",
+        "Cdagup * Cdagdn",
+        "Cdagup * Ndn",
+        "Nup * Cdn",
+        "Nup * Cdagdn",
+        "Nup * Ndn",
+      ] for _ in 1:N
+    ]
+
+    op_cache_vec = to_OpCacheVec(sites, operatorNames)
+  else
+    sites = ITensors.QNIndex[]
+    for i in 1:N
+      for spin in (-1, +1)
+        qns = [
+            QN(("Nf", 0, -1), ("Sz",    0)) => 1,
+            QN(("Nf", 1, -1), ("Sz", spin)) => 1,
+          ]
+
+        push!(sites, Index(qns, "Fermion,Site,$i-$spin"))
+      end
+    end
+
+    operatorNames = [["I", "C", "Cdag", "N"] for _ in 1:(2 * N)]
+    op_cache_vec = to_OpCacheVec(sites, operatorNames)
+  end
+
+  opC(k::Int, spin::Bool) = electron_sites ? OpID{UInt8}(2 + spin, k) : OpID{UInt8}(2, 2 * (k - 1) + 1 + spin)
+  opCdag(k::Int, spin::Bool) = electron_sites ? OpID{UInt8}(4 + spin, k) : OpID{UInt8}(3, 2 * (k - 1) + 1 + spin)
 
   os = OpIDSum{4,Float64,UInt8}(2 * N^4, op_cache_vec)
   for a in 1:N

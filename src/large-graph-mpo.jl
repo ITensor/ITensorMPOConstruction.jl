@@ -7,6 +7,7 @@ Keys are `(left_link, right_link)` pairs and values are dense local operator
 matrices for that block.
 """
 BlockSparseMatrix{C} = Dict{Tuple{Int,Int},Matrix{C}}
+# TODO: consider changing to Vector{Dict{Int, Matrix{C}}} from right_link => (left_link => matrix) and use Dictionaries.jl
 
 """
     MPOGraph{N,C,Ti}
@@ -476,6 +477,7 @@ Process every connected component using the minimum-vertex-cover specialization.
     end
   end
 
+  # TODO: Consider nested multithreading
   Threads.@threads for cc in 1:num_connected_components(ccs)
     matrix = matrix_of_cc[cc]
     lvs_of_component::Vector{Int} = ccs.lvs_of_component[cc]
@@ -500,6 +502,7 @@ Process every connected component using the minimum-vertex-cover specialization.
     end
 
     ## Construct the tensor from the right cover.
+    # TODO: Merge this loop with the one above, using `in_left_cover`
     let
       in_left_cover = falses(length(lvs_of_component))
       @inbounds for local_id in left_cover
