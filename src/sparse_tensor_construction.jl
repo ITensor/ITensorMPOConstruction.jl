@@ -1,3 +1,13 @@
+"""
+    _qn_position_map(ind::ITensors.QNIndex) -> Tuple{Vector{Int},Vector{Int}}
+
+Map dense index positions of a QN index to block coordinates.
+
+For each 1-based dense position in `ind`, the first returned vector stores the
+QN block number containing that position and the second returned vector stores
+the offset within that block. These lookup tables are used when translating
+dense link and site coordinates into `BlockSparseTensor` block coordinates.
+"""
 function _qn_position_map(ind::ITensors.QNIndex)::Tuple{Vector{Int},Vector{Int}}
   block_numbers = Vector{Int}(undef, dim(ind))
   block_offsets = Vector{Int}(undef, dim(ind))
@@ -15,6 +25,16 @@ function _qn_position_map(ind::ITensors.QNIndex)::Tuple{Vector{Int},Vector{Int}}
   return block_numbers, block_offsets
 end
 
+"""
+    _blockid(left_block, right_block, site_prime_block, site_block,
+             num_right_blocks, num_site_prime_blocks, num_site_blocks) -> Int
+
+Encode a 4-index block coordinate into a dense 1-based block id.
+
+The id orders blocks lexicographically with `left_block` slowest and
+`site_block` fastest. It is only a temporary lookup key; `_block_from_id`
+performs the inverse conversion.
+"""
 @inline function _blockid(
   left_block::Int,
   right_block::Int,
@@ -30,6 +50,12 @@ end
   ) * num_site_blocks + site_block
 end
 
+"""
+    _block_from_id(block_id, num_right_blocks, num_site_prime_blocks, num_site_blocks)
+        -> Block{4}
+
+Decode the dense block id produced by `_blockid` into an ITensors `Block{4}`.
+"""
 @inline function _block_from_id(
   block_id::Int, num_right_blocks::Int, num_site_prime_blocks::Int, num_site_blocks::Int
 )::Block{4}
@@ -47,6 +73,17 @@ end
   return Block((left_block, right_block, site_prime_block, site_block))
 end
 
+"""
+    _fill_splitblocks!(blocks, block_values, offsets, block_sparse_matrices) -> Nothing
+
+Fill split-block destination blocks and values from component block matrices.
+
+This helper is used after all QN indices have been split into one-dimensional
+blocks. For every nonzero matrix entry, it writes the corresponding
+`Block((left_link, right_link + offset, site_prime, site))` destination and the
+entry value into the preallocated `blocks` and `block_values` arrays. Zero
+entries are skipped.
+"""
 function _fill_splitblocks!(
   blocks::Vector{Block{4}},
   block_values::Vector{C},
@@ -73,6 +110,17 @@ function _fill_splitblocks!(
   return nothing
 end
 
+"""
+    _to_ITensor_splitblocks(offsets, block_sparse_matrices, llink, rlink, site) -> ITensor
+
+Construct a QN-conserving MPO tensor using split one-dimensional QN blocks.
+
+All three input indices are first passed through `ITensors.splitblocks`. Each
+nonzero scalar entry in `block_sparse_matrices` then becomes one structural
+`Block{4}` entry in the output tensor. `offsets[i]` places component `i` into
+its slice of the outgoing right-link space, so local component right-link ids
+are shifted to global right-link ids by `right_link + offsets[i]`.
+"""
 function _to_ITensor_splitblocks(
   offsets::Vector{Int},
   block_sparse_matrices::Vector{Dict{Tuple{Int,Int},Matrix{C}}},
@@ -104,6 +152,23 @@ function _to_ITensor_splitblocks(
   return itensor(T)
 end
 
+"""
+    to_ITensor(offsets, block_sparse_matrices, llink::QNIndex, rlink::QNIndex, site::QNIndex;
+               splitblocks=false) -> ITensor
+
+Assemble a block-sparse ITensor MPO tensor from component-local block matrices.
+
+`block_sparse_matrices[i]` stores the local MPO matrix blocks for component `i`
+as `(left_link, right_link) => local_operator_matrix`. The corresponding
+`offsets[i]` shifts those component-local right-link ids into the global
+outgoing bond space. The returned tensor has indices
+`(dag(llink), rlink, prime(site), dag(site))`.
+
+When `splitblocks=true`, construction delegates to `_to_ITensor_splitblocks`.
+Otherwise the method discovers the QN blocks touched by nonzero entries,
+allocates only those structural blocks, zero-initializes their storage, and
+writes nonzero entries into the appropriate block views.
+"""
 function to_ITensor(
   offsets::Vector{Int},
   block_sparse_matrices::Vector{Dict{Tuple{Int,Int},Matrix{C}}},
@@ -214,6 +279,18 @@ function to_ITensor(
   return itensor(T)
 end
 
+"""
+    to_ITensor(offsets, block_sparse_matrices, llink::Index, rlink::Index, site::Index;
+               splitblocks=false) -> ITensor
+
+Assemble a dense-index ITensor MPO tensor from component-local block matrices.
+
+This fallback is used for non-QN indices. It allocates a dense array with axes
+`(llink, rlink, prime(site), site)` and writes each local operator matrix into
+the slice selected by `(left_link, right_link + offsets[i], :, :)`.
+The `splitblocks` keyword is accepted for interface compatibility but has no
+effect for dense indices.
+"""
 function to_ITensor(
   offsets::Vector{Int},
   block_sparse_matrices::Vector{BlockSparseMatrix{C}},

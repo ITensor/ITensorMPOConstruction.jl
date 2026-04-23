@@ -1,3 +1,22 @@
+"""
+    _minimum_vertex_cover_from_matching(
+      global_right_vertex_ids_from_left,
+      left_map,
+      position_of_rvs_in_component,
+      matched_right_of_left,
+      matched_left_of_right,
+    ) -> Tuple{Vector{Int},Vector{Int}}
+
+Construct a minimum vertex cover from a maximum matching for one connected
+component.
+
+The matching vectors use component-local ids, with `0` denoting an unmatched
+vertex. This applies Konig's theorem: starting from unmatched left vertices, it
+traverses alternating paths through unmatched left-to-right edges and matched
+right-to-left edges. The cover is the unreached local left vertices together
+with the reached local right vertices. Returned ids are component-local and
+sorted in ascending order.
+"""
 function _minimum_vertex_cover_from_matching(
   global_right_vertex_ids_from_left::AbstractVector{<:AbstractVector{Int}},
   left_map::Vector{Int},
@@ -52,6 +71,24 @@ function _minimum_vertex_cover_from_matching(
   return left_ids, right_ids
 end
 
+"""
+    _hopcroft_karp_maximum_matching(
+      global_right_vertex_ids_from_left,
+      left_map,
+      position_of_rvs_in_component,
+      num_right,
+    ) -> Tuple{Vector{Int},Vector{Int}}
+
+Compute a maximum matching for one connected component using Hopcroft-Karp.
+
+`left_map` maps component-local left ids to global left-vertex ids, and
+`position_of_rvs_in_component` maps global right-vertex ids to component-local
+right ids. The returned `matched_right_of_left` has one entry per local left
+vertex and stores the matched local right id, or `0` if unmatched.
+`matched_left_of_right` is the analogous local-right-to-local-left map.
+Duplicate stored edge entries are harmless and have the same effect as a single
+edge for matching purposes.
+"""
 function _hopcroft_karp_maximum_matching(
   global_right_vertex_ids_from_left::AbstractVector{<:AbstractVector{Int}},
   left_map::Vector{Int},
@@ -102,6 +139,24 @@ function _hopcroft_karp_maximum_matching(
   return matched_right_of_left, matched_left_of_right
 end
 
+"""
+    _hopcroft_karp_layered_bfs!(
+      global_right_vertex_ids_from_left,
+      left_map,
+      position_of_rvs_in_component,
+      matched_right_of_left,
+      matched_left_of_right,
+      dist,
+      queue,
+    ) -> Int
+
+Build the Hopcroft-Karp BFS layers from all unmatched local left vertices.
+
+`dist` is filled with the layer distance for reachable local left vertices and
+`typemax(Int)` for unreachable ones. `queue` is reused as scratch storage. The
+return value is the shortest augmenting-path distance measured by the next
+left-to-right step, or `typemax(Int)` when no augmenting path remains.
+"""
 function _hopcroft_karp_layered_bfs!(
   global_right_vertex_ids_from_left::AbstractVector{<:AbstractVector{Int}},
   left_map::Vector{Int},
@@ -146,6 +201,30 @@ function _hopcroft_karp_layered_bfs!(
   return unmatched_distance
 end
 
+"""
+    _hopcroft_karp_augment_from!(
+      global_right_vertex_ids_from_left,
+      left_map,
+      position_of_rvs_in_component,
+      start_lv_id,
+      unmatched_distance,
+      matched_right_of_left,
+      matched_left_of_right,
+      dist,
+      next_edge_id,
+      path_left,
+      path_right,
+    ) -> Bool
+
+Search one layered augmenting path from the unmatched local left vertex
+`start_lv_id`.
+
+The search is iterative to avoid recursion on large components. On success it
+mutates `matched_right_of_left` and `matched_left_of_right` in place to apply
+the augmentation and returns `true`; otherwise it returns `false`.
+`next_edge_id`, `path_left`, and `path_right` are scratch buffers reused across
+searches within one Hopcroft-Karp phase.
+"""
 function _hopcroft_karp_augment_from!(
   global_right_vertex_ids_from_left::AbstractVector{<:AbstractVector{Int}},
   left_map::Vector{Int},
@@ -208,6 +287,22 @@ function _hopcroft_karp_augment_from!(
   return false
 end
 
+"""
+    minimum_vertex_cover(g::BipartiteGraph, ccs::BipartiteGraphConnectedComponents, cc::Int)
+        -> Tuple{Vector{Int},Vector{Int}}
+
+Compute a minimum vertex cover for retained connected component `cc` of `g`.
+
+The result is `(local_left_ids, local_right_ids)`, where both vectors contain
+component-local 1-based ids. Use `ccs.lvs_of_component[cc][local_left_id]` to
+map a returned left id back to a global left-vertex id. To map a returned right
+id back to a global right-vertex id, invert or scan
+`ccs.position_of_rvs_in_component`.
+
+The cover is computed by finding a maximum matching with Hopcroft-Karp and then
+applying Konig's theorem. Duplicate stored edge entries do not change the cover,
+and this function does not mutate `g` or `ccs`.
+"""
 function minimum_vertex_cover(
   g::BipartiteGraph{L,R,C}, ccs::BipartiteGraphConnectedComponents, cc::Int
 )::Tuple{Vector{Int},Vector{Int}} where {L,R,C}

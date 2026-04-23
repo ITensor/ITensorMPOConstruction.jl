@@ -32,12 +32,23 @@ ITensorMPOConstruction.get_onsite_op
   ITensorMPOConstruction.compute_connected_components
   ITensorMPOConstruction.num_connected_components
   ITensorMPOConstruction.get_cc_matrix
+  ITensorMPOConstruction._minimum_vertex_cover_from_matching
+  ITensorMPOConstruction._hopcroft_karp_maximum_matching
+  ITensorMPOConstruction._hopcroft_karp_layered_bfs!
+  ITensorMPOConstruction._hopcroft_karp_augment_from!
+  ITensorMPOConstruction.minimum_vertex_cover
 ```
 
 ## Others
 
 ```@docs
 ITensorMPOConstruction.BlockSparseMatrix
+ITensorMPOConstruction._qn_position_map
+ITensorMPOConstruction._blockid
+ITensorMPOConstruction._block_from_id
+ITensorMPOConstruction._fill_splitblocks!
+ITensorMPOConstruction._to_ITensor_splitblocks
+ITensorMPOConstruction.to_ITensor
 ITensorMPOConstruction.add_to_local_matrix!
 ITensorMPOConstruction.CoSorterElement
 ITensorMPOConstruction.CoSorter
