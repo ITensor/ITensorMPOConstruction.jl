@@ -1,15 +1,17 @@
 """
     BipartiteGraphConnectedComponents
 
-Struct containing the connected components of a `BipartiteGraph`.
+Connected-component data for a `BipartiteGraph`.
+
+Components that do not contain at least one edge are not retained.
 
 Fields:
-- `lvs_of_component`: for each connected component, the global ids of its left
-  vertices.
-- `position_of_rvs_in_component`: for each global right vertex id, its local id
-  (position) within its connected component, or an unused sentinel for isolated
-  right vertices.
-- `rv_size_of_component`: number of right vertices in each component.
+- `lvs_of_component`: for each retained component, the global left-vertex ids
+  contained in that component.
+- `position_of_rvs_in_component`: for each global right-vertex id, its local
+  right-vertex position within its retained component. Right vertices that are
+  not in a retained component keep the sentinel value `typemax(Int)`.
+- `rv_size_of_component`: number of right vertices in each retained component.
 """
 struct BipartiteGraphConnectedComponents
   lvs_of_component::Vector{Vector{Int}}
@@ -19,12 +21,19 @@ end
 
 """
     compute_connected_components(g::BipartiteGraph) -> BipartiteGraphConnectedComponents
+    compute_connected_components(g::BipartiteGraph, workspace::Vector{Int}) -> BipartiteGraphConnectedComponents
 
-Compute the connected components of `g`, keeping only components which connect
-the left and right sides of the bipartite graph (i.e. discarding isolated vertices).
+Compute the connected components of `g`, retaining only components that contain
+at least one edge.
 
-The returned object records, for each retained component, which left vertices it
-contains and how global right-vertex ids map into local positions within their component.
+The returned object records, for each retained component, which global
+left-vertex ids it contains and how global right-vertex ids map into local
+right-vertex positions within that component.
+
+The two-argument method uses `workspace` as scratch storage and as the backing
+storage for `position_of_rvs_in_component` in the returned object. It must have
+length at least `right_size(g)`, and it should not be mutated while the returned
+component data is still in use.
 """
 function compute_connected_components(g::BipartiteGraph)::BipartiteGraphConnectedComponents
   return compute_connected_components(g, Vector{Int}(undef, right_size(g)))
@@ -101,7 +110,7 @@ end
 """
     num_connected_components(ccs::BipartiteGraphConnectedComponents)
 
-Return the number of connected components.
+Return the number of retained connected components in `ccs`.
 """
 function num_connected_components(ccs::BipartiteGraphConnectedComponents)
   length(ccs.lvs_of_component)
@@ -110,7 +119,7 @@ end
 """
     left_size(ccs::BipartiteGraphConnectedComponents, cc::Int)
 
-Return the number of left vertices in connected component `cc`.
+Return the number of left vertices in the retained connected component `cc`.
 """
 function left_size(ccs::BipartiteGraphConnectedComponents, cc::Int)
   length(ccs.lvs_of_component[cc])
@@ -120,17 +129,18 @@ end
     get_cc_matrix(g::BipartiteGraph, ccs::BipartiteGraphConnectedComponents, cc::Int; clear_edges=false)
         -> Tuple{SparseMatrixCSC,Vector{Int},Vector{Int}}
 
-Extract the subgraph corresponding to connected component `cc` as a sparse
+Extract the retained connected component `cc` as a sparse weighted adjacency
 matrix.
 
 The returned tuple contains:
-- the sparse weighted adjacency matrix of the component, with local left/right
-  numbering,
-- the map from local row indices back to global left-vertex ids,
-- the map from local column indices back to global right-vertex ids.
+- the component adjacency matrix, whose rows are local left-vertex ids and whose
+  columns are local right-vertex ids,
+- `left_map`, mapping local row indices back to global left-vertex ids,
+- `right_map`, mapping local column indices back to global right-vertex ids.
 
 If `clear_edges=true`, the consumed adjacency lists are emptied from `g` as the
-matrix is assembled.
+matrix is assembled. Duplicate stored edge entries with the same local row and
+column are summed, matching the semantics of `sparse(row, col, val)`.
 """
 function get_cc_matrix(
   g::BipartiteGraph{L,R,C},

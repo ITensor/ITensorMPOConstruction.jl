@@ -26,6 +26,7 @@ ITensorMPOConstruction.get_onsite_op
   ITensorMPOConstruction.left_vertex
   ITensorMPOConstruction.right_vertex
   ITensorMPOConstruction.num_edges
+  ITensorMPOConstruction.weighted_edge_iterator
   ITensorMPOConstruction.clear_edges_from_left!
   ITensorMPOConstruction.combine_duplicate_adjacent_right_vertices!
   ITensorMPOConstruction.compute_connected_components
@@ -37,7 +38,6 @@ ITensorMPOConstruction.get_onsite_op
 
 ```@docs
 ITensorMPOConstruction.BlockSparseMatrix
-ITensorMPOConstruction.to_sparse_itensor
 ITensorMPOConstruction.add_to_local_matrix!
 ITensorMPOConstruction.CoSorterElement
 ITensorMPOConstruction.CoSorter
@@ -51,5 +51,7 @@ ITensorMPOConstruction.find_first_eq_rv
 ITensorMPOConstruction.merge_qn_sectors
 ITensorMPOConstruction.build_next_edges_specialization!
 ITensorMPOConstruction.process_single_left_vertex_cc!
+ITensorMPOConstruction.process_vertex_cover!
+ITensorMPOConstruction.process_qr
 ITensorMPOConstruction.@time_if
 ```

@@ -1,7 +1,14 @@
 """
     BipartiteGraph{L,R,C}
 
-Weighted bipartite graph with typed left and right vertices.
+A weighted bipartite graph with typed left and right vertex payloads.
+
+Left and right vertex ids are the positions of those payloads in
+`left_vertices` and `right_vertices`. Edges are stored as per-left-vertex
+adjacency lists: `right_vertex_ids_from_left[lv_id][edge_id]` gives the
+right-vertex id for one stored edge entry, and
+`edge_weights_from_left[lv_id][edge_id]` gives its corresponding weight.
+Duplicate right-vertex ids may appear in a single adjacency list.
 
 Type Parameters
 - `L`: The type of the left vertices.
@@ -13,7 +20,7 @@ Fields:
 - `right_vertices`: metadata stored for each right vertex.
 - `right_vertex_ids_from_left`: adjacency list from each left vertex to the
   connected right-vertex ids.
-- `edge_weights_from_left`: edge weights stored in parallel with
+- `edge_weights_from_left`: edge weights stored entry-by-entry in parallel with
   `right_vertex_ids_from_left`.
 """
 struct BipartiteGraph{L,R,C}
@@ -40,26 +47,36 @@ right_size(g::BipartiteGraph)::Int = length(g.right_vertices)
 """
     left_vertex(g::BipartiteGraph, lv_id::Integer)
 
-Return the data associated with the left vertex `lv_id`.
+Return the payload associated with the left vertex id `lv_id`.
 """
 left_vertex(g::BipartiteGraph, lv_id::Integer) = g.left_vertices[lv_id]
 
 """
     right_vertex(g::BipartiteGraph, rv_id::Integer)
 
-Return the data associated with the right vertex `rv_id`.
+Return the payload associated with the right vertex id `rv_id`.
 """
 right_vertex(g::BipartiteGraph, rv_id::Integer) = g.right_vertices[rv_id]
 
 """
     num_edges(g::BipartiteGraph) -> Int
 
-Return the total number of edges in `g`.
+Return the number of stored edge entries in `g`.
 """
 function num_edges(g::BipartiteGraph)::Int
   return sum(length(rvs) for rvs in g.right_vertex_ids_from_left)
 end
 
+"""
+    weighted_edge_iterator(g::BipartiteGraph, lv_id::Integer)
+
+Return a lazy iterator over the edges from the left vertex id `lv_id`.
+
+Each item is a `(rv_id, weight)` pair, where `rv_id` is a right vertex
+id and `weight` is the corresponding edge weight. The iterator views the
+graph's parallel adjacency and weight vectors directly rather than copying
+them.
+"""
 function weighted_edge_iterator(g::BipartiteGraph, lv_id::Integer)
   return zip(g.right_vertex_ids_from_left[lv_id], g.edge_weights_from_left[lv_id])
 end
@@ -67,11 +84,10 @@ end
 """
     clear_edges_from_left!(g::BipartiteGraph, lv_id::Integer) -> Nothing
 
-Remove all edges incident on the left vertex `lv_id`.
+Remove all stored edge entries incident on the left vertex id `lv_id`.
 
 This clears both the adjacent right-vertex ids and their corresponding edge
-weights, and releases any retained capacity in those per-vertex adjacency
-lists.
+weights, and retained capacity in those per-vertex adjacency lists.
 """
 @inline function clear_edges_from_left!(g::BipartiteGraph, lv_id::Integer)::Nothing
   empty!(g.right_vertex_ids_from_left[lv_id])
@@ -86,11 +102,14 @@ end
 
 Combine adjacent right vertices in `g` that compare equal under `eq`.
 
-The right vertices are assumed to already be grouped so that duplicate vertices
-appear contiguously. The first vertex of each equal run is kept, later vertices
-in the run are removed, and every right-vertex id stored in the left adjacency
-lists is remapped to the surviving vertex id. The returned vector maps each
-original right-vertex id to its new position after compaction.
+The right vertices are assumed to already be grouped so that duplicate payloads
+appear contiguously. The
+predicate `eq` is called on adjacent right-vertex payloads. The first vertex of
+each equal run is kept, later vertices in the run are removed, and every
+right-vertex id stored in the left adjacency lists is remapped to the surviving
+right-vertex id. Edge weights are left unchanged, so duplicate edge
+entries may remain after the remapping. The returned vector maps each original
+right-vertex id to its new position after compaction.
 """
 @timeit function combine_duplicate_adjacent_right_vertices!(
   g::BipartiteGraph, eq::Function
