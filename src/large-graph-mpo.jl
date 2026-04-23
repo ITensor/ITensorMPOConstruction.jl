@@ -1,10 +1,15 @@
+# TODO: Split into multiple files
+
 """
     BlockSparseMatrix{C}
 
-Dictionary-backed block-sparse matrix representation used for intermediate MPO tensor storage.
+Dictionary-backed block-sparse matrix representation used for intermediate MPO
+tensor storage.
 
 Keys are `(left_link, right_link)` pairs and values are dense local operator
-matrices for that block.
+matrices for that block. The right link ids are local to the component being
+processed; `at_site!` later returns offsets that place component-local
+right-link ids into the full outgoing MPO bond.
 """
 BlockSparseMatrix{C} = Dict{Tuple{Int,Int},Matrix{C}}
 # TODO: consider changing to Vector{Dict{Int, Matrix{C}}} from right_link => (left_link => matrix) and use Dictionaries.jl
@@ -14,11 +19,21 @@ BlockSparseMatrix{C} = Dict{Tuple{Int,Int},Matrix{C}}
 
 Type alias for the bipartite graph representation used during MPO construction.
 
-Left vertices store `LeftVertex` metadata, right vertices store fixed-width tuples of `OpID`s describing the
-remaining operator content of a term, and edge weights carry the scalar coefficients.
+Left vertices store `LeftVertex` metadata for the current site. Right vertices
+store fixed-width tuples of `OpID`s describing the remaining operator content of
+a term, and edge weights carry scalar coefficients or decomposition weights.
 """
 MPOGraph{N,C,Ti} = BipartiteGraph{LeftVertex,NTuple{N,OpID{Ti}},C}
 
+"""
+    pretty_print(g::MPOGraph, n::Int, op_cache_vec::OpCacheVec) -> Nothing
+
+Print a human-readable summary of an MPO construction graph at site `n`.
+
+The output includes left-vertex metadata, remaining right-vertex operator
+strings after site `n`, and weighted adjacency lists. This is intended for
+debugging and writes directly to standard output.
+"""
 function pretty_print(g::MPOGraph, n::Int, op_cache_vec::OpCacheVec)
   num_left = left_size(g)
   num_right = right_size(g)
@@ -63,7 +78,7 @@ end
 Pair-like element used by `CoSorter` so that sorting one array carries along a
 second array with the same permutation.
 
-Taken from https://discourse.julialang.org/t/how-to-sort-two-or-more-lists-at-once/12073/13
+`x` is the sortable value and `y` is the carried value.
 """
 struct CoSorterElement{T1,T2}
   x::T1
@@ -75,6 +90,9 @@ end
 
 Lightweight view that exposes two arrays as a single sortable collection,
 ordering by `sortarray` and applying the same swaps to `coarray`.
+
+This is used when sorting `OpIDSum` term storage while keeping the corresponding
+scalar coefficients aligned with the same permutation.
 """
 struct CoSorter{T1,T2,S<:AbstractArray{T1},C<:AbstractArray{T2}} <:
        AbstractVector{CoSorterElement{T1,T2}}
@@ -100,8 +118,9 @@ Base.isless(a::CoSorterElement, b::CoSorterElement) = isless(a.x, b.x)
 Walk backward from right-vertex index `j` to the first earlier right vertex
 whose operator tuple is equivalent from site `n` onward.
 
-This is used to "merge" equivalent right vertices after peeling off the
-operator acting on the current site.
+Right vertices are expected to be ordered so equivalent suffixes are adjacent.
+This is used to merge equivalent right vertices after peeling off the operator
+acting on the current site.
 """
 function find_first_eq_rv(g::MPOGraph, j::Int, n::Int)::Int
   while j > 1 && are_equal(right_vertex(g, j), right_vertex(g, j - 1), n)
@@ -119,7 +138,8 @@ a single left vertex.
 
 For each current edge, this extracts the operator acting on `cur_site + 1`,
 finds the unique right vertex from `cur_site + 2` onward, and stores the
-resulting id/weight entry in `next_edges`.
+resulting id/weight entry in `next_edges`. `next_edges` must have one row and
+one column for each operator available on the next site.
 """
 function build_next_edges_specialization!(
   next_edges::Matrix{Tuple{Vector{Int},Vector{C}}},
@@ -152,6 +172,7 @@ Append the left vertices and adjacency lists described by `next_edges` to `next_
 Each nonempty `(bond_index, op_id)` entry in `next_edges` creates one `LeftVertex`, reusing that
 entry's `(right_vertex_ids, edge_weights)` vectors as the outgoing adjacency list. The stored
 `needs_JW_string` flag is inferred from the fermionic parity of the connected right vertices.
+`cur_offset` shifts component-local bond indices into the full outgoing link.
 """
 function add_to_next_graph!(
   next_graph::MPOGraph{N,C,Ti},
@@ -185,11 +206,13 @@ end
 Convert an `OpIDSum` into the initial bipartite graph used by the
 MPO construction algorithm.
 
-Operators with each term are put in reverse order (by decreasing site), then
+Operators within each term are put in reverse order (by decreasing site), then
 the terms are sorted along with the scalars. This sorting puts terms which share
 a terminating sequence of operators (which is now at the front of the term) nearby.
 Duplicate terms are then combined, and resulting terms with a weight below
-the `os.abs_tol` are dropped. The returned graph is split about the first site.
+`os.abs_tol` are dropped. The returned graph is split before the first site:
+left vertices represent the identity incoming link and the operator emitted at
+site 1, while right vertices carry the remaining operator tuples.
 """
 @timeit function MPOGraph(os::OpIDSum{N,C,Ti})::MPOGraph{N,C,Ti} where {N,C,Ti}
   @assert size(os.terms, 1) == N
@@ -253,7 +276,8 @@ Compute a sparse QR factorization of `A` using SuiteSparse SPQR.
 
 If `absolute_tol` is `false`, `tol` is interpreted relative to SPQR's default
 tolerance scale. The return values are the orthogonal factor `Q`, upper-triangular
-factor `R`, row and column permutations, and the numerical rank.
+factor `R`, row and column permutations, and the numerical rank. SPQR uses the
+current BLAS thread count for its internal thread setting.
 """
 function sparse_qr(
   A::SparseMatrixCSC, tol::Real, absolute_tol::Bool
@@ -279,7 +303,8 @@ end
 Iterate over the nonzero entries of the first `max_col` columns of `A`, calling
 `f(values, rows, col)` once per nonempty column.
 
-`values` and `rows` are views into the storage of `A` for that column.
+`values` and `rows` are views into the CSC storage of `A` for that column, so
+the callback must not retain them beyond the call.
 """
 function for_non_zeros_batch(f::Function, A::SparseMatrixCSC, max_col::Int)::Nothing
   @assert max_col <= size(A, 2) "$max_col, $(size(A, 2))"
@@ -297,7 +322,8 @@ end
     for_non_zeros_batch(f::Function, Q::SparseArrays.SPQR.QRSparseQ, max_col::Int) -> Nothing
 
 Iterate over the first `max_col` columns of a sparse SPQR `Q` factor, forming
-each column explicitly and calling `f(column, col)`.
+each column explicitly and calling `f(column, col)`. The dense column workspace
+is reused between calls, so the callback must copy it if it needs to keep it.
 """
 function for_non_zeros_batch(
   f::Function, Q::SparseArrays.SPQR.QRSparseQ, max_col::Int
@@ -331,6 +357,7 @@ Accumulate a weighted local operator matrix into `a`.
 
 If `needs_JW_string` is `true`, the contribution is multiplied by the diagonal
 Jordan-Wigner sign pattern expected for 2-state or 4-state fermionic sites.
+`a` is mutated in place and `local_op` is read without copying.
 """
 function add_to_local_matrix!(
   a::Matrix, weight::Number, local_op::Matrix, needs_JW_string::Bool
@@ -365,8 +392,9 @@ end
 Sort connected components by QN sector and merge adjacent entries with the same
 QN by summing their dimensions.
 
-The first returned vector is the permutation that reorders components, and the
-second is the merged QN-sector description.
+The first returned vector is the component order to use when laying out the
+outgoing bond space, and the second is the merged QN-sector description used to
+construct the outgoing link `Index`.
 """
 function merge_qn_sectors(
   qi_of_cc::Vector{Pair{QN,Int}}
@@ -388,14 +416,15 @@ end
 
 """
     process_single_left_vertex_cc!(
-      matrix_of_cc, qi_of_cc, rank_of_cc, next_edges_of_cc, g, ccs, cc, n, sites, op_cache_vec
+      matrix_of_cc, rank_of_cc, next_edges_of_cc, g, ccs, cc, n, sites, op_cache_vec
     ) -> Nothing
 
 Handle the common connected-component case with exactly one left vertex.
 
-This fills the local MPO tensor contribution for the component, records its QN
-sector and rank, and either applies the terminal scaling on the last site or
-builds the outgoing edges for the next site.
+This fills the local MPO tensor contribution for the component, records rank
+`1`, and either applies the terminal scaling on the last site or builds the
+outgoing edges for the next site. For nonterminal sites, the consumed left
+adjacency list is cleared after the outgoing edges are built.
 """
 function process_single_left_vertex_cc!(
   matrix_of_cc::Vector{BlockSparseMatrix{ValType}},
@@ -455,6 +484,12 @@ end
     ) -> Nothing
 
 Process every connected component using the minimum-vertex-cover specialization.
+
+For each component, the cover columns are laid out as `[left_cover; right_cover]`
+in the local bond dimension. Left-cover columns emit single local operators with
+unit graph weight; right-cover columns accumulate uncovered edges with their
+stored edge weights. On the final site, only the local tensor blocks are needed;
+otherwise this also builds `next_edges_of_cc` for the graph at site `n + 1`.
 """
 @timeit function process_vertex_cover!(
   matrix_of_cc::Vector{BlockSparseMatrix{ValType}},
@@ -608,6 +643,12 @@ end
     ) -> Nothing
 
 Process every connected component using the sparse-QR path.
+
+Single-left-vertex components use `process_single_left_vertex_cc!`; larger
+components are extracted as sparse weighted adjacency matrices, decomposed with
+`sparse_qr`, and translated into local tensor blocks plus outgoing graph edges.
+On the final site, the scalar `R` factor is applied directly to the local
+blocks.
 """
 @timeit function process_qr(
   matrix_of_cc::Vector{BlockSparseMatrix{ValType}},
@@ -732,19 +773,24 @@ Process every connected component using the sparse-QR path.
 end
 
 """
-    at_site!(ValType, g, n, sites, tol, absolute_tol, op_cache_vec; combine_qn_sectors, output_level=0)
+    at_site!(ValType, g, n, sites, tol, absolute_tol, op_cache_vec, alg;
+             combine_qn_sectors, output_level=0)
         -> Tuple{MPOGraph,Vector{Int},Vector{BlockSparseMatrix{ValType}},Index}
 
 Process one site of the MPO construction algorithm.
 
-For each connected component of `g`, this routine dispatches to either the
-minimum-vertex-cover or sparse-QR processing path, assembles the local MPO
-tensor blocks for site `n`, and builds the graph passed to the next site. The
+Equivalent adjacent right vertices are compacted, connected components are
+computed, and each component is processed by either the sparse-QR path
+(`alg == "QR"`) or the minimum-vertex-cover path (`alg == "VC"`). The
 returned tuple contains:
 - the graph for site `n + 1`,
 - offsets locating each connected component inside the outgoing bond space,
 - the block-sparse local MPO tensors for each component,
 - the outgoing link `Index`, optionally grouped into merged QN sectors.
+
+`tol` and `absolute_tol` are used only by the QR path. `combine_qn_sectors`
+merges adjacent outgoing link sectors with the same QN after component ranks are
+known.
 """
 @timeit function at_site!(
   ::Type{ValType},

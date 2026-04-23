@@ -56,6 +56,7 @@ ITensorMPOConstruction.sparse_qr
 ITensorMPOConstruction.for_non_zeros_batch
 ITensorMPOConstruction.at_site!
 ITensorMPOConstruction.MPOGraph
+ITensorMPOConstruction.pretty_print
 ITensorMPOConstruction.LeftVertex
 ITensorMPOConstruction.add_to_next_graph!
 ITensorMPOConstruction.find_first_eq_rv
@@ -64,5 +65,6 @@ ITensorMPOConstruction.build_next_edges_specialization!
 ITensorMPOConstruction.process_single_left_vertex_cc!
 ITensorMPOConstruction.process_vertex_cover!
 ITensorMPOConstruction.process_qr
+ITensorMPOConstruction.instantiate_MPO
 ITensorMPOConstruction.@time_if
 ```
