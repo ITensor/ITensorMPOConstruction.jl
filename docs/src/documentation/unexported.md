@@ -65,6 +65,5 @@ ITensorMPOConstruction.build_next_edges_specialization!
 ITensorMPOConstruction.process_single_left_vertex_cc!
 ITensorMPOConstruction.process_vertex_cover!
 ITensorMPOConstruction.process_qr
-ITensorMPOConstruction.instantiate_MPO
 ITensorMPOConstruction.@time_if
 ```

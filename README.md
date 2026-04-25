@@ -7,7 +7,7 @@
 [![Code Style: Blue](https://img.shields.io/badge/code%20style-blue-4495d1.svg)](https://github.com/invenia/BlueStyle)
 [![DOI](https://zenodo.org/badge/749825641.svg)](https://doi.org/10.5281/zenodo.17309443)
 
-A fast algorithm for constructing a Matrix Product Operator (MPO) from a sum of local operators. This is a replacement for `ITensorMPS.MPO(os::OpSum, sites::Vector{<:Index})`. If julia is started with multiple threads, they are used to transparently speed up the construction.
+A fast algorithm for constructing a Matrix Product Operator (MPO) from a sum of local operators. This is a replacement for `ITensorMPS.MPO(os::OpSum, sites::Vector{<:Index})`.
 
 The three goals of this library are
 
@@ -23,6 +23,14 @@ The package is registered and can be installed with the usual commands:
 ```julia
 julia> using Pkg; Pkg.add("ITensorMPOConstruction")
 ```
+
+## Algorithms
+
+Currently, two different construction algorithms are supported:
+
+1. A rank decomposition algorithm based on the QR decomposition. Guaranteed to produce MPOs of minimal bond dimension in all cases. This is the default, and is essentially an upgrade to the algorithm used by ITensorMPS. On by default or with `MPO_new(...; alg="QR")`
+
+2. The minimum vertex cover algorithm from ([RenLi2020](https://doi.org/10.1063/5.0018149)). Guaranteed to produce an MPO of minimal bond dimension **among all operators which share the same sparsity pattern**. In the cases where the vertex cover algorithm produces bond dimensions similar to the QR algorithm, the vertex cover construction is often much faster and produces MPOs of greater sparsity when `splitblocks=true`. Use with `MPO_new(...; alg="VC")`.
 
 ## Citing
 

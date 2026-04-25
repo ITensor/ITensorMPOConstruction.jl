@@ -10,6 +10,7 @@ The main exported function is `MPO_new` which takes an `OpSum` and transforms it
 ```@docs
 MPO_new
 resume_MPO_construction!
+instantiate_MPO
 sparsity
 block2_nnz
 ```

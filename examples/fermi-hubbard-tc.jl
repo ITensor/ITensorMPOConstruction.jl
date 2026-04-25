@@ -205,7 +205,7 @@ end
 #
 # In the function below we construct the `OpIDSum`. There are three things worth highlighting.
 #
-# 1. The initialization of the `OpIDSum`: We specify the weight of the Hamiltonian, which is 6 in this case, and use a `UInt8` to enumerate the operators and sites, which does limit us to 255 sites. Additionally, we specify the maximum number of terms, our `merge_sorted_ops` function, and a non-zero `abs_tol` to drop terms with coefficients smaller than `1e-14`. This last point is to account for floating point round error for terms whose coefficients are analytically zero.
+# 1. The initialization of the `OpIDSum`: We specify the weight of the Hamiltonian, which is 6 in this case, and use a `UInt8` to enumerate the operators and sites, which does limit us to 255 sites. Additionally, we specify the maximum number of terms, our `merge_sorted_ops` function, and a nonzero `abs_tol` to drop terms with coefficients smaller than `1e-14`. This last point is to account for floating point round error for terms whose coefficients are analytically zero.
 #
 # 2. In order to permit the functioning of `merge_sorted_ops`, we always put spin-up operators before spin-down operators in each term.
 #

@@ -16,6 +16,7 @@ examples = [
   "./examples/fermi-hubbard-rs.jl",
   "./examples/fermi-hubbard-ks.jl",
   "./examples/haldane-shastry.jl",
+  "./examples/electronic-structure.jl",
   "./examples/fermi-hubbard-tc.jl",
 ]
 
@@ -47,15 +48,15 @@ makedocs(;
       "OpIDSum" => "documentation/OpID.md",
       "Internal Functions" => "documentation/unexported.md",
     ],
+    "Algorithm Selection" => "algorithm-selection.md",
     "Examples" => [
       "Real Space Fermi-Hubbard" => "examples/fermi-hubbard-rs.md",
       "Momentum Space Fermi-Hubbard" => "examples/fermi-hubbard-ks.md",
+      "Electronic Structure" => "examples/electronic-structure.md",
       "Haldane-Shastry and Truncation" => "examples/haldane-shastry.md",
+      "Challenge Problem" => "examples/fermi-hubbard-tc.md",
     ],
     "Threading and Performance" => "threading.md",
-    "Benchmarks" => "benchmarks.md",
-    "Challenge Problem" => "examples/fermi-hubbard-tc.md",
-    "On sparsity" => "on-sparsity.md",
   ],
 )
 

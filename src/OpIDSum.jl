@@ -528,6 +528,8 @@ width of two to support the reinterpreted fixed-width layout.
   return opID_sum
 end
 
+# TODO: verify that the basis of os is linearly independent.
+
 """
     check_os_for_errors(os::OpIDSum) -> Nothing
 

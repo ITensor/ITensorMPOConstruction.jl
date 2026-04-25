@@ -262,7 +262,7 @@ Count link-space blocks in `mpo` that are structural zeros.
 
 When the MPO tensors are viewed as a matrix-op-operators, this
 returns the total number of entries in the MPO and the total number
-of structural non-zeros. This can be used to directly compare sparsities
+of structural nonzeros. This can be used to directly compare sparsities
 with the `block2` storage format. The returned tuple is
 `(total_link_blocks, nonzero_link_blocks)`.
 """
