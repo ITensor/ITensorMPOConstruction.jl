@@ -254,20 +254,24 @@ end</code></pre><h2 id="Constructing-the-OpIDSum"><a class="docs-heading-anchor"
                 + epsilon(grid_size, p - kp)               ## From (s + k - kp, q + kp    , q, s)
               )
 
-            ops = opCdag(p - k, ↑, mapping),
-            opC(p, ↑, mapping),
-            opCdag(q + kp, ↓, mapping),
-            opCdag(s + k - kp, ↓, mapping),
-            opC(s, ↓, mapping),
-            opC(q, ↓, mapping)
+            ops = (
+              opCdag(p - k, ↑, mapping),
+              opC(p, ↑, mapping),
+              opCdag(q + kp, ↓, mapping),
+              opCdag(s + k - kp, ↓, mapping),
+              opC(s, ↓, mapping),
+              opC(q, ↓, mapping),
+            )
             add!(os, factor, ops)
 
-            ops = opCdag(q + kp, ↑, mapping),
-            opCdag(s + k - kp, ↑, mapping),
-            opC(s, ↑, mapping),
-            opC(q, ↑, mapping),
-            opCdag(p - k, ↓, mapping),
-            opC(p, ↓, mapping)
+            ops = (
+              opCdag(q + kp, ↑, mapping),
+              opCdag(s + k - kp, ↑, mapping),
+              opC(s, ↑, mapping),
+              opC(q, ↑, mapping),
+              opCdag(p - k, ↓, mapping),
+              opC(p, ↓, mapping),
+            )
             add!(os, factor, ops)
           end
         end
@@ -421,4 +425,4 @@ let t = 1, U = 4, J = -0.5, mapping = standard_mapping((6, 6))
 end</code></pre><pre><code class="nohighlight hljs">Wrote a checkpoint to ./mpo.jldump
 Caught an InterruptException!
 Reading a checkpoint from ./mpo.jldump
-Construction finished!</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../haldane-shastry/">« Haldane-Shastry and Truncation</a><a class="docs-footer-nextpage" href="../../threading/">Threading and Performance »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Sunday 26 April 2026 02:24">Sunday 26 April 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+Construction finished!</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../haldane-shastry/">« Haldane-Shastry and Truncation</a><a class="docs-footer-nextpage" href="../../threading/">Threading and Performance »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Sunday 26 April 2026 05:32">Sunday 26 April 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
