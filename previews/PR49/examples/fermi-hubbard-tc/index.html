@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Challenge Problem · ITensorMPOConstruction.jl</title><meta name="title" content="Challenge Problem · ITensorMPOConstruction.jl"/><meta property="og:title" content="Challenge Problem · ITensorMPOConstruction.jl"/><meta property="twitter:title" content="Challenge Problem · ITensorMPOConstruction.jl"/><meta name="description" content="Documentation for ITensorMPOConstruction.jl."/><meta property="og:description" content="Documentation for ITensorMPOConstruction.jl."/><meta property="twitter:description" content="Documentation for ITensorMPOConstruction.jl."/><meta property="og:url" content="https://ITensor.github.io/ITensorMPOConstruction.jl/examples/fermi-hubbard-tc/"/><meta property="twitter:url" content="https://ITensor.github.io/ITensorMPOConstruction.jl/examples/fermi-hubbard-tc/"/><link rel="canonical" href="https://ITensor.github.io/ITensorMPOConstruction.jl/examples/fermi-hubbard-tc/"/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../../">ITensorMPOConstruction.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><span class="tocitem">Documentation</span><ul><li><a class="tocitem" href="../../documentation/MPO_new/">MPO_new</a></li><li><a class="tocitem" href="../../documentation/OpID/">OpIDSum</a></li><li><a class="tocitem" href="../../documentation/unexported/">Internal Functions</a></li></ul></li><li><a class="tocitem" href="../../algorithm-selection/">Algorithm Selection</a></li><li><span class="tocitem">Examples</span><ul><li><a class="tocitem" href="../fermi-hubbard-rs/">Real Space Fermi-Hubbard</a></li><li><a class="tocitem" href="../fermi-hubbard-ks/">Momentum Space Fermi-Hubbard</a></li><li><a class="tocitem" href="../electronic-structure/">Electronic Structure</a></li><li><a class="tocitem" href="../haldane-shastry/">Haldane-Shastry and Truncation</a></li><li class="is-active"><a class="tocitem" href>Challenge Problem</a><ul class="internal"><li><a class="tocitem" href="#Generating-OpIDSum-directly"><span>Generating <code>OpIDSum</code> directly</span></a></li><li><a class="tocitem" href="#Combining-local-operators"><span>Combining local operators</span></a></li><li><a class="tocitem" href="#General-helper-code"><span>General helper code</span></a></li><li><a class="tocitem" href="#Constructing-the-OpIDSum"><span>Constructing the <code>OpIDSum</code></span></a></li><li><a class="tocitem" href="#Mappings-from-momentum-space-to-MPS-sites"><span>Mappings from momentum space to MPS sites</span></a></li><li><a class="tocitem" href="#Constructing-the-MPO"><span>Constructing the MPO</span></a></li><li class="toplevel"><a class="tocitem" href="#Writing-a-Checkpoint-File"><span>Writing a Checkpoint File</span></a></li></ul></li></ul></li><li><a class="tocitem" href="../../threading/">Threading and Performance</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>Challenge Problem</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Challenge Problem</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/ITensor/ITensorMPOConstruction.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/ITensor/ITensorMPOConstruction.jl/blob/main/docs/src/examples/fermi-hubbard-tc.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Challenge-Problem:-Transcorrelated-Fermi-Hubbard"><a class="docs-heading-anchor" href="#Challenge-Problem:-Transcorrelated-Fermi-Hubbard">Challenge Problem: Transcorrelated Fermi-Hubbard</a><a id="Challenge-Problem:-Transcorrelated-Fermi-Hubbard-1"></a><a class="docs-heading-anchor-permalink" href="#Challenge-Problem:-Transcorrelated-Fermi-Hubbard" title="Permalink"></a></h1><p>ITensorMPOConstruction was designed specifically to construct the transcorrelated momentum-space Fermi-Hubbard Hamiltonian as fast as possible.</p><p class="math-container">\[\begin{aligned}
+  \widetilde{H}_\text{ks}(J) &amp;= H_\text{ks} - \frac{t}{N} \sum_{\bm{p}, \bm{q}, \bm{k}, \sigma} \left[ (e^J - 1) \epsilon(\bm{p} - \bm{k}) + (e^{-J} - 1) \epsilon(\bm{p}) \right] c^\dagger_{\bm{p} - \bm{k}, \sigma} c^\dagger_{\bm{q} + \bm{k}, \bar{\sigma}} c_{\bm{q}, \bar{\sigma}} c_{\bm{p}, \sigma} \\
+  &amp;+ 2 t \frac{\cosh(J) - 1}{N^2} \sum_{\substack{\bm{k}, \bm{k}&#39; \\ \bm{s}, \bm{q} \\ \bm{p}, \sigma}} \epsilon(\bm{p} - \bm{k} + \bm{k}&#39;) c^\dagger_{\bm{p} - \bm{k}, \sigma} c^\dagger_{\bm{q} + \bm{k}&#39;, \bar{\sigma}} c^\dagger_{\bm{s} + \bm{k} - \bm{k}&#39;, \bar{\sigma}} c_{\bm{s}, \bar{\sigma}} c_{\bm{q}, \bar{\sigma}} c_{\mathbf{p}, \sigma} ,
+\end{aligned}\]</p><p>where <span>$J$</span> is a real number. After extensive optimization, we were able to construct the MPO for the <span>$12 \times 12$</span> system, which has <span>$3 \times 10^{10}$</span> terms. This example walks through the features of ITensorMPOConstruction we designed to make that possible. Additionally, it serves as a reference implementation of the transcorrelated Hamiltonian. For details on the transcorrelated method, see our paper: <a href="https://arxiv.org/abs/2506.07441">Scaling up the transcorrelated density matrix renormalization group</a>.</p><h2 id="Generating-OpIDSum-directly"><a class="docs-heading-anchor" href="#Generating-OpIDSum-directly">Generating <code>OpIDSum</code> directly</a><a id="Generating-OpIDSum-directly-1"></a><a class="docs-heading-anchor-permalink" href="#Generating-OpIDSum-directly" title="Permalink"></a></h2><p>While the Hamiltonian as written above has a number of terms that scales as <span>$2 N^5$</span>, by grouping like terms together, the total number of terms can be reduced to <span>$N^5 / 2$</span>. Nevertheless, simply constructing the <code>OpIDSum</code> for this Hamiltonian is a hard problem; for the <span>$12 \times 12$</span> system, the <code>OpIDSum</code> alone takes up almost 600 GiB. Because of this, we needed to construct the <code>OpIDSum</code> directly to avoid constructing the much more costly (in both time and space) <code>OpSum</code>.</p><pre><code class="language-julia hljs">try
+  using MKL
+catch
+end
+
+using LinearAlgebra
+BLAS.set_num_threads(1)
+
+@show Threads.nthreads()
+@show BLAS.get_num_threads()
+
+using ITensors, ITensorMPS, ITensorMPOConstruction
+
+↓ = false
+↑ = true
+
+function create_op_cache_vec(sites::Vector{&lt;:Index})::OpCacheVec
+  operatorNames = [
+    &quot;I&quot;,
+    &quot;Cdn&quot;,
+    &quot;Cup&quot;,
+    &quot;Cdagdn&quot;,
+    &quot;Cdagup&quot;,
+    &quot;Ndn&quot;,
+    &quot;Nup&quot;,
+    &quot;Cup * Cdn&quot;,
+    &quot;Cup * Cdagdn&quot;,
+    &quot;Cup * Ndn&quot;,
+    &quot;Cdagup * Cdn&quot;,
+    &quot;Cdagup * Cdagdn&quot;,
+    &quot;Cdagup * Ndn&quot;,
+    &quot;Nup * Cdn&quot;,
+    &quot;Nup * Cdagdn&quot;,
+    &quot;Nup * Ndn&quot;,
+  ]
+
+  return to_OpCacheVec(sites, [operatorNames for _ in 1:length(sites)])
+end
+
+function wrap_around(
+  grid_size::NTuple{N,Int}, k::CartesianIndex{N}
+)::CartesianIndex{N} where {N}
+  CartesianIndex(NTuple{N,Int}(mod1(k[i], grid_size[i]) for i in 1:N))
+end
+
+function opC(j::CartesianIndex{N}, spin::Bool, mapping::Array{Int,N})::OpID{UInt8} where {N}
+  return OpID{UInt8}(2 + spin, mapping[wrap_around(size(mapping), j)])
+end
+
+function opCdag(
+  j::CartesianIndex{N}, spin::Bool, mapping::Array{Int,N}
+)::OpID{UInt8} where {N}
+  return OpID{UInt8}(4 + spin, mapping[wrap_around(size(mapping), j)])
+end
+
+function opN(j::CartesianIndex{N}, spin::Bool, mapping::Array{Int,N})::OpID{UInt8} where {N}
+  return OpID{UInt8}(6 + spin, mapping[wrap_around(size(mapping), j)])
+end
+
+function is_spin_dn(op_id)::Bool
+  @assert 0 &lt; op_id &lt; 8
+  return mod(op_id, 2) == 0
+end</code></pre><h2 id="Combining-local-operators"><a class="docs-heading-anchor" href="#Combining-local-operators">Combining local operators</a><a id="Combining-local-operators-1"></a><a class="docs-heading-anchor-permalink" href="#Combining-local-operators" title="Permalink"></a></h2><p>The next bottleneck in construction is combining multiple operators acting on the same site into a single basis operator to satisfy <a href="../../documentation/MPO_new/">constraint #3</a>. This entails, for example, replacing <span>$c^\dagger_{k, \uparrow} c_{k, \uparrow}$</span> with <span>$n_{k, \uparrow}$</span>. While this can be accomplished by passing a <code>basis_op_cache_vec</code> to <code>MPO_new</code>, that code path is slow since it relies on numeric computations to rewrite each product. If, instead, we choose the term ordering carefully, we can rewrite them symbolically.</p><p>By using the <code>modify!</code> function of <code>OpIDSum</code>, we can let <code>OpIDSum</code> handle the tricky business of sorting the fermionic operators, and we can then modify the resulting term after operators acting on the same site have been made adjacent. Because the sort is stable, if the original term contains normal-ordered spin-up operators followed by normal-ordered spin-down operators, this structure will be maintained in the operators acting on each site. This allows us to combine the spin-up operators and spin-down operators separately before merging them together. This does require the code constructing the <code>OpIDSum</code> to respect this ordering.</p><pre><code class="language-julia hljs">function merge_sorted_ops(ops::AbstractVector{OpID{UInt8}})::Int
+  ITensorMPOConstruction.for_equal_sites(ops) do a, c
+    local_ops = view(ops, a:c)
+    length(local_ops) == 1 &amp;&amp; return nothing
+
+    b = findfirst(is_spin_dn(op.id) for op in local_ops)
+    isnothing(b) &amp;&amp; (b = length(local_ops) + 1)
+
+    spin_up_ops = view(local_ops, 1:(b - 1))
+    if length(spin_up_ops) == 0
+      spin_up_op = 1 ## I
+    elseif length(spin_up_ops) == 1
+      spin_up_op = spin_up_ops[1].id
+    else
+      @assert length(spin_up_ops) == 2
+      @assert spin_up_ops[1].id == 5 ## Cdagup
+      @assert spin_up_ops[2].id == 3 ## Cup
+
+      spin_up_op = 7 ## Nup
+    end
+
+    spin_dn_ops = view(local_ops, b:length(local_ops))
+    @assert all(is_spin_dn(op.id) for op in spin_dn_ops) &quot;$spin_dn_ops&quot;
+    if length(spin_dn_ops) == 0
+      spin_dn_op = 1
+    elseif length(spin_dn_ops) == 1
+      spin_dn_op = spin_dn_ops[1].id
+    else
+      @assert length(spin_dn_ops) == 2
+      @assert spin_dn_ops[1].id == 4 ## Cdagdn
+      @assert spin_dn_ops[2].id == 2 ## Cdn
+
+      spin_dn_op = 6 ## Ndn
+    end
+
+    if spin_up_op == 1 || spin_dn_op == 1
+      combined_op = spin_up_op * spin_dn_op
+    elseif spin_up_op == 3
+      combined_op = 7 + spin_dn_op ÷ 2
+    elseif spin_up_op == 5
+      combined_op = 10 + spin_dn_op ÷ 2
+    else
+      @assert spin_up_op == 7
+      combined_op = 13 + spin_dn_op ÷ 2
+    end
+
+    local_ops[1] = OpID{UInt8}(combined_op, local_ops[1].n)
+    for j in 2:length(local_ops)
+      local_ops[j] = zero(local_ops[j])
+    end
+  end
+
+  sort!(ops; by=op -&gt; op.n)
+  return 1
+end;</code></pre><h2 id="General-helper-code"><a class="docs-heading-anchor" href="#General-helper-code">General helper code</a><a id="General-helper-code-1"></a><a class="docs-heading-anchor-permalink" href="#General-helper-code" title="Permalink"></a></h2><pre><code class="language-julia hljs"># Function to construct the momentum-conserving site indices
+function sites_from_grid(
+  mapping::Array{Int}, conserve_momentum::Bool
+)::Vector{ITensors.QNIndex}
+  !conserve_momentum &amp;&amp; return siteinds(&quot;Electron&quot;, length(mapping); conserve_qns=true)
+
+  spatial_dimension = ndims(mapping)
+  @assert 1 &lt;= spatial_dimension &lt;= 2
+
+  indices = Vector{ITensors.QNIndex}(undef, length(mapping))
+  for loc in CartesianIndices(mapping)
+    if spatial_dimension == 1
+      k = only(loc)
+      L = length(mapping)
+      qns = [
+        QN((&quot;Nf&quot;, 0, -1), (&quot;Sz&quot;, +0), (&quot;Kx&quot;, 0, L)) =&gt; 1,
+        QN((&quot;Nf&quot;, 1, -1), (&quot;Sz&quot;, +1), (&quot;Kx&quot;, k, L)) =&gt; 1,
+        QN((&quot;Nf&quot;, 1, -1), (&quot;Sz&quot;, -1), (&quot;Kx&quot;, k, L)) =&gt; 1,
+        QN((&quot;Nf&quot;, 2, -1), (&quot;Sz&quot;, +0), (&quot;Kx&quot;, 2 * k, L)) =&gt; 1,
+      ]
+    else
+      kx, ky = Tuple(loc)
+      Lx, Ly = size(mapping)
+      qns = [
+        QN((&quot;Nf&quot;, 0, -1), (&quot;Sz&quot;, +0), (&quot;Kx&quot;, 0, Lx), (&quot;Ky&quot;, 0, Ly)) =&gt; 1,
+        QN((&quot;Nf&quot;, 1, -1), (&quot;Sz&quot;, +1), (&quot;Kx&quot;, kx, Lx), (&quot;Ky&quot;, ky, Ly)) =&gt; 1,
+        QN((&quot;Nf&quot;, 1, -1), (&quot;Sz&quot;, -1), (&quot;Kx&quot;, kx, Lx), (&quot;Ky&quot;, ky, Ly)) =&gt; 1,
+        QN((&quot;Nf&quot;, 2, -1), (&quot;Sz&quot;, +0), (&quot;Kx&quot;, 2 * kx, Lx), (&quot;Ky&quot;, 2 * ky, Ly)) =&gt; 1,
+      ]
+    end
+
+    tags = &quot;Electron,Site,$(Tuple(loc))&quot;
+    indices[mapping[loc]] = Index(qns, tags)
+  end
+
+  return indices
+end
+
+# Uses the symmetries of cosine to return numerically equal values when possible.
+function my_cospi(x::Rational)
+  x = mod(x, 2)
+  if x &gt; 1
+    x -= 2
+  end
+
+  x = abs(x)
+
+  sgn = +1
+  if x &gt; 1 // 2
+    x = 1 - x
+    sgn = -1
+  end
+
+  return sgn * cospi(x)
+end
+
+function epsilon(gridSize::NTuple{N,Int}, k::CartesianIndex{N})::Float64 where {N}
+  return 2 * sum(my_cospi(2 * k[i] // gridSize[i]) for i in 1:N)
+end</code></pre><h2 id="Constructing-the-OpIDSum"><a class="docs-heading-anchor" href="#Constructing-the-OpIDSum">Constructing the <code>OpIDSum</code></a><a id="Constructing-the-OpIDSum-1"></a><a class="docs-heading-anchor-permalink" href="#Constructing-the-OpIDSum" title="Permalink"></a></h2><p>In the function below we construct the <code>OpIDSum</code>. There are three things worth highlighting.</p><ol><li><p>The initialization of the <code>OpIDSum</code>: We specify the maximum term weight of the Hamiltonian, which is 6 in this case, and use a <code>UInt8</code> to enumerate the operators and sites, which limits us to 255 sites. Additionally, we specify the maximum number of terms, our <code>merge_sorted_ops</code> function, and a nonzero <code>abs_tol</code> to drop terms with coefficients smaller than <code>1e-14</code>. This last point accounts for floating-point roundoff error for terms whose coefficients are analytically zero.</p></li><li><p>In order to permit the functioning of <code>merge_sorted_ops</code>, we always put spin-up operators before spin-down operators in each term.</p></li><li><p>Adding the three-electron terms dominates the runtime of this function, but we can add them in parallel with a simple <code>Threads.@threads</code>. Thread safety is handled internally by <code>add!</code>.</p></li></ol><pre><code class="language-julia hljs">function transcorrelated_fermi_hubbard(
+  t::Real, U::Real, J::Real, mapping::Array{Int}; conserve_momentum::Bool=true
+)::Tuple{Vector{ITensors.QNIndex},OpIDSum}
+  grid_size = size(mapping)
+  N = length(mapping)
+
+  sites = sites_from_grid(mapping, conserve_momentum)
+  os = OpIDSum{6,Float64,UInt8}(
+    (J == 0) ? N^3 + 2 * N : N^5 ÷ 2,
+    create_op_cache_vec(sites),
+    merge_sorted_ops;
+    abs_tol=1e-14,
+  )
+
+  # The hopping term
+  for k in CartesianIndices(mapping)
+    for sigma in (↓, ↑)
+      add!(os, -t * epsilon(grid_size, k), opN(k, sigma, mapping))
+    end
+  end
+
+  # The interaction term
+  for p in CartesianIndices(mapping)
+    for q in CartesianIndices(mapping)
+      for k in CartesianIndices(mapping)
+        factor = U / N
+        ops = opCdag(p - k, ↑, mapping),
+        opC(p, ↑, mapping), opCdag(q + k, ↓, mapping),
+        opC(q, ↓, mapping)
+        add!(os, factor, ops)
+      end
+    end
+  end
+
+  J == 0 &amp;&amp; return sites, os
+
+  # The transcorrelated two-electron terms
+  for p in CartesianIndices(mapping)
+    for q in CartesianIndices(mapping)
+      for k in CartesianIndices(mapping)
+        factor =
+          -t * (
+            (exp(J) - 1) * epsilon(grid_size, p - k) + (exp(-J) - 1) * epsilon(grid_size, p)
+          ) / N
+
+        ops = opCdag(p - k, ↑, mapping),
+        opC(p, ↑, mapping), opCdag(q + k, ↓, mapping),
+        opC(q, ↓, mapping)
+        add!(os, factor, ops)
+
+        ops = opCdag(q + k, ↑, mapping),
+        opC(q, ↑, mapping), opCdag(p - k, ↓, mapping),
+        opC(p, ↓, mapping)
+        add!(os, factor, ops)
+      end
+    end
+  end
+
+  # The transcorrelated three-electron terms
+  Threads.@threads for p in CartesianIndices(mapping)
+    for q in CartesianIndices(mapping)
+      for s in CartesianIndices(mapping)
+        q &gt;= s &amp;&amp; continue
+
+        for k in CartesianIndices(mapping)
+          for kp in CartesianIndices(mapping)
+            wrap_around(grid_size, q + kp) &lt;= wrap_around(grid_size, s + k - kp) &amp;&amp; continue
+
+            # Add up the contributions from the four terms.
+            factor =
+              2 * t * (cosh(J) - 1) / N^2 * (
+                + epsilon(grid_size, p - (k - kp))         ## From (q + kp    , s + k - kp, s, q)
+                - epsilon(grid_size, p - (s + k - kp - q)) ## From (q + kp    , s + k - kp, q, s)
+                -
+                epsilon(grid_size, p - (q + kp - s))     ## From (s + k - kp, q + kp    , s, q)
+                + epsilon(grid_size, p - kp)               ## From (s + k - kp, q + kp    , q, s)
+              )
+
+            ops = (
+              opCdag(p - k, ↑, mapping),
+              opC(p, ↑, mapping),
+              opCdag(q + kp, ↓, mapping),
+              opCdag(s + k - kp, ↓, mapping),
+              opC(s, ↓, mapping),
+              opC(q, ↓, mapping),
+            )
+            add!(os, factor, ops)
+
+            ops = (
+              opCdag(q + kp, ↑, mapping),
+              opCdag(s + k - kp, ↑, mapping),
+              opC(s, ↑, mapping),
+              opC(q, ↑, mapping),
+              opCdag(p - k, ↓, mapping),
+              opC(p, ↓, mapping),
+            )
+            add!(os, factor, ops)
+          end
+        end
+      end
+    end
+  end
+
+  return sites, os
+end</code></pre><h2 id="Mappings-from-momentum-space-to-MPS-sites"><a class="docs-heading-anchor" href="#Mappings-from-momentum-space-to-MPS-sites">Mappings from momentum space to MPS sites</a><a id="Mappings-from-momentum-space-to-MPS-sites-1"></a><a class="docs-heading-anchor-permalink" href="#Mappings-from-momentum-space-to-MPS-sites" title="Permalink"></a></h2><p>These have little to do with ITensorMPOConstruction, but are included for completeness. In our paper, we use the &quot;epsilon&quot; mapping for dilute systems, and the &quot;bipartite&quot; mapping at half-filling.</p><pre><code class="language-julia hljs">function standard_mapping(grid_size)::Array{Int}
+  mapping = zeros(Int, grid_size...)
+  for (i, loc) in enumerate(CartesianIndices(mapping))
+    mapping[loc] = i
+  end
+
+  return mapping
+end
+
+function epsilon_mapping(grid_size::Tuple)::Array{Int}
+  kAndEps = vec([(k, epsilon(grid_size, k)) for k in each_grid_site(grid_size)])
+  sort!(kAndEps; by=(kAndEps) -&gt; kAndEps[2])
+
+  mapping = zeros(Int, grid_size...)
+  for (i, (k, eps)) in enumerate(kAndEps)
+    mapping[k] = i
+  end
+
+  return mapping
+end
+
+function bipartite_mapping(grid_size)
+  @assert all(mod(dim, 2) == 0 for dim in grid_size)
+
+  mapping = zeros(Int, grid_size...)
+
+  blocks = Dict{Float64,Vector{NTuple{2,CartesianIndex}}}()
+  offset = CartesianIndex([dim ÷ 2 for dim in grid_size]...)
+  for (i, loc) in enumerate(CartesianIndices(mapping))
+    partnerLoc = wrap_around(grid_size, loc + offset)
+
+    if loc &lt; partnerLoc
+      continue
+    end
+
+    eps = epsilon(grid_size, loc)
+    epsPartner = epsilon(grid_size, partnerLoc)
+
+    if eps &lt; epsPartner
+      pair = loc, partnerLoc
+    else
+      pair = partnerLoc, loc
+    end
+
+    eps = max(eps, epsPartner)
+
+    block = get!(blocks, eps, Vector{NTuple{2,CartesianIndex}}())
+    if pair ∉ block
+      push!(block, pair)
+    end
+  end
+
+  i = 1
+  for eps in sort([k for k in keys(blocks)])
+    for pair in blocks[eps]
+      mapping[pair[1]] = i
+      mapping[pair[2]] = i + 1
+      i += 2
+    end
+  end
+
+  return mapping
+end</code></pre><h2 id="Constructing-the-MPO"><a class="docs-heading-anchor" href="#Constructing-the-MPO">Constructing the MPO</a><a id="Constructing-the-MPO-1"></a><a class="docs-heading-anchor-permalink" href="#Constructing-the-MPO" title="Permalink"></a></h2><pre><code class="language-julia hljs">using TimerOutputs
+for grid_size in ((2, 2), (6, 6))
+  let t = 1, U = 4, J = -0.5, mapping = bipartite_mapping(grid_size)
+    @time &quot;Constructing OpIDSum&quot; sites, os = transcorrelated_fermi_hubbard(t, U, J, mapping)
+    reset_timer!()
+    @time &quot;Constructing MPO&quot; H = MPO_new(
+      os,
+      sites;
+      splitblocks=false,
+      combine_qn_sectors=true,
+      output_level=0,
+      check_for_errors=false,
+    )
+
+    println(
+      &quot;Constructed the MPO of bond dimension $(maxlinkdim(H)) and sparsity $(sparsity(H))&quot;
+    )
+    grid_size != (2, 2) &amp;&amp; print_timer()
+  end
+end</code></pre><p>The transcorrelated momentum-space Fermi-Hubbard MPO is very sparse. As such, using all Julia threads gives the best performance. The following timings are for the <span>$8 \times 8$</span> system on a computer with two Intel(R) Xeon(R) Gold 6438Y+ CPUs (64 total threads) and 250 GiB of memory.</p><table><tr><th style="text-align: right">Julia threads</th><th style="text-align: right">BLAS Threads</th><th style="text-align: right">OpIDSum time</th><th style="text-align: right">MPO time</th></tr><tr><td style="text-align: right">1</td><td style="text-align: right">64</td><td style="text-align: right">207s</td><td style="text-align: right">2625s</td></tr><tr><td style="text-align: right">64</td><td style="text-align: right">1</td><td style="text-align: right">33s</td><td style="text-align: right">1153s</td></tr></table><h1 id="Writing-a-Checkpoint-File"><a class="docs-heading-anchor" href="#Writing-a-Checkpoint-File">Writing a Checkpoint File</a><a id="Writing-a-Checkpoint-File-1"></a><a class="docs-heading-anchor-permalink" href="#Writing-a-Checkpoint-File" title="Permalink"></a></h1><p>In certain cases (such as for the <span>$10 \times 10$</span> and <span>$12 \times 12$</span> systems), MPO construction can take so long that it is prudent to write out a checkpoint file in case of failure. This can be accomplished with the <code>call_back</code> parameter to <code>MPO_new</code>; construction can be resumed later by calling <code>resume_MPO_construction!</code> and then <code>instantiate_MPO</code>. This functionality is demonstrated below.</p><pre><code class="language-julia hljs">using Serialization
+
+function call_back(
+  n::Int,
+  offsets::Vector{Vector{Int}},
+  block_sparse_matrices::Vector{Vector{ITensorMPOConstruction.BlockSparseMatrix{ValType}}},
+  sites::Vector{&lt;:Index},
+  llinks::Vector{&lt;:Index},
+  g::ITensorMPOConstruction.MPOGraph,
+  op_cache_vec::OpCacheVec,
+)::Nothing where {ValType&lt;:Number}
+  n != 18 &amp;&amp; return nothing
+  serialize(
+    &quot;./mpo.jldump&quot;, (n, offsets, block_sparse_matrices, sites, llinks, g, op_cache_vec)
+  )
+  println(&quot;Wrote a checkpoint to ./mpo.jldump&quot;)
+
+  throw(InterruptException())
+
+  return nothing
+end
+
+let t = 1, U = 4, J = -0.5, mapping = standard_mapping((6, 6))
+  sites, os = transcorrelated_fermi_hubbard(t, U, J, mapping; conserve_momentum=false)
+  try
+    MPO_new(
+      os,
+      sites;
+      splitblocks=false,
+      combine_qn_sectors=true,
+      check_for_errors=false,
+      call_back,
+    )
+  catch e
+    if e isa InterruptException
+      println(&quot;Caught an InterruptException!&quot;)
+    else
+      rethrow(e)
+    end
+  end
+
+  println(&quot;Reading a checkpoint from ./mpo.jldump&quot;)
+  n, offsets, block_sparse_matrices, sites, llinks, g, op_cache_vec = Serialization.deserialize(
+    &quot;./mpo.jldump&quot;
+  )
+  resume_MPO_construction!(
+    n + 1,
+    offsets,
+    block_sparse_matrices,
+    sites,
+    llinks,
+    g,
+    op_cache_vec;
+    combine_qn_sectors=true,
+    call_back,
+  )
+  H = ITensorMPOConstruction.instantiate_MPO(
+    offsets, block_sparse_matrices, sites, llinks; splitblocks=false, checkflux=true
+  )
+  println(&quot;Construction finished!&quot;)
+  rm(&quot;./mpo.jldump&quot;)
+end</code></pre><pre><code class="nohighlight hljs">Wrote a checkpoint to ./mpo.jldump
+Caught an InterruptException!
+Reading a checkpoint from ./mpo.jldump
+Construction finished!</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../haldane-shastry/">« Haldane-Shastry and Truncation</a><a class="docs-footer-nextpage" href="../../threading/">Threading and Performance »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Sunday 26 April 2026 05:47">Sunday 26 April 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
