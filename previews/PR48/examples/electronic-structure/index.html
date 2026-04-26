@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Electronic Structure · ITensorMPOConstruction.jl</title><meta name="title" content="Electronic Structure · ITensorMPOConstruction.jl"/><meta property="og:title" content="Electronic Structure · ITensorMPOConstruction.jl"/><meta property="twitter:title" content="Electronic Structure · ITensorMPOConstruction.jl"/><meta name="description" content="Documentation for ITensorMPOConstruction.jl."/><meta property="og:description" content="Documentation for ITensorMPOConstruction.jl."/><meta property="twitter:description" content="Documentation for ITensorMPOConstruction.jl."/><meta property="og:url" content="https://ITensor.github.io/ITensorMPOConstruction.jl/examples/electronic-structure/"/><meta property="twitter:url" content="https://ITensor.github.io/ITensorMPOConstruction.jl/examples/electronic-structure/"/><link rel="canonical" href="https://ITensor.github.io/ITensorMPOConstruction.jl/examples/electronic-structure/"/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../../">ITensorMPOConstruction.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><span class="tocitem">Documentation</span><ul><li><a class="tocitem" href="../../documentation/MPO_new/">MPO_new</a></li><li><a class="tocitem" href="../../documentation/OpID/">OpIDSum</a></li><li><a class="tocitem" href="../../documentation/unexported/">Internal Functions</a></li></ul></li><li><a class="tocitem" href="../../algorithm-selection/">Algorithm Selection</a></li><li><span class="tocitem">Examples</span><ul><li><a class="tocitem" href="../fermi-hubbard-rs/">Real Space Fermi-Hubbard</a></li><li><a class="tocitem" href="../fermi-hubbard-ks/">Momentum Space Fermi-Hubbard</a></li><li class="is-active"><a class="tocitem" href>Electronic Structure</a><ul class="internal"><li><a class="tocitem" href="#Results"><span>Results</span></a></li></ul></li><li><a class="tocitem" href="../haldane-shastry/">Haldane-Shastry and Truncation</a></li><li><a class="tocitem" href="../fermi-hubbard-tc/">Challenge Problem</a></li></ul></li><li><a class="tocitem" href="../../threading/">Threading and Performance</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>Electronic Structure</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Electronic Structure</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/ITensor/ITensorMPOConstruction.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/ITensor/ITensorMPOConstruction.jl/blob/main/docs/src/examples/electronic-structure.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="The-electronic-structure-Hamiltonian"><a class="docs-heading-anchor" href="#The-electronic-structure-Hamiltonian">The electronic structure Hamiltonian</a><a id="The-electronic-structure-Hamiltonian-1"></a><a class="docs-heading-anchor-permalink" href="#The-electronic-structure-Hamiltonian" title="Permalink"></a></h1><p>With <span>$N$</span> spatial orbitals, the electronic structure Hamiltonian is</p><p class="math-container">\[\mathcal{H} = \sum_{p \leq q = 1}^N \sum_{\sigma \in \{ \uparrow, \downarrow \}} h_{p q} a^\dagger_{p, \sigma} a_{q, \sigma} + \sum_{p, q, r, s}^N \sum_{\sigma, \tau \in \{ \uparrow, \downarrow \}} V_{p q r s} a^\dagger_{p, \sigma} a^\dagger_{q, \tau} a_{r, \tau} a_{s, \sigma}\]</p><p>where <span>$h_{p q} = (p | q)$</span> and <span>$V_{p q r s} = (p s | q r)$</span> in the chemist&#39;s notation.</p><p>Here we construct an artificial Hamiltonian with random <span>$h$</span> and <span>$V$</span>, though they satisfy the standard permutation symmetries. It turns out that the electronic structure Hamiltonian, even with coefficients from physical systems, is a prime example of when the minimum vertex cover algorithm (<code>alg = &quot;VC&quot;</code>) is superior to the QR decomposition algorithm (<code>alg = &quot;QR&quot;</code>).</p><pre><code class="language-julia hljs">try
+  using MKL
+catch
+end
+
+using LinearAlgebra
+BLAS.set_num_threads(1)
+
+@show Threads.nthreads()
+@show BLAS.get_num_threads()
+
+using ITensors, ITensorMPS, ITensorMPOConstruction
+using Random
+using TimerOutputs
+
+&quot;&quot;&quot;
+    get_coefficients(N) -&gt; Tuple{Array{Float64,2},Array{Float64,4}}
+
+Return random coefficients for the electronic structure Hamiltonian.
+
+The first returned value is the one-electron integral matrix and the second is
+the two-electron integral tensor in chemist&#39;s notation `V[p, s, q, r] = (ps|qr)`.
+&quot;&quot;&quot;
+function get_coefficients(N::Int)::Tuple{Array{Float64,2},Array{Float64,4}}
+  Random.seed!(0)
+  h = randn(N, N)
+  h = (h + transpose(h)) / 2
+
+  V0 = randn(N, N, N, N)
+  V = similar(V0)
+  for p in 1:N, s in 1:N, q in 1:N, r in 1:N
+    V[p, s, q, r] =
+      (
+        V0[p, s, q, r] +
+        V0[s, p, q, r] +
+        V0[p, s, r, q] +
+        V0[s, p, r, q] +
+        V0[q, r, p, s] +
+        V0[r, q, p, s] +
+        V0[q, r, s, p] +
+        V0[r, q, s, p]
+      ) / 8
+  end
+
+  return h, V
+end
+
+function electronic_structure_OpIDSum(
+  N::Int, h::Array{Float64,2}, V::Array{Float64,4}
+)::Tuple{Vector{&lt;:Index},OpIDSum}
+  ↓ = false
+  ↑ = true
+
+  sites = siteinds(&quot;Electron&quot;, N; conserve_qns=true)
+
+  operatorNames = [
+    [
+      &quot;I&quot;,
+      &quot;Cdn&quot;,
+      &quot;Cup&quot;,
+      &quot;Cdagdn&quot;,
+      &quot;Cdagup&quot;,
+      &quot;Ndn&quot;,
+      &quot;Nup&quot;,
+      &quot;Cup * Cdn&quot;,
+      &quot;Cup * Cdagdn&quot;,
+      &quot;Cup * Ndn&quot;,
+      &quot;Cdagup * Cdn&quot;,
+      &quot;Cdagup * Cdagdn&quot;,
+      &quot;Cdagup * Ndn&quot;,
+      &quot;Nup * Cdn&quot;,
+      &quot;Nup * Cdagdn&quot;,
+      &quot;Nup * Ndn&quot;,
+    ] for _ in 1:N
+  ]
+
+  op_cache_vec = to_OpCacheVec(sites, operatorNames)
+
+  opC(k::Int, spin::Bool) = OpID{UInt8}(2 + spin, k)
+  opCdag(k::Int, spin::Bool) = OpID{UInt8}(4 + spin, k)
+
+  os = OpIDSum{4,Float64,UInt8}(2 * N^4 + 2 * N^2, op_cache_vec)
+  for p in 1:N
+    for q in 1:N
+      for spin in (↓, ↑)
+        add!(os, h[p, q], opCdag(p, spin), opC(q, spin))
+      end
+    end
+  end
+
+  Threads.@threads for p in 1:N
+    for s_p in (↓, ↑)
+      for q in 1:N, s_q in (↓, ↑)
+        (q, s_q) &lt;= (p, s_p) &amp;&amp; continue
+
+        for r in 1:N, s_r in (↓, ↑)
+          for s in 1:N, s_s in (↓, ↑)
+            (s, s_s) &lt;= (r, s_r) &amp;&amp; continue
+
+            coeff = 0.0
+            if s_r == s_q &amp;&amp; s_s == s_p
+              coeff += V[p, s, q, r]
+            end
+            if s_s == s_q &amp;&amp; s_r == s_p
+              coeff -= V[p, r, q, s]
+            end
+            if s_r == s_p &amp;&amp; s_s == s_q
+              coeff -= V[q, s, p, r]
+            end
+            if s_s == s_p &amp;&amp; s_r == s_q
+              coeff += V[q, r, p, s]
+            end
+
+            iszero(coeff) &amp;&amp; continue
+            add!(os, coeff, opCdag(p, s_p), opCdag(q, s_q), opC(r, s_r), opC(s, s_s))
+          end
+        end
+      end
+    end
+  end
+
+  return sites, os
+end
+
+for alg in (&quot;VC&quot;, &quot;QR&quot;)
+  for N in [10, 20]
+    println(&quot;Constructing the electronic structure MPO for $N sites using $alg&quot;)
+
+    reset_timer!()
+    @time &quot;Constructing OpIDSum&quot; sites, os = electronic_structure_OpIDSum(
+      N, get_coefficients(N)...
+    )
+    @time &quot;Constructing MPO&quot; H = MPO_new(
+      os,
+      sites;
+      alg,
+      basis_op_cache_vec=os.op_cache_vec,
+      splitblocks=true,
+      check_for_errors=false,
+      checkflux=false,
+    ) # TODO: remove splitblocks=true after warning
+    N &gt; 5 &amp;&amp; print_timer()
+
+    println(
+      &quot;The maximum bond dimension is $(maxlinkdim(H)), sparsity = $(ITensorMPOConstruction.sparsity(H))&quot;,
+    )
+    @assert maxlinkdim(H) == 2 * N^2 + 3 * N + 2
+
+    println()
+  end
+end
+
+nothing;</code></pre><h2 id="Results"><a class="docs-heading-anchor" href="#Results">Results</a><a id="Results-1"></a><a class="docs-heading-anchor-permalink" href="#Results" title="Permalink"></a></h2><p>Below are the runtime and sparsities for the QR decomposition algorithm and the vertex cover algorithm. Both algorithms produce MPOs of bond dimension <span>$2 N^2 + 3 N + 2$</span>, which is optimal for a generic set of coefficients. These timings were taken with <code>julia -t8 --gcthreads=8,1</code> on a 2021 MacBook Pro with the M1 Max CPU and 32GB of memory.</p><table><tr><th style="text-align: right"><span>$N$</span></th><th style="text-align: right">Minimum Vertex Cover</th><th style="text-align: right">QR Decomposition</th></tr><tr><td style="text-align: right">10</td><td style="text-align: right">0.02s / 98.23%</td><td style="text-align: right">0.13s / 95.69%</td></tr><tr><td style="text-align: right">20</td><td style="text-align: right">0.90s / 98.84%</td><td style="text-align: right">1.20s / 97.01%</td></tr><tr><td style="text-align: right">30</td><td style="text-align: right">1.04s / 99.14%</td><td style="text-align: right">8.37s / 97.54%</td></tr><tr><td style="text-align: right">40</td><td style="text-align: right">3.30s / 99.32%</td><td style="text-align: right">16.3s / 97.72%</td></tr><tr><td style="text-align: right">50</td><td style="text-align: right">9.13s / 99.44%</td><td style="text-align: right">56.1s / 97.83%</td></tr><tr><td style="text-align: right">60</td><td style="text-align: right">21.1s / 99.52%</td><td style="text-align: right">169s / 97.90%</td></tr><tr><td style="text-align: right">70</td><td style="text-align: right">50.7s / 99.58%</td><td style="text-align: right">516s / 97.95%</td></tr><tr><td style="text-align: right">80</td><td style="text-align: right">106s / 99.63%</td><td style="text-align: right">N/A</td></tr><tr><td style="text-align: right">90</td><td style="text-align: right">221s / 99.67%</td><td style="text-align: right">N/A</td></tr><tr><td style="text-align: right">100</td><td style="text-align: right">744s / 99.70%</td><td style="text-align: right">N/A</td></tr></table><p>Not only does the vertex cover algorithm produce an MPO much faster than the QR algorithm, but the resulting MPO has almost five times fewer entries (note: if <code>splitblocks=false</code> then the sparsities of the MPOs are equal). This story remains mostly unchanged when we construct the Hamiltonian for real systems.</p><p>In the table below we present data from constructing two different electronic structure Hamiltonians, the second of which is from <a href="https://doi.org/10.1021/acs.jpca.3c06142">ZhaiLee2023</a>. For the larger system the QR decomposition is able to slightly reduce the bond dimension compared to vertex cover, but it results in a much denser MPO. This increase in density has a significant impact on the subsequent DMRG performance, which takes 70% longer than if the MPO produced by the vertex cover algorithm were used.</p><table><tr><th style="text-align: right">system</th><th style="text-align: right"><span>$N$</span></th><th style="text-align: right">algorithm</th><th style="text-align: right">bond dimension</th><th style="text-align: right">sparsity</th></tr><tr><td style="text-align: right"><span>$\text{C}_2$</span></td><td style="text-align: right">18</td><td style="text-align: right"><code>QR</code></td><td style="text-align: right">704</td><td style="text-align: right">99.26%</td></tr><tr><td style="text-align: right"><span>$\text{C}_2$</span></td><td style="text-align: right">18</td><td style="text-align: right"><code>VC</code></td><td style="text-align: right">704</td><td style="text-align: right">99.77%</td></tr><tr><td style="text-align: right"><span>$\left[\text{Fe}_2 \text{S} (\text{C H}_3)(\text{SCH}_3)_4 \right]^{3-}$</span></td><td style="text-align: right">36</td><td style="text-align: right"><code>QR</code></td><td style="text-align: right">2698</td><td style="text-align: right">97.57%</td></tr><tr><td style="text-align: right"><span>$\left[\text{Fe}_2 \text{S} (\text{C H}_3)(\text{SCH}_3)_4 \right]^{3-}$</span></td><td style="text-align: right">36</td><td style="text-align: right"><code>VC</code></td><td style="text-align: right">2702</td><td style="text-align: right">99.26%</td></tr></table><h3 id="Thanks-to-[Huanchen-Zhai](https://scholar.google.com/citations?userHM_YBL0AAAAJ-and-hlen)-for-providing-the-discussion-and-data-motivating-this-section."><a class="docs-heading-anchor" href="#Thanks-to-[Huanchen-Zhai](https://scholar.google.com/citations?userHM_YBL0AAAAJ-and-hlen)-for-providing-the-discussion-and-data-motivating-this-section.">Thanks to <a href="https://scholar.google.com/citations?user=HM_YBL0AAAAJ&amp;hl=en">Huanchen Zhai</a> for providing the discussion and data motivating this section.</a><a id="Thanks-to-[Huanchen-Zhai](https://scholar.google.com/citations?userHM_YBL0AAAAJ-and-hlen)-for-providing-the-discussion-and-data-motivating-this-section.-1"></a><a class="docs-heading-anchor-permalink" href="#Thanks-to-[Huanchen-Zhai](https://scholar.google.com/citations?userHM_YBL0AAAAJ-and-hlen)-for-providing-the-discussion-and-data-motivating-this-section." title="Permalink"></a></h3><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../fermi-hubbard-ks/">« Momentum Space Fermi-Hubbard</a><a class="docs-footer-nextpage" href="../haldane-shastry/">Haldane-Shastry and Truncation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Sunday 26 April 2026 05:35">Sunday 26 April 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
