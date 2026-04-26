@@ -1,156 +1,39 @@
 """
-    BipartiteGraph{L,R,C}
-
-Weighted bipartite graph with typed left and right vertices.
-
-Type Parameters
-- `L`: The type of the left vertices.
-- `R`: The type of the right vertices.
-- `C`: The scalar edge weight type.
-
-Fields:
-- `left_vertices`: metadata stored for each left vertex.
-- `right_vertices`: metadata stored for each right vertex.
-- `right_vertex_ids_from_left`: adjacency list from each left vertex to the
-  connected right-vertex ids.
-- `edge_weights_from_left`: edge weights stored in parallel with
-  `right_vertex_ids_from_left`.
-"""
-struct BipartiteGraph{L,R,C}
-  left_vertices::Vector{L}
-  right_vertices::Vector{R}
-  right_vertex_ids_from_left::Vector{Vector{Int}}
-  edge_weights_from_left::Vector{Vector{C}}
-end
-
-"""
-    left_size(g::BipartiteGraph) -> Int
-
-Return the number of left vertices in `g`.
-"""
-left_size(g::BipartiteGraph)::Int = length(g.left_vertices)
-
-"""
-    right_size(g::BipartiteGraph) -> Int
-
-Return the number of right vertices in `g`.
-"""
-right_size(g::BipartiteGraph)::Int = length(g.right_vertices)
-
-"""
-    left_vertex(g::BipartiteGraph, lv_id::Integer)
-
-Return the data associated with the left vertex `lv_id`.
-"""
-left_vertex(g::BipartiteGraph, lv_id::Integer) = g.left_vertices[lv_id]
-
-"""
-    right_vertex(g::BipartiteGraph, rv_id::Integer)
-
-Return the data associated with the right vertex `rv_id`.
-"""
-right_vertex(g::BipartiteGraph, rv_id::Integer) = g.right_vertices[rv_id]
-
-"""
-    num_edges(g::BipartiteGraph) -> Int
-
-Return the total number of edges in `g`.
-"""
-function num_edges(g::BipartiteGraph)::Int
-  return sum(length(rvs) for rvs in g.right_vertex_ids_from_left)
-end
-
-"""
-    clear_edges_from_left!(g::BipartiteGraph, lv_id::Integer) -> Nothing
-
-Remove all edges incident on the left vertex `lv_id`.
-
-This clears both the adjacent right-vertex ids and their corresponding edge
-weights, and releases any retained capacity in those per-vertex adjacency
-lists.
-"""
-@inline function clear_edges_from_left!(g::BipartiteGraph, lv_id::Integer)::Nothing
-  empty!(g.right_vertex_ids_from_left[lv_id])
-  sizehint!(g.right_vertex_ids_from_left[lv_id], 0)
-  empty!(g.edge_weights_from_left[lv_id])
-  sizehint!(g.edge_weights_from_left[lv_id], 0)
-  return nothing
-end
-
-"""
-    combine_duplicate_adjacent_right_vertices!(g::BipartiteGraph, eq::Function) -> Vector{Int}
-
-Combine adjacent right vertices in `g` that compare equal under `eq`.
-
-The right vertices are assumed to already be grouped so that duplicate vertices
-appear contiguously. The first vertex of each equal run is kept, later vertices
-in the run are removed, and every right-vertex id stored in the left adjacency
-lists is remapped to the surviving vertex id. The returned vector maps each
-original right-vertex id to its new position after compaction.
-"""
-@timeit function combine_duplicate_adjacent_right_vertices!(
-  g::BipartiteGraph, eq::Function
-)::Vector{Int}
-  right_vertices = g.right_vertices
-
-  starts_new_run = Vector{Int}(undef, length(right_vertices))
-  starts_new_run[1] = true
-  Threads.@threads for rv_id in 2:length(right_vertices)
-    @inbounds starts_new_run[rv_id] = !eq(right_vertices[rv_id - 1], right_vertices[rv_id])
-  end
-
-  let cur = 0
-    @inbounds for rv_id in eachindex(right_vertices)
-      if starts_new_run[rv_id] == true
-        cur += 1
-        right_vertices[cur] = right_vertices[rv_id]
-      end
-      starts_new_run[rv_id] = cur
-    end
-  end
-
-  # starts_new_run now contains the position of the first equal right vertex.
-  new_positions = starts_new_run
-
-  resize!(right_vertices, new_positions[end])
-
-  Threads.@threads for lv_id in 1:left_size(g)
-    right_vertex_ids = g.right_vertex_ids_from_left[lv_id]
-    for i in eachindex(right_vertex_ids)
-      right_vertex_ids[i] = new_positions[right_vertex_ids[i]]
-    end
-  end
-
-  return new_positions
-end
-
-"""
     BipartiteGraphConnectedComponents
 
-Struct containing the connected components of a `BipartiteGraph`.
+Connected-component data for a `BipartiteGraph`.
+
+Components that do not contain at least one edge are not retained.
 
 Fields:
-- `lvs_of_component`: for each connected component, the global ids of its left
-  vertices.
-- `component_position_of_rvs`: for each global right vertex id, its local id
-  (position) within its connected component, or an unused sentinel for isolated
-  right vertices.
-- `rv_size_of_component`: number of right vertices in each component.
+- `lvs_of_component`: for each retained component, the global left-vertex ids
+  contained in that component.
+- `position_of_rvs_in_component`: for each global right-vertex id, its local
+  right-vertex position within its retained component. Right vertices that are
+  not in a retained component keep the sentinel value `typemax(Int)`.
+- `rv_size_of_component`: number of right vertices in each retained component.
 """
 struct BipartiteGraphConnectedComponents
   lvs_of_component::Vector{Vector{Int}}
-  component_position_of_rvs::Vector{Int}
+  position_of_rvs_in_component::Vector{Int}
   rv_size_of_component::Vector{Int}
 end
 
 """
     compute_connected_components(g::BipartiteGraph) -> BipartiteGraphConnectedComponents
+    compute_connected_components(g::BipartiteGraph, workspace::Vector{Int}) -> BipartiteGraphConnectedComponents
 
-Compute the connected components of `g`, keeping only components which connect
-the left and right sides of the bipartite graph (i.e. discarding isolated vertices).
+Compute the connected components of `g`, retaining only components that contain
+at least one edge.
 
-The returned object records, for each retained component, which left vertices it
-contains and how global right-vertex ids map into local positions within their component.
+The returned object records, for each retained component, which global
+left-vertex ids it contains and how global right-vertex ids map into local
+right-vertex positions within that component.
+
+The two-argument method uses `workspace` as scratch storage and as the backing
+storage for `position_of_rvs_in_component` in the returned object. It must have
+length at least `right_size(g)`, and it should not be mutated while the returned
+component data is still in use.
 """
 function compute_connected_components(g::BipartiteGraph)::BipartiteGraphConnectedComponents
   return compute_connected_components(g, Vector{Int}(undef, right_size(g)))
@@ -227,7 +110,7 @@ end
 """
     num_connected_components(ccs::BipartiteGraphConnectedComponents)
 
-Return the number of connected components.
+Return the number of retained connected components in `ccs`.
 """
 function num_connected_components(ccs::BipartiteGraphConnectedComponents)
   length(ccs.lvs_of_component)
@@ -236,7 +119,7 @@ end
 """
     left_size(ccs::BipartiteGraphConnectedComponents, cc::Int)
 
-Return the number of left vertices in connected component `cc`.
+Return the number of left vertices in the retained connected component `cc`.
 """
 function left_size(ccs::BipartiteGraphConnectedComponents, cc::Int)
   length(ccs.lvs_of_component[cc])
@@ -246,17 +129,18 @@ end
     get_cc_matrix(g::BipartiteGraph, ccs::BipartiteGraphConnectedComponents, cc::Int; clear_edges=false)
         -> Tuple{SparseMatrixCSC,Vector{Int},Vector{Int}}
 
-Extract the subgraph corresponding to connected component `cc` as a sparse
+Extract the retained connected component `cc` as a sparse weighted adjacency
 matrix.
 
 The returned tuple contains:
-- the sparse weighted adjacency matrix of the component, with local left/right
-  numbering,
-- the map from local row indices back to global left-vertex ids,
-- the map from local column indices back to global right-vertex ids.
+- the component adjacency matrix, whose rows are local left-vertex ids and whose
+  columns are local right-vertex ids,
+- `left_map`, mapping local row indices back to global left-vertex ids,
+- `right_map`, mapping local column indices back to global right-vertex ids.
 
 If `clear_edges=true`, the consumed adjacency lists are emptied from `g` as the
-matrix is assembled.
+matrix is assembled. Duplicate stored edge entries with the same local row and
+column are summed, matching the semantics of `sparse(row, col, val)`.
 """
 function get_cc_matrix(
   g::BipartiteGraph{L,R,C},
@@ -267,14 +151,14 @@ function get_cc_matrix(
   left_map = ccs.lvs_of_component[cc]
   num_left = length(left_map)
   num_right = ccs.rv_size_of_component[cc]
-  component_position_of_rvs = ccs.component_position_of_rvs
+  position_of_rvs_in_component = ccs.position_of_rvs_in_component
 
   ## Count entries in each column and record the local-to-global right-vertex map.
   colptr = zeros(Int, num_right + 1)
   right_map = Vector{Int}(undef, num_right)
   @inbounds for lv_id in left_map
     for rv_id in g.right_vertex_ids_from_left[lv_id]
-      j = component_position_of_rvs[rv_id]
+      j = position_of_rvs_in_component[rv_id]
       colptr[j + 1] += 1
       right_map[j] = rv_id
     end
@@ -298,7 +182,7 @@ function get_cc_matrix(
     for edge_id in eachindex(right_vertex_ids)
       rv_id = right_vertex_ids[edge_id]
       weight = edge_weights[edge_id]
-      j = component_position_of_rvs[rv_id]
+      j = position_of_rvs_in_component[rv_id]
       pos = next_position[j]
       rowvals[pos] = i
       nzvals[pos] = weight

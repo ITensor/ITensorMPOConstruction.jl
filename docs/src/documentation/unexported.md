@@ -26,18 +26,29 @@ ITensorMPOConstruction.get_onsite_op
   ITensorMPOConstruction.left_vertex
   ITensorMPOConstruction.right_vertex
   ITensorMPOConstruction.num_edges
+  ITensorMPOConstruction.weighted_edge_iterator
   ITensorMPOConstruction.clear_edges_from_left!
   ITensorMPOConstruction.combine_duplicate_adjacent_right_vertices!
   ITensorMPOConstruction.compute_connected_components
   ITensorMPOConstruction.num_connected_components
   ITensorMPOConstruction.get_cc_matrix
+  ITensorMPOConstruction._minimum_vertex_cover_from_matching
+  ITensorMPOConstruction._hopcroft_karp_maximum_matching
+  ITensorMPOConstruction._hopcroft_karp_layered_bfs!
+  ITensorMPOConstruction._hopcroft_karp_augment_from!
+  ITensorMPOConstruction.minimum_vertex_cover
 ```
 
 ## Others
 
 ```@docs
 ITensorMPOConstruction.BlockSparseMatrix
-ITensorMPOConstruction.to_sparse_itensor
+ITensorMPOConstruction._qn_position_map
+ITensorMPOConstruction._blockid
+ITensorMPOConstruction._block_from_id
+ITensorMPOConstruction._fill_splitblocks!
+ITensorMPOConstruction._to_ITensor_splitblocks
+ITensorMPOConstruction.to_ITensor
 ITensorMPOConstruction.add_to_local_matrix!
 ITensorMPOConstruction.CoSorterElement
 ITensorMPOConstruction.CoSorter
@@ -45,11 +56,14 @@ ITensorMPOConstruction.sparse_qr
 ITensorMPOConstruction.for_non_zeros_batch
 ITensorMPOConstruction.at_site!
 ITensorMPOConstruction.MPOGraph
+ITensorMPOConstruction.pretty_print
 ITensorMPOConstruction.LeftVertex
 ITensorMPOConstruction.add_to_next_graph!
 ITensorMPOConstruction.find_first_eq_rv
 ITensorMPOConstruction.merge_qn_sectors
 ITensorMPOConstruction.build_next_edges_specialization!
 ITensorMPOConstruction.process_single_left_vertex_cc!
+ITensorMPOConstruction.process_vertex_cover!
+ITensorMPOConstruction.process_qr
 ITensorMPOConstruction.@time_if
 ```

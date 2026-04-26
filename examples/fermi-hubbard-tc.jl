@@ -1,17 +1,17 @@
 # # Challenge Problem: Transcorrelated Fermi-Hubbard
 #
-# ITensorMPOConstruction was designed specifically to construct the transcorrelated momentum space Fermi-Hubbard Hamiltonian as fast as possible
+# ITensorMPOConstruction was designed specifically to construct the transcorrelated momentum-space Fermi-Hubbard Hamiltonian as fast as possible.
 # ```math
 # \begin{aligned}
 #   \widetilde{H}_\text{ks}(J) &= H_\text{ks} - \frac{t}{N} \sum_{\bm{p}, \bm{q}, \bm{k}, \sigma} \left[ (e^J - 1) \epsilon(\bm{p} - \bm{k}) + (e^{-J} - 1) \epsilon(\bm{p}) \right] c^\dagger_{\bm{p} - \bm{k}, \sigma} c^\dagger_{\bm{q} + \bm{k}, \bar{\sigma}} c_{\bm{q}, \bar{\sigma}} c_{\bm{p}, \sigma} \\
 #   &+ 2 t \frac{\cosh(J) - 1}{N^2} \sum_{\substack{\bm{k}, \bm{k}' \\ \bm{s}, \bm{q} \\ \bm{p}, \sigma}} \epsilon(\bm{p} - \bm{k} + \bm{k}') c^\dagger_{\bm{p} - \bm{k}, \sigma} c^\dagger_{\bm{q} + \bm{k}', \bar{\sigma}} c^\dagger_{\bm{s} + \bm{k} - \bm{k}', \bar{\sigma}} c_{\bm{s}, \bar{\sigma}} c_{\bm{q}, \bar{\sigma}} c_{\mathbf{p}, \sigma} ,
 # \end{aligned}
 # ```
-# where ``J`` is a real number. After ruthless optimization and with a lot of patience we were able to construct the MPO for the ``12 \times 12`` system, which has ``3 \times 10^{10}`` terms. This example goes over the features of ITensorMPOConstruction we designed to make that possible. Additionally, it serves as a reference implementation of the transcorrelated Hamiltonian. For details on the transcorrelated method see our paper: [Scaling up the transcorrelated density matrix renormalization group](https://arxiv.org/abs/2506.07441). 
+# where ``J`` is a real number. After extensive optimization, we were able to construct the MPO for the ``12 \times 12`` system, which has ``3 \times 10^{10}`` terms. This example walks through the features of ITensorMPOConstruction we designed to make that possible. Additionally, it serves as a reference implementation of the transcorrelated Hamiltonian. For details on the transcorrelated method, see our paper: [Scaling up the transcorrelated density matrix renormalization group](https://arxiv.org/abs/2506.07441).
 #
-# ## Generating `OpIDSum` directly 
+# ## Generating `OpIDSum` directly
 #
-# While the Hamiltonian as written above has a number of terms that scales as ``2 N^5``, by grouping like-terms together total number of terms can be reduced to ``N^5 / 2``, nevertheless, simply constructing the `OpIDSum` for this Hamiltonian is a hard problem, for the ``12 \times 12`` system the `OpIDSum` alone takes up almost 600GiB. Because of this we needed to construct the `OpIDSum` directly to avoid constructing the much more costly (in both time and space) `OpSum`. 
+# While the Hamiltonian as written above has a number of terms that scales as ``2 N^5``, by grouping like terms together, the total number of terms can be reduced to ``N^5 / 2``. Nevertheless, simply constructing the `OpIDSum` for this Hamiltonian is a hard problem; for the ``12 \times 12`` system, the `OpIDSum` alone takes up almost 600 GiB. Because of this, we needed to construct the `OpIDSum` directly to avoid constructing the much more costly (in both time and space) `OpSum`.
 
 try
   using MKL
@@ -79,9 +79,9 @@ end
 
 # ## Combining local operators
 #
-# The next bottleneck in construction is combining multiple operators acting on the same site into a single basis operator to satisfy [constraint #3](../documentation/MPO_new.md). This entails for example, replacing ``c^\dagger_{k, \uparrow} c_{k, \uparrow}`` with ``n_{k, \uparrow}``. While this can be accomplished by passing a `basis_op_chache_vec` to `MPO_new`, that code path is slow since it relies on numeric computations to rewrite each product. If instead, we are intelligent about how we formulate the individual terms, we can rewrite them symbolically.
+# The next bottleneck in construction is combining multiple operators acting on the same site into a single basis operator to satisfy [constraint #3](../documentation/MPO_new.md). This entails, for example, replacing ``c^\dagger_{k, \uparrow} c_{k, \uparrow}`` with ``n_{k, \uparrow}``. While this can be accomplished by passing a `basis_op_cache_vec` to `MPO_new`, that code path is slow since it relies on numeric computations to rewrite each product. If, instead, we choose the term ordering carefully, we can rewrite them symbolically.
 #
-# By utilizing the `modify!` function of `OpIDSum` we can let `OpIDSum` do the tricky business of sorting the fermionic operators, and we can then modify the resulting term after operators acting on the same site have been made adjacent. Because the sort is stable, if the original term contains normal ordered spin-up operators followed by normal ordered spin-down operators this structure will be maintained in the operators acting on each site. This allows us to combine the spin-up operators and spin-down operators separately first before merging them together. This does require some changes to the code constructing the `OpIDSum` to respect this ordering in construction.
+# By using the `modify!` function of `OpIDSum`, we can let `OpIDSum` handle the tricky business of sorting the fermionic operators, and we can then modify the resulting term after operators acting on the same site have been made adjacent. Because the sort is stable, if the original term contains normal-ordered spin-up operators followed by normal-ordered spin-down operators, this structure will be maintained in the operators acting on each site. This allows us to combine the spin-up operators and spin-down operators separately before merging them together. This does require the code constructing the `OpIDSum` to respect this ordering.
 
 function merge_sorted_ops(ops::AbstractVector{OpID{UInt8}})::Int
   ITensorMPOConstruction.for_equal_sites(ops) do a, c
@@ -141,7 +141,7 @@ end;
 
 # ## General helper code
 
-## Function to construct the momentum conserving site indices
+## Function to construct the momentum-conserving site indices
 function sites_from_grid(
   mapping::Array{Int}, conserve_momentum::Bool
 )::Vector{ITensors.QNIndex}
@@ -205,11 +205,11 @@ end
 #
 # In the function below we construct the `OpIDSum`. There are three things worth highlighting.
 #
-# 1. The initialization of the `OpIDSum`: We specify the weight of the Hamiltonian, which is 6 in this case, and use a `UInt8` to enumerate the operators and sites, which does limit us to 255 sites. Additionally, we specify the maximum number of terms, our `merge_sorted_ops` function, and a non-zero `abs_tol` to drop terms with coefficients smaller than `1e-14`. This last point is to account for floating point round error for terms whose coefficients are analytically zero.
+# 1. The initialization of the `OpIDSum`: We specify the maximum term weight of the Hamiltonian, which is 6 in this case, and use a `UInt8` to enumerate the operators and sites, which limits us to 255 sites. Additionally, we specify the maximum number of terms, our `merge_sorted_ops` function, and a nonzero `abs_tol` to drop terms with coefficients smaller than `1e-14`. This last point accounts for floating-point roundoff error for terms whose coefficients are analytically zero.
 #
 # 2. In order to permit the functioning of `merge_sorted_ops`, we always put spin-up operators before spin-down operators in each term.
 #
-# 3. Adding the three-electron terms dominate the runtime of this function, but we can add them in parallel with a simple `Threads.@threads`. Thread safety is handled internally to `add!`.
+# 3. Adding the three-electron terms dominates the runtime of this function, but we can add them in parallel with a simple `Threads.@threads`. Thread safety is handled internally by `add!`.
 
 function transcorrelated_fermi_hubbard(
   t::Real, U::Real, J::Real, mapping::Array{Int}; conserve_momentum::Bool=true
@@ -247,7 +247,7 @@ function transcorrelated_fermi_hubbard(
 
   J == 0 && return sites, os
 
-  ## The transcorrelated two electron terms
+  ## The transcorrelated two-electron terms
   for p in CartesianIndices(mapping)
     for q in CartesianIndices(mapping)
       for k in CartesianIndices(mapping)
@@ -269,7 +269,7 @@ function transcorrelated_fermi_hubbard(
     end
   end
 
-  ## The transcorrelated three electron terms
+  ## The transcorrelated three-electron terms
   Threads.@threads for p in CartesianIndices(mapping)
     for q in CartesianIndices(mapping)
       for s in CartesianIndices(mapping)
@@ -382,42 +382,52 @@ function bipartite_mapping(grid_size)
 end
 
 # ## Constructing the MPO
-
 using TimerOutputs
 for grid_size in ((2, 2), (6, 6))
   let t = 1, U = 4, J = -0.5, mapping = bipartite_mapping(grid_size)
     @time "Constructing OpIDSum" sites, os = transcorrelated_fermi_hubbard(t, U, J, mapping)
     reset_timer!()
     @time "Constructing MPO" H = MPO_new(
-      os, sites; combine_qn_sectors=true, output_level=0, check_for_errors=false
+      os,
+      sites;
+      splitblocks=false,
+      combine_qn_sectors=true,
+      output_level=0,
+      check_for_errors=false,
+    )
+
+    println(
+      "Constructed the MPO of bond dimension $(maxlinkdim(H)) and sparsity $(sparsity(H))"
     )
     grid_size != (2, 2) && print_timer()
   end
 end
 
-# The transcorrelated momentum space Fermi-Hubbard MPO is very sparse. As such, giving Julia all the threads results in the best performance. The following timings are for the ``8 \times 8`` system on a computer with two Intel(R) Xeon(R) Gold 6438Y+ (64 total threads) and 250 GiB of memory.
+# The transcorrelated momentum-space Fermi-Hubbard MPO is very sparse. As such, using all Julia threads gives the best performance. The following timings are for the ``8 \times 8`` system on a computer with two Intel(R) Xeon(R) Gold 6438Y+ CPUs (64 total threads) and 250 GiB of memory.
 #
 # | Julia threads | BLAS Threads | OpIDSum time | MPO time |
 # |---------------|--------------|--------------|----------|
-# | 1             | 1            | 207s         | 2691s    |
-# | 64            | 1            | 33s          | 1177s    |
+# | 1             | 64           | 207s         | 2625s    |
+# | 64            | 1            | 33s          | 1153s    |
 #
 # # Writing a Checkpoint File
-#
-# In certain cases (such as for the ``10 \times 10`` and ``12 \times 12`` systems), MPO construction can take so long that it is prudent to write out a checkpoint file in case of catastrophic failure. This can be accomplished by the `call_back` parameter to `MPO_new`, construction can be resumed later by calling `resume_MPO_construction`. This functionality is demonstrated below. 
+# In certain cases (such as for the ``10 \times 10`` and ``12 \times 12`` systems), MPO construction can take so long that it is prudent to write out a checkpoint file in case of failure. This can be accomplished with the `call_back` parameter to `MPO_new`; construction can be resumed later by calling `resume_MPO_construction!` and then `instantiate_MPO`. This functionality is demonstrated below.
 
 using Serialization
 
 function call_back(
   n::Int,
-  H::MPO,
+  offsets::Vector{Vector{Int}},
+  block_sparse_matrices::Vector{Vector{ITensorMPOConstruction.BlockSparseMatrix{ValType}}},
   sites::Vector{<:Index},
   llinks::Vector{<:Index},
   g::ITensorMPOConstruction.MPOGraph,
   op_cache_vec::OpCacheVec,
-)::Nothing
+)::Nothing where {ValType<:Number}
   n != 18 && return nothing
-  serialize("./mpo.jldump", (n, H, sites, llinks, g, op_cache_vec))
+  serialize(
+    "./mpo.jldump", (n, offsets, block_sparse_matrices, sites, llinks, g, op_cache_vec)
+  )
   println("Wrote a checkpoint to ./mpo.jldump")
 
   throw(InterruptException())
@@ -428,19 +438,39 @@ end
 let t = 1, U = 4, J = -0.5, mapping = standard_mapping((6, 6))
   sites, os = transcorrelated_fermi_hubbard(t, U, J, mapping; conserve_momentum=false)
   try
-    MPO_new(os, sites; combine_qn_sectors=true, check_for_errors=false, call_back)
+    MPO_new(
+      os,
+      sites;
+      splitblocks=false,
+      combine_qn_sectors=true,
+      check_for_errors=false,
+      call_back,
+    )
   catch e
     if e isa InterruptException
-      println("Caught a InterruptException!")
+      println("Caught an InterruptException!")
     else
       rethrow(e)
     end
   end
 
   println("Reading a checkpoint from ./mpo.jldump")
-  n, H, sites, llinks, g, op_cache_vec = Serialization.deserialize("./mpo.jldump")
-  H = resume_MPO_construction(
-    Float64, n + 1, H, sites, llinks, g, op_cache_vec; combine_qn_sectors=true, call_back
+  n, offsets, block_sparse_matrices, sites, llinks, g, op_cache_vec = Serialization.deserialize(
+    "./mpo.jldump"
+  )
+  resume_MPO_construction!(
+    n + 1,
+    offsets,
+    block_sparse_matrices,
+    sites,
+    llinks,
+    g,
+    op_cache_vec;
+    combine_qn_sectors=true,
+    call_back,
+  )
+  H = ITensorMPOConstruction.instantiate_MPO(
+    offsets, block_sparse_matrices, sites, llinks; splitblocks=false, checkflux=true
   )
   println("Construction finished!")
   rm("./mpo.jldump")
@@ -448,7 +478,7 @@ end
 
 # ````
 # Wrote a checkpoint to ./mpo.jldump
-# Caught a InterruptException!
+# Caught an InterruptException!
 # Reading a checkpoint from ./mpo.jldump
 # Construction finished!
 # ````

@@ -3,10 +3,13 @@
 *.jl.mem
 *.o
 *.swp
+*.jldump
+
 .DS_Store
 .benchmarkci
 .tmp
 .vscode/
+
 /docs/Manifest.toml
 /docs/build/
 Manifest.toml

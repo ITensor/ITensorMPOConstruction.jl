@@ -1,14 +1,14 @@
 # # Fermi-Hubbard Hamiltonian in Momentum Space
-# The one dimensional Fermi-Hubbard Hamiltonian with periodic boundary conditions on $N$ sites can be expressed in momentum space as
+# The one-dimensional Fermi-Hubbard Hamiltonian with periodic boundary conditions on ``N`` sites can be expressed in momentum space as
 # ```math
-# \mathcal{H} = \sum_{k = 1}^N \epsilon(k) \left( 
+# \mathcal{H} = \sum_{k = 1}^N \epsilon(k) \left(
 # n_{k, \downarrow} + n_{k, \uparrow} \right) + \frac{U}{N} \sum_{p, q, k = 1}^N c^\dagger_{p - k, \uparrow} c^\dagger_{q + k, \downarrow} c_{q, \downarrow} c_{p, \uparrow} \ ,
 # ```
 # where ``\epsilon(k) = -2 t \cos(\frac{2 \pi k}{N})`` and ``c_k = c_{k + N}``.
-
-# Unlike in real space, `MPO_new` is not a drop-in replacement for `MPO`. This is because as expressed above, the Hamiltonian has multiple operators acting on the same site, violating [constraint #3](../documentation/MPO_new.md). For example when ``k = 0`` in the second sum we have terms of the form ``c^\dagger_{p, \uparrow} c^\dagger_{q, \downarrow} c_{q, \downarrow} c_{p, \uparrow}``. 
-
-# You could always create a special case for ``k = 0`` and rewrite it as ``n_{p, \uparrow} n_{q, \downarrow}``. However if using "Electron" sites then you would also need to consider other cases such as when ``p = q``, this would introduce a lot of extraneous complication. Luckily ITensorMPOConstruction provides a method to automatically perform these transformations. If you provide a set of operators on each site to `MPO_new` it will attempt to express the operators acting on each site as a single one of these "basis" operators.
+#
+# Unlike in real space, `MPO_new` is not a drop-in replacement for `MPO`. This is because, as expressed above, the Hamiltonian has multiple operators acting on the same site, violating [constraint #3](../documentation/MPO_new.md). For example, when ``k = 0`` in the second sum we have terms of the form ``c^\dagger_{p, \uparrow} c^\dagger_{q, \downarrow} c_{q, \downarrow} c_{p, \uparrow}``.
+#
+# You could always create a special case for ``k = 0`` and rewrite it as ``n_{p, \uparrow} n_{q, \downarrow}``. However, when using "Electron" sites, you would also need to consider other cases such as ``p = q``, which would introduce a lot of extraneous complication. Luckily, ITensorMPOConstruction provides a method to automatically perform these transformations. If you provide a set of operators on each site to `MPO_new`, it will attempt to express the operators acting on each site as a single one of these "basis" operators.
 
 using ITensors, ITensorMPS, ITensorMPOConstruction
 
@@ -61,14 +61,12 @@ function Fermi_Hubbard_momentum_space(
   end
 end;
 
-# For ``N = 16`` both ITensorMPS and ITensorMPOConstruction construct an MPO of bond dimension 156. But whereas ITensorMPS takes 6 seconds to produce an MPO of 92% sparsity, ITensorMPOConstruction takes only 0.06 seconds to produce an MPO that is 99.6% sparse.
-
 for N in [4, 16]
   for use_ITensors_alg in [true, false]
     alg = use_ITensors_alg ? "ITensorMPS" : "ITensorMPOConstruction"
 
     N > 4 &&
-      println("Constructing the Fermi-Hubbard real space MPO for $N sites using $alg")
+      println("Constructing the Fermi-Hubbard momentum space MPO for $N sites using $alg")
     ITensorMPOConstruction.@time_if (N > 4) 0 "Total construction time" mpo = Fermi_Hubbard_momentum_space(
       N; use_ITensors_alg
     )
@@ -79,14 +77,20 @@ for N in [4, 16]
   end
 end
 
-# ````
-# Constructing the Fermi-Hubbard real space MPO for 16 sites using ITensorMPS
-# Total construction time: 6.036585 seconds (8.10 M allocations: 3.314 GiB, 9.07% gc time)
-# The maximum bond dimension is 156
-# The sparsity is 0.9264518110540555
-
-# Constructing the Fermi-Hubbard real space MPO for 16 sites using ITensorMPOConstruction
-# Total construction time: 0.062162 seconds (1.04 M allocations: 68.179 MiB, 6.35% gc time)
-# The maximum bond dimension is 156
-# The sparsity is 0.9961176909060792
-# ````
+# ## Results
+# We constructed the 1D momentum-space Fermi-Hubbard Hamiltonian using ITensorMPS and ITensorMPOConstruction with the QR algorithm. For even ``N``, the Hamiltonian can be represented exactly as an MPO of bond dimension ``10 N - 4``, and both methods achieve this minimum bond dimension. However, ITensorMPOConstruction constructs this particular MPO much faster, and the sparsity of the resulting MPO is much higher. This is particularly interesting because the MPO from ITensorMPS was constructed with `splitblocks=true`, whereas for ITensorMPOConstruction we used `splitblocks=false`. The reason for this drastic difference in sparsity is that the momentum-space Fermi-Hubbard Hamiltonian conserves momentum, and even though we did not enforce this symmetry, ITensorMPOConstruction was able to exploit it via the connected-components subroutine. These timings were taken with `julia -t8 --gcthreads=8,1` on a 2021 MacBook Pro with the M1 Max CPU and 32GB of memory. In order to take advantage of the `OpIDSum` machinery, the ITensorMPOConstruction data is from [`fermi-hubbard-tc.jl`](./fermi-hubbard-tc.md) with equivalent settings.
+#
+# | ``N`` | ITensorMPS    | ITensorMPOConstruction: QR  |
+# |-------|---------------|-----------------------------|
+# | 10    | 0.32s / 92.7% | 0.01s / 99.32%              |
+# | 20    | 30.6s / 92.6% | 0.06s / 99.70%              |
+# | 30    | 792s / 92.6%  | 0.53s / 99.81%              |
+# | 40    | N/A           | 0.55s / 99.86%              |
+# | 50    | N/A           | 0.38s / 99.89%              |
+# | 100   | N/A           | 2.81s / 99.94%              |
+# | 200   | N/A           | 30.3s / 99.97%              |
+# | 300   | N/A           | 136s / 99.982%              |
+# | 400   | N/A           | 415s / 99.986%              |
+# | 500   | N/A           | 1274s / 99.989%             |
+#
+# Additionally, we constructed the MPO using the vertex cover algorithm, which turns out to be particularly ill-suited to this problem. Unlike the two other algorithms, the vertex cover algorithm produces MPOs of bond dimension ``1.5 N^2 + 4 N + 2``, far from the optimal of ``10 N - 4``. Granted, with `splitblocks=true` and `N = 100`, the MPO has a sparsity of 99.994%, but with a bond dimension of 15402 it still contains 25 times more nonzero entries than the MPO produced with the QR decomposition.

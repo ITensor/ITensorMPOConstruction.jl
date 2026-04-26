@@ -1,5 +1,6 @@
 using ITensorMPOConstruction
-using ITensorMPOConstruction: are_equal, get_onsite_op, is_fermionic, sort_fermion_perm!
+using ITensorMPOConstruction:
+  are_equal, get_onsite_op, is_fermionic, rewrite_in_operator_basis!, sort_fermion_perm!
 using ITensors
 using ITensorMPS
 using Test
@@ -95,6 +96,33 @@ function test_sort_fermion_perm()
   @test ops == [Cdag(1), C(1), Cdag(2), C(2)]
 end
 
+function test_rewrite_in_operator_basis!()
+  sites = siteinds("Qubit", 2)
+  op_cache_vec = to_OpCacheVec(sites, [["I", "Z", "X", "Y"] for _ in eachindex(sites)])
+  basis_op_cache_vec = to_OpCacheVec(
+    sites, [["I", "X", "Y", "Z"] for _ in eachindex(sites)]
+  )
+
+  X_orig(n) = OpID(3, n)
+  Y_orig(n) = OpID(4, n)
+
+  X_basis(n) = OpID(2, n)
+  Z_basis(n) = OpID(4, n)
+
+  os = OpIDSum{3,ComplexF64,Int}(1, op_cache_vec)
+  add!(os, 2.0, (X_orig(1), Y_orig(1), X_orig(2)))
+
+  rewrite_in_operator_basis!(os, basis_op_cache_vec)
+
+  scalar, ops = os[1]
+  nonzero_ops = [op for op in ops if op != zero(op)]
+
+  @test scalar ≈ 2im
+  @test nonzero_ops == [Z_basis(1), X_basis(2)]
+  @test count(op -> op == zero(op), ops) == 1
+  @test os.op_cache_vec === basis_op_cache_vec
+end
+
 @testset "Ops" begin
   test_are_equal()
 
@@ -103,4 +131,6 @@ end
   test_is_fermionic()
 
   test_sort_fermion_perm()
+
+  test_rewrite_in_operator_basis!()
 end

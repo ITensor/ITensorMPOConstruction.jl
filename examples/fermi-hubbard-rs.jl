@@ -1,10 +1,10 @@
 
 # # Fermi-Hubbard Hamiltonian in Real Space
-# The one dimensional Fermi-Hubbard Hamiltonian with periodic boundary conditions on ``N`` sites can be expressed in real space as
+# The one-dimensional Fermi-Hubbard Hamiltonian with periodic boundary conditions on ``N`` sites can be expressed in real space as
 # ```math
 # \mathcal{H} = -t \sum_{i = 1}^N \sum_{\sigma \in (\uparrow, \downarrow)} \left( c^\dagger_{i, \sigma} c_{i + 1, \sigma} + c^\dagger_{i, \sigma} c_{i - 1, \sigma} \right) + U \sum_{i = 1}^N n_{i, \uparrow} n_{i, \downarrow} \ ,
 # ```
-# where the periodic boundary conditions enforce that ``c_k = c_{k + N}``. For this Hamiltonian all that needs to be done to switch over to using ITensorMPOConstruction is switch `MPO(os, sites)` to `MPO_New(os, sites)`.
+# where the periodic boundary conditions enforce that ``c_i = c_{i + N}``. For this Hamiltonian, all that needs to be done to switch over to using ITensorMPOConstruction is to switch `MPO(os, sites)` to `MPO_new(os, sites)`.
 
 using ITensors, ITensorMPS, ITensorMPOConstruction
 

@@ -2,6 +2,10 @@
     LeftVertex
 
 Represents a left vertex of the bipartite MPO graph.
+
+Each left vertex describes one incoming MPO link and the local operator that
+must be emitted at the current site while extending paths through the graph.
+
 Fields:
 - `link`: integer label for the incoming (left) MPO link.
 - `op_id`: identifier specifying the operator acting on the current site.
@@ -39,9 +43,9 @@ end
 Return a comparator function that checks whether two products of `OpID` are
 equal from site `n` onward.
 
-The returned function expects tuples sorted by decreasing site and applies the
-same comparison rule as [`are_equal`](@ref): once both tuples have moved to
-sites `< n` at the same position, the remaining entries are ignored.
+The returned function expects the same tuple ordering as [`are_equal`](@ref):
+once both tuples have moved to sites `< n` at the same position, the remaining
+entries are ignored.
 """
 function terms_eq_from(n::Int)::Function
   function are_equal(op1::NTuple{N,OpID}, op2::NTuple{N,OpID})::Bool where {N}
@@ -61,7 +65,8 @@ end
 
 Return the operator id in `ops` acting on site `n`.
 
-If no operator acts on site `n`, this returns `1` a.k.a the identity operator.
+If no operator acts on site `n`, this returns `1`, the reserved identity
+operator id.
 """
 function get_onsite_op(ops::NTuple{N,OpID{Ti}}, n::Int)::Ti where {N,Ti}
   for i in 1:N
