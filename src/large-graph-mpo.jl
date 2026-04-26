@@ -39,7 +39,9 @@ function pretty_print(g::MPOGraph, n::Int, op_cache_vec::OpCacheVec)
   num_right = right_size(g)
   total_edges = num_edges(g)
 
-  println("MPOGraph at site $n has $num_left left vertices, $num_right right vertices and $total_edges edges")
+  println(
+    "MPOGraph at site $n has $num_left left vertices, $num_right right vertices and $total_edges edges",
+  )
   println("  Left vertices:")
   for (lv_id, lv) in enumerate(g.left_vertices)
     op = op_cache_vec[n][lv.op_id].name
@@ -577,7 +579,9 @@ otherwise this also builds `next_edges_of_cc` for the graph at site `n + 1`.
     n == length(sites) && continue
 
     ## Preallocate space for next_edges
-    next_edges = Matrix{Tuple{Vector{Int},Vector{C}}}(undef, rank, length(op_cache_vec[n + 1]))
+    next_edges = Matrix{Tuple{Vector{Int},Vector{C}}}(
+      undef, rank, length(op_cache_vec[n + 1])
+    )
     let
       next_edge_sizes = zeros(Int, rank, length(op_cache_vec[n + 1]))
       @inbounds for m in eachindex(left_cover)
@@ -667,15 +671,7 @@ blocks.
     ## a very common case that can be sped up significantly.
     if left_size(ccs, cc) == 1
       process_single_left_vertex_cc!(
-        matrix_of_cc,
-        rank_of_cc,
-        next_edges_of_cc,
-        g,
-        ccs,
-        cc,
-        n,
-        sites,
-        op_cache_vec,
+        matrix_of_cc, rank_of_cc, next_edges_of_cc, g, ccs, cc, n, sites, op_cache_vec
       )
       continue
     end
@@ -743,7 +739,9 @@ blocks.
     end
 
     ## Build the graph for the next site out of this component.
-    next_edges = Matrix{Tuple{Vector{Int},Vector{C}}}(undef, rank, length(op_cache_vec[n + 1]))
+    next_edges = Matrix{Tuple{Vector{Int},Vector{C}}}(
+      undef, rank, length(op_cache_vec[n + 1])
+    )
     for i in eachindex(next_edges)
       right_vertex_ids = Int[]
       edge_weights = C[]
@@ -853,14 +851,7 @@ known.
     )
   elseif alg == "VC"
     process_vertex_cover!(
-      matrix_of_cc,
-      rank_of_cc,
-      next_edges_of_cc,
-      g,
-      ccs,
-      n,
-      sites,
-      op_cache_vec,
+      matrix_of_cc, rank_of_cc, next_edges_of_cc, g, ccs, n, sites, op_cache_vec
     )
   else
     throw(ArgumentError("The supported algorithms are 'QR' and 'VC': $alg"))
@@ -889,9 +880,8 @@ known.
 
   if has_qns
     outgoing_link = Index(qi_of_cc; tags="Link,l=$n", dir=ITensors.Out)
-    output_level > 1 && println(
-      "  Total rank is $cur_offset with $(length(qi_of_cc)) different QN sectors."
-    )
+    output_level > 1 &&
+      println("  Total rank is $cur_offset with $(length(qi_of_cc)) different QN sectors.")
   else
     outgoing_link = Index(cur_offset; tags="Link,l=$n")
     output_level > 1 && println("    Total rank is $cur_offset.")

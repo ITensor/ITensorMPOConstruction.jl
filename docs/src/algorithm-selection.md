@@ -2,7 +2,7 @@
 
 The answer is, of course, system-dependent, and we recommend trying both to see which performs better for your specific system. Below we list the pros and cons of each algorithm, in case you want to build an intuition for why one works better than the other.
 
-## The QR decomposition (`alg = "QR"`)
+## QR decomposition (`alg = "QR"`)
 
 Best for systems where the coefficients of the terms in the `OpSum` have structure. The [Momentum Space Fermi-Hubbard](examples/fermi-hubbard-ks.md) Hamiltonian is a prime example of such a system.
 
@@ -14,7 +14,7 @@ Best for systems where the coefficients of the terms in the `OpSum` have structu
 * With `splitblocks = true` the sparsity can be poor.
 * Uses more memory and is slower than the vertex cover algorithm for unstructured problems.
 
-## The minimum vertex cover algorithm (`alg = "VC"`)
+## Minimum vertex cover (`alg = "VC"`)
 
 Best for systems where the coefficients of the terms in the `OpSum` are unstructured or essentially random. The [Electronic Structure](examples/electronic-structure.md) Hamiltonian is one such system.
 

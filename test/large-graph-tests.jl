@@ -305,7 +305,9 @@ function test_minimum_vertex_cover_duplicate_edges_in_component()
 
   for cc in 1:num_connected_components(ccs)
     component_adj, _, right_map = component_adjacency(g, ccs, cc)
-    has_duplicate_edge = any(local_rvs -> length(unique(local_rvs)) < length(local_rvs), component_adj)
+    has_duplicate_edge = any(
+      local_rvs -> length(unique(local_rvs)) < length(local_rvs), component_adj
+    )
     has_duplicate_edge || continue
 
     found_duplicate_component = true
@@ -321,9 +323,7 @@ end
 function test_minimum_vertex_cover()
   deterministic_cases = [
     BipartiteGraph{Int,Int,Int}(Int[], Int[], Vector{Vector{Int}}(), Vector{Vector{Int}}()),
-    BipartiteGraph{Int,Int,Int}(
-      collect(1:2), collect(1:3), [[2], Int[]], [[7], Int[]]
-    ),
+    BipartiteGraph{Int,Int,Int}(collect(1:2), collect(1:3), [[2], Int[]], [[7], Int[]]),
     BipartiteGraph{Int,Int,Int}(
       collect(1:3), collect(1:3), [[1], [2], [3]], [[1], [1], [1]]
     ),
@@ -375,7 +375,7 @@ end
   end
 
   @testset "combine duplicates" test_combine_duplicate_adjacent_right_vertices()
-  
+
   @testset "get conected component matrix" begin
     test_get_cc_matrix()
     test_get_cc_matrix_duplicate_edges()

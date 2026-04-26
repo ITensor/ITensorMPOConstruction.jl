@@ -56,7 +56,7 @@ function test_from_OpSum(
   sites::Vector{<:Index},
   alg::String,
   compare_linkdims_if_VC::Bool;
-  basis_op_cache_vec::Union{Nothing,OpCacheVec} = nothing,
+  basis_op_cache_vec::Union{Nothing,OpCacheVec}=nothing,
   splitblocks::Bool=false,
   combine_qn_sectors::Bool=false,
 )::Tuple{MPO,MPO}
@@ -270,10 +270,12 @@ function test_non_zero_flux(alg::String)::Nothing
   return nothing
 end
 
-function test_Fermi_Hubbard_real_space(N::Int, alg::String, splitblocks::Bool, combine_qn_sectors::Bool)::Nothing
+function test_Fermi_Hubbard_real_space(
+  N::Int, alg::String, splitblocks::Bool, combine_qn_sectors::Bool
+)::Nothing
   t, U = 1, 4
   sites = siteinds("Electron", N; conserve_qns=true)
-  
+
   os = OpSum{Float64}()
   for i in 1:N
     for j in (mod1(i + 1, N), mod1(i - 1, N))
@@ -288,7 +290,9 @@ function test_Fermi_Hubbard_real_space(N::Int, alg::String, splitblocks::Bool, c
   return nothing
 end
 
-function test_Fermi_Hubbard(N::Int, alg::String, splitblocks::Bool, combine_qn_sectors::Bool)::Nothing
+function test_Fermi_Hubbard(
+  N::Int, alg::String, splitblocks::Bool, combine_qn_sectors::Bool
+)::Nothing
   t, U = 1, 1e-10
   sites = siteinds("Electron", N; conserve_qns=true)
 
@@ -332,8 +336,10 @@ function test_Fermi_Hubbard(N::Int, alg::String, splitblocks::Bool, combine_qn_s
     n in eachindex(sites)
   ]
 
-  algMPO, _ = test_from_OpSum(os, sites, alg, false; basis_op_cache_vec=op_cache_vec, splitblocks, combine_qn_sectors)
-  
+  algMPO, _ = test_from_OpSum(
+    os, sites, alg, false; basis_op_cache_vec=op_cache_vec, splitblocks, combine_qn_sectors
+  )
+
   if alg == "QR" && mod(N, 2) == 0
     @test maxlinkdim(algMPO) == 10 * N - 4
   end
@@ -393,7 +399,7 @@ end
       test_weight_one(100, alg)
       test_weight_one(200, alg)
     end
-    
+
     @testset "$alg: random operator" test_random_operator(8, 4, alg)
 
     @testset "$alg: non zero flux" test_non_zero_flux(alg)

@@ -388,10 +388,17 @@ for grid_size in ((2, 2), (6, 6))
     @time "Constructing OpIDSum" sites, os = transcorrelated_fermi_hubbard(t, U, J, mapping)
     reset_timer!()
     @time "Constructing MPO" H = MPO_new(
-      os, sites; splitblocks=false, combine_qn_sectors=true, output_level=0, check_for_errors=false
+      os,
+      sites;
+      splitblocks=false,
+      combine_qn_sectors=true,
+      output_level=0,
+      check_for_errors=false,
     )
 
-    println("Constructed the MPO of bond dimension $(maxlinkdim(H)) and sparsity $(sparsity(H))")
+    println(
+      "Constructed the MPO of bond dimension $(maxlinkdim(H)) and sparsity $(sparsity(H))"
+    )
     grid_size != (2, 2) && print_timer()
   end
 end
@@ -418,7 +425,9 @@ function call_back(
   op_cache_vec::OpCacheVec,
 )::Nothing where {ValType<:Number}
   n != 18 && return nothing
-  serialize("./mpo.jldump", (n, offsets, block_sparse_matrices, sites, llinks, g, op_cache_vec))
+  serialize(
+    "./mpo.jldump", (n, offsets, block_sparse_matrices, sites, llinks, g, op_cache_vec)
+  )
   println("Wrote a checkpoint to ./mpo.jldump")
 
   throw(InterruptException())
@@ -429,7 +438,14 @@ end
 let t = 1, U = 4, J = -0.5, mapping = standard_mapping((6, 6))
   sites, os = transcorrelated_fermi_hubbard(t, U, J, mapping; conserve_momentum=false)
   try
-    MPO_new(os, sites; splitblocks=false, combine_qn_sectors=true, check_for_errors=false, call_back)
+    MPO_new(
+      os,
+      sites;
+      splitblocks=false,
+      combine_qn_sectors=true,
+      check_for_errors=false,
+      call_back,
+    )
   catch e
     if e isa InterruptException
       println("Caught an InterruptException!")
@@ -443,7 +459,15 @@ let t = 1, U = 4, J = -0.5, mapping = standard_mapping((6, 6))
     "./mpo.jldump"
   )
   resume_MPO_construction!(
-    n + 1, offsets, block_sparse_matrices, sites, llinks, g, op_cache_vec; combine_qn_sectors=true, call_back
+    n + 1,
+    offsets,
+    block_sparse_matrices,
+    sites,
+    llinks,
+    g,
+    op_cache_vec;
+    combine_qn_sectors=true,
+    call_back,
   )
   H = ITensorMPOConstruction.instantiate_MPO(
     offsets, block_sparse_matrices, sites, llinks; splitblocks=false, checkflux=true

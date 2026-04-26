@@ -18,7 +18,11 @@ function reference_to_ITensor(
     site = ITensors.splitblocks(site)
   end
 
-  T = ITensors.BlockSparseTensor(eltype(first(first(values(first(block_sparse_matrices))))), Block{4}[], (dag(llink), rlink, prime(site), dag(site)))
+  T = ITensors.BlockSparseTensor(
+    eltype(first(first(values(first(block_sparse_matrices))))),
+    Block{4}[],
+    (dag(llink), rlink, prime(site), dag(site)),
+  )
 
   for (offset, matrix) in zip(offsets, block_sparse_matrices)
     for ((left_link, right_link), block) in matrix

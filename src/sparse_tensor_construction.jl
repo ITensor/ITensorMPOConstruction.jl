@@ -135,8 +135,8 @@ function _to_ITensor_splitblocks(
   inds = (dag(llink), rlink, prime(site), dag(site))
 
   num_nonzero_entries = sum(
-    count(value -> !iszero(value), block) for
-    matrix in block_sparse_matrices for block in values(matrix)
+    count(value -> !iszero(value), block) for matrix in block_sparse_matrices for
+    block in values(matrix)
   )
 
   blocks = Vector{Block{4}}(undef, num_nonzero_entries)
@@ -144,9 +144,7 @@ function _to_ITensor_splitblocks(
 
   _fill_splitblocks!(blocks, block_values, offsets, block_sparse_matrices)
 
-  block_offsets = ITensors.NDTensors.BlockOffsets{4}(
-    blocks, 0:(num_nonzero_entries - 1)
-  )
+  block_offsets = ITensors.NDTensors.BlockOffsets{4}(blocks, 0:(num_nonzero_entries - 1))
 
   T = ITensors.tensor(ITensors.NDTensors.BlockSparse(block_values, block_offsets), inds)
   return itensor(T)
@@ -178,9 +176,7 @@ function to_ITensor(
   splitblocks::Bool=false,
 )::ITensor where {C}
   if splitblocks
-    return _to_ITensor_splitblocks(
-      offsets, block_sparse_matrices, llink, rlink, site
-    )
+    return _to_ITensor_splitblocks(offsets, block_sparse_matrices, llink, rlink, site)
   end
 
   inds = (dag(llink), rlink, prime(site), dag(site))

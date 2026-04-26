@@ -99,7 +99,9 @@ end
 function test_rewrite_in_operator_basis!()
   sites = siteinds("Qubit", 2)
   op_cache_vec = to_OpCacheVec(sites, [["I", "Z", "X", "Y"] for _ in eachindex(sites)])
-  basis_op_cache_vec = to_OpCacheVec(sites, [["I", "X", "Y", "Z"] for _ in eachindex(sites)])
+  basis_op_cache_vec = to_OpCacheVec(
+    sites, [["I", "X", "Y", "Z"] for _ in eachindex(sites)]
+  )
 
   X_orig(n) = OpID(3, n)
   Y_orig(n) = OpID(4, n)

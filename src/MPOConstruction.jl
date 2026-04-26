@@ -107,18 +107,13 @@ function instantiate_MPO(
   sites::Vector{<:Index},
   llinks::Vector{<:Index};
   splitblocks::Bool,
-  checkflux::Bool
+  checkflux::Bool,
 )::MPO where {ValType<:Number}
   H = MPO(sites)
 
   @timeit "to_ITensor" Threads.@threads for n in 1:length(sites)
     H[n] = to_ITensor(
-      offsets[n],
-      block_sparse_matrices[n],
-      llinks[n],
-      llinks[n + 1],
-      sites[n];
-      splitblocks,
+      offsets[n], block_sparse_matrices[n], llinks[n], llinks[n + 1], sites[n]; splitblocks
     )
   end
 
@@ -171,13 +166,17 @@ function MPO_new(
   basis_op_cache_vec=nothing,
   check_for_errors::Bool=true,
   checkflux::Bool=true,
-  splitblocks::Union{Bool, Nothing}=nothing,
+  splitblocks::Union{Bool,Nothing}=nothing,
   output_level::Int=0,
   kwargs...,
 )::MPO
   if isnothing(splitblocks) # TODO: Remove warning some time after v0.2.1 release
     splitblocks = true
-    hasqns(sites) && Base.depwarn("`splitblocks` not specified. The default is `true`, which is a change from prior behavior.", :MPO_new; force=true)
+    hasqns(sites) && Base.depwarn(
+      "`splitblocks` not specified. The default is `true`, which is a change from prior behavior.",
+      :MPO_new;
+      force=true,
+    )
   end
 
   prepare_opID_sum!(os, to_OpCacheVec(sites, basis_op_cache_vec))
@@ -197,10 +196,20 @@ function MPO_new(
   block_sparse_matrices = Vector{Vector{BlockSparseMatrix{ValType}}}(undef, length(sites))
 
   @time_if output_level 0 "Constructing MPO terms" resume_MPO_construction!(
-    1, offsets, block_sparse_matrices, sites, llinks, g, os.op_cache_vec; output_level, kwargs...
+    1,
+    offsets,
+    block_sparse_matrices,
+    sites,
+    llinks,
+    g,
+    os.op_cache_vec;
+    output_level,
+    kwargs...,
   )
 
-  @time_if output_level 0 "Converting to ITensors" H = instantiate_MPO(offsets, block_sparse_matrices, sites, llinks; splitblocks, checkflux)
+  @time_if output_level 0 "Converting to ITensors" H = instantiate_MPO(
+    offsets, block_sparse_matrices, sites, llinks; splitblocks, checkflux
+  )
 
   return H
 end

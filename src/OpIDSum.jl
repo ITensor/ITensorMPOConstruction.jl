@@ -31,7 +31,12 @@ function OpInfo(local_op::Op, site::Index)
   tensor = op(site, ITensors.which_op(local_op); ITensors.params(local_op)...)
   is_fermionic = has_fermion_string(ITensors.name(local_op), site)
   qn_flux = flux(tensor)
-  return OpInfo("$(local_op.which_op)", copy(array(tensor)), is_fermionic, isnothing(qn_flux) ? QN() : qn_flux)
+  return OpInfo(
+    "$(local_op.which_op)",
+    copy(array(tensor)),
+    is_fermionic,
+    isnothing(qn_flux) ? QN() : qn_flux,
+  )
 end
 
 """
@@ -583,7 +588,9 @@ Apply optional preprocessing to `os` before MPO construction.
 Currently this rewrites terms into `basis_op_cache_vec` when a basis cache is
 provided and otherwise leaves `os` unchanged.
 """
-function prepare_opID_sum!(os::OpIDSum, basis_op_cache_vec::Union{Nothing,OpCacheVec})::Nothing
+function prepare_opID_sum!(
+  os::OpIDSum, basis_op_cache_vec::Union{Nothing,OpCacheVec}
+)::Nothing
   if !isnothing(basis_op_cache_vec)
     rewrite_in_operator_basis!(os, basis_op_cache_vec)
   end

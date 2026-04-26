@@ -39,16 +39,17 @@ function get_coefficients(N::Int)::Tuple{Array{Float64,2},Array{Float64,4}}
   V0 = randn(N, N, N, N)
   V = similar(V0)
   for p in 1:N, s in 1:N, q in 1:N, r in 1:N
-    V[p, s, q, r] = (
-      V0[p, s, q, r] +
-      V0[s, p, q, r] +
-      V0[p, s, r, q] +
-      V0[s, p, r, q] +
-      V0[q, r, p, s] +
-      V0[r, q, p, s] +
-      V0[q, r, s, p] +
-      V0[r, q, s, p]
-    ) / 8
+    V[p, s, q, r] =
+      (
+        V0[p, s, q, r] +
+        V0[s, p, q, r] +
+        V0[p, s, r, q] +
+        V0[s, p, r, q] +
+        V0[q, r, p, s] +
+        V0[r, q, p, s] +
+        V0[q, r, s, p] +
+        V0[r, q, s, p]
+      ) / 8
   end
 
   return h, V
@@ -56,8 +57,7 @@ end
 
 function electronic_structure_OpIDSum(
   N::Int, h::Array{Float64,2}, V::Array{Float64,4}
-)::Tuple{Vector{<:Index}, OpIDSum}
-
+)::Tuple{Vector{<:Index},OpIDSum}
   ↓ = false
   ↑ = true
 
@@ -137,11 +137,23 @@ for alg in ("VC", "QR")
     println("Constructing the electronic structure MPO for $N sites using $alg")
 
     reset_timer!()
-    @time "Constructing OpIDSum" sites, os = electronic_structure_OpIDSum(N, get_coefficients(N)...)
-    @time "Constructing MPO" H = MPO_new(os, sites; alg, basis_op_cache_vec=os.op_cache_vec, splitblocks=true, check_for_errors=false, checkflux=false) # TODO: remove splitblocks=true after warning
+    @time "Constructing OpIDSum" sites, os = electronic_structure_OpIDSum(
+      N, get_coefficients(N)...
+    )
+    @time "Constructing MPO" H = MPO_new(
+      os,
+      sites;
+      alg,
+      basis_op_cache_vec=os.op_cache_vec,
+      splitblocks=true,
+      check_for_errors=false,
+      checkflux=false,
+    ) # TODO: remove splitblocks=true after warning
     N > 5 && print_timer()
 
-    println("The maximum bond dimension is $(maxlinkdim(H)), sparsity = $(ITensorMPOConstruction.sparsity(H))")
+    println(
+      "The maximum bond dimension is $(maxlinkdim(H)), sparsity = $(ITensorMPOConstruction.sparsity(H))",
+    )
     @assert maxlinkdim(H) == 2 * N^2 + 3 * N + 2
 
     println()
