@@ -345,7 +345,7 @@ function bipartite_mapping(grid_size)
 end</code></pre><h2 id="Constructing-the-MPO"><a class="docs-heading-anchor" href="#Constructing-the-MPO">Constructing the MPO</a><a id="Constructing-the-MPO-1"></a><a class="docs-heading-anchor-permalink" href="#Constructing-the-MPO" title="Permalink"></a></h2><pre><code class="language-julia hljs">using TimerOutputs
 for grid_size in ((2, 2), (6, 6))
   let t = 1, U = 4, J = -0.5, mapping = bipartite_mapping(grid_size)
-    @time &quot;Constructing OpIDSum&quot; sites, os = transcorrelated_fermi_hubbard(t, U, J, mapping)
+    @time &quot;Constructing OpIDSum&quot; sites, os = transcorrelated_fermi_hubbard(t, U, J, mapping; conserve_momentum=true)
     reset_timer!()
     @time &quot;Constructing MPO&quot; H = MPO_new(
       os,
@@ -356,10 +356,19 @@ for grid_size in ((2, 2), (6, 6))
       check_for_errors=false,
     )
 
+    prod(grid_size) &gt; 4 &amp;&amp; print_timer()
+
+    percent_sparse = round(100 * sparsity(H); digits=3)
     println(
-      &quot;Constructed the MPO of bond dimension $(maxlinkdim(H)) and sparsity $(sparsity(H))&quot;
+      &quot;The maximum bond dimension is $(maxlinkdim(H)), sparsity = $percent_sparse%&quot;,
     )
-    grid_size != (2, 2) &amp;&amp; print_timer()
+
+    if iszero(J) &amp;&amp; length(grid_size) == 1 &amp;&amp; mapping == standard_mapping(grid_size)
+      @assert maxlinkdim(H) == 10 * N - 4
+    end
+
+    GC.gc(true)
+    println()
   end
 end</code></pre><p>The transcorrelated momentum-space Fermi-Hubbard MPO is very sparse. As such, using all Julia threads gives the best performance. The following timings are for the <span>$8 \times 8$</span> system on a computer with two Intel(R) Xeon(R) Gold 6438Y+ CPUs (64 total threads) and 250 GiB of memory.</p><table><tr><th style="text-align: right">Julia threads</th><th style="text-align: right">BLAS Threads</th><th style="text-align: right">OpIDSum time</th><th style="text-align: right">MPO time</th></tr><tr><td style="text-align: right">1</td><td style="text-align: right">64</td><td style="text-align: right">207s</td><td style="text-align: right">2625s</td></tr><tr><td style="text-align: right">64</td><td style="text-align: right">1</td><td style="text-align: right">33s</td><td style="text-align: right">1153s</td></tr></table><h1 id="Writing-a-Checkpoint-File"><a class="docs-heading-anchor" href="#Writing-a-Checkpoint-File">Writing a Checkpoint File</a><a id="Writing-a-Checkpoint-File-1"></a><a class="docs-heading-anchor-permalink" href="#Writing-a-Checkpoint-File" title="Permalink"></a></h1><p>In certain cases (such as for the <span>$10 \times 10$</span> and <span>$12 \times 12$</span> systems), MPO construction can take so long that it is prudent to write out a checkpoint file in case of failure. This can be accomplished with the <code>call_back</code> parameter to <code>MPO_new</code>; construction can be resumed later by calling <code>resume_MPO_construction!</code> and then <code>instantiate_MPO</code>. This functionality is demonstrated below.</p><pre><code class="language-julia hljs">using Serialization
 
@@ -425,4 +434,4 @@ let t = 1, U = 4, J = -0.5, mapping = standard_mapping((6, 6))
 end</code></pre><pre><code class="nohighlight hljs">Wrote a checkpoint to ./mpo.jldump
 Caught an InterruptException!
 Reading a checkpoint from ./mpo.jldump
-Construction finished!</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../haldane-shastry/">« Haldane-Shastry and Truncation</a><a class="docs-footer-nextpage" href="../../threading/">Threading and Performance »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Sunday 26 April 2026 05:54">Sunday 26 April 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+Construction finished!</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../haldane-shastry/">« Haldane-Shastry and Truncation</a><a class="docs-footer-nextpage" href="../../threading/">Threading and Performance »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Sunday 26 April 2026 20:41">Sunday 26 April 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
