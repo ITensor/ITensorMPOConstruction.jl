@@ -34,7 +34,6 @@ otherwise this also builds `next_edges_of_cc` for the graph at site `n + 1`.
 
   # TODO: Consider nested multithreading
   Threads.@threads for cc in 1:num_connected_components(ccs)
-    matrix = matrix_of_cc[cc]
     lvs_of_component::Vector{Int} = ccs.lvs_of_component[cc]
     position_of_rvs_in_component = ccs.position_of_rvs_in_component
     rv_size_of_component = ccs.rv_size_of_component[cc]
@@ -45,6 +44,9 @@ otherwise this also builds `next_edges_of_cc` for the graph at site `n + 1`.
     rank = length(left_cover) + length(right_cover)
     rank_of_cc[cc] = rank
 
+    matrix = [Dict{Int,Matrix{ValType}}() for _ in 1:rank]
+    matrix_of_cc[cc] = matrix
+
     ## Construct the tensor from the left cover.
     @inbounds for m in eachindex(left_cover)
       lv_id = lvs_of_component[left_cover[m]]
@@ -53,7 +55,7 @@ otherwise this also builds `next_edges_of_cc` for the graph at site `n + 1`.
 
       matrix_element = zeros(ValType, site_dim, site_dim)
       add_to_local_matrix!(matrix_element, one(ValType), local_op, lv.needs_JW_string)
-      matrix[lv.link, m] = matrix_element
+      matrix[m][lv.link] = matrix_element
     end
 
     ## Construct the tensor from the right cover.
@@ -85,7 +87,7 @@ otherwise this also builds `next_edges_of_cc` for the graph at site `n + 1`.
         for (rv_id, weight) in weighted_edge_iterator(g, lv_id)
           m = right_cover_m[position_of_rvs_in_component[rv_id]]
 
-          matrix_element = get!(matrix, (lv.link, m)) do
+          matrix_element = get!(matrix[m], lv.link) do
             zeros(ValType, site_dim, site_dim)
           end
 
@@ -158,4 +160,3 @@ otherwise this also builds `next_edges_of_cc` for the graph at site `n + 1`.
 
   return nothing
 end
-

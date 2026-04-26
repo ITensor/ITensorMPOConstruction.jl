@@ -1,16 +1,15 @@
 """
     BlockSparseMatrix{C}
 
-Dictionary-backed block-sparse matrix representation used for intermediate MPO
+Vector-backed block-sparse matrix representation used for intermediate MPO
 tensor storage.
 
-Keys are `(left_link, right_link)` pairs and values are dense local operator
-matrices for that block. The right link ids are local to the component being
-processed; `at_site!` later returns offsets that place component-local
-right-link ids into the full outgoing MPO bond.
+The outer vector is indexed by component-local `right_link`. Each inner
+dictionary maps `left_link` to the dense local operator matrix for that block.
+`at_site!` later returns offsets that place component-local right-link ids into
+the full outgoing MPO bond.
 """
-BlockSparseMatrix{C} = Dict{Tuple{Int,Int},Matrix{C}}
-# TODO: consider changing to Vector{Dict{Int, Matrix{C}}} from right_link => (left_link => matrix) and use Dictionaries.jl
+BlockSparseMatrix{C} = Vector{Dict{Int,Matrix{C}}}
 
 """
     MPOGraph{N,C,Ti}
@@ -332,6 +331,7 @@ function merge_qn_sectors(
   return new_order, new_qi
 end
 
+# TODO: Move this into large-graph-mpo-qr.jl
 """
     process_single_left_vertex_cc!(
       matrix_of_cc, rank_of_cc, next_edges_of_cc, g, ccs, cc, n, sites, op_cache_vec
@@ -362,7 +362,10 @@ function process_single_left_vertex_cc!(
   lv = left_vertex(g, lv_id)
   local_op = op_cache_vec[n][lv.op_id].matrix
 
-  matrix_element = get!(matrix_of_cc[cc], (lv.link, rank)) do
+  matrix = [Dict{Int,Matrix{ValType}}() for _ in 1:rank]
+  matrix_of_cc[cc] = matrix
+
+  matrix_element = get!(matrix[rank], lv.link) do
     return zeros(ValType, dim(sites[n]), dim(sites[n]))
   end
 
@@ -371,7 +374,7 @@ function process_single_left_vertex_cc!(
   if n == length(sites)
     scaling = only(g.edge_weights_from_left[lv_id])
 
-    for block in values(matrix_of_cc[cc])
+    for column in matrix, block in values(column)
       block .*= scaling
     end
 

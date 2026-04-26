@@ -4,14 +4,14 @@ using Test
 
 function reference_to_ITensor(
   offsets::Vector{Int},
-  block_sparse_matrices,
+  block_sparse_matrices::Vector{ITensorMPOConstruction.BlockSparseMatrix{C}},
   llink::ITensors.QNIndex,
   rlink::ITensors.QNIndex,
   site::ITensors.QNIndex;
   splitblocks=false,
   tol=0.0,
   checkflux=true,
-)::ITensor
+)::ITensor where {C}
   if splitblocks
     llink = ITensors.splitblocks(llink)
     rlink = ITensors.splitblocks(rlink)
@@ -19,17 +19,19 @@ function reference_to_ITensor(
   end
 
   T = ITensors.BlockSparseTensor(
-    eltype(first(first(values(first(block_sparse_matrices))))),
+    C,
     Block{4}[],
     (dag(llink), rlink, prime(site), dag(site)),
   )
 
   for (offset, matrix) in zip(offsets, block_sparse_matrices)
-    for ((left_link, right_link), block) in matrix
-      for i in axes(block, 1)
-        for j in axes(block, 2)
-          if abs(block[i, j]) > tol
-            T[left_link, right_link + offset, i, j] = block[i, j]
+    for (right_link, column) in enumerate(matrix)
+      for (left_link, block) in column
+        for i in axes(block, 1)
+          for j in axes(block, 2)
+            if abs(block[i, j]) > tol
+              T[left_link, right_link + offset, i, j] = block[i, j]
+            end
           end
         end
       end
@@ -47,14 +49,14 @@ function test_sparse_to_ITensor_matches_reference(splitblocks::Bool=false)
 
   offsets = [0, 1]
   block_sparse_matrices = [
-    Dict(
-      (1, 1) => [1.0 -2.0 0.0; 3.0 4.0 0.0; 0.0 0.0 5.0],
-      (3, 2) => [0.0 0.0 0.0; -6.0 0.0 0.0; 0.0 0.0 -1.5],
-    ),
-    Dict(
-      (2, 1) => [0.0 0.0 7.0; 0.0 0.0 -8.0; 0.0 0.0 0.0],
-      (3, 2) => [0.25 0.5 0.0; -0.75 1.0 0.0; 0.0 0.0 -2.0],
-    ),
+    [
+      Dict(1 => [1.0 -2.0 0.0; 3.0 4.0 0.0; 0.0 0.0 5.0]),
+      Dict(3 => [0.0 0.0 0.0; -6.0 0.0 0.0; 0.0 0.0 -1.5]),
+    ],
+    [
+      Dict(2 => [0.0 0.0 7.0; 0.0 0.0 -8.0; 0.0 0.0 0.0]),
+      Dict(3 => [0.25 0.5 0.0; -0.75 1.0 0.0; 0.0 0.0 -2.0]),
+    ],
   ]
 
   expected = reference_to_ITensor(
@@ -74,7 +76,7 @@ function test_sparse_to_ITensor_all_zero_blocks(splitblocks::Bool=false)
   site = Index([QN("N", 0) => 2, QN("N", 1) => 1]; tags="Site", dir=ITensors.Out)
 
   offsets = [0]
-  block_sparse_matrices = [Dict((1, 1) => zeros(ComplexF64, dim(site), dim(site)))]
+  block_sparse_matrices = [[Dict(1 => zeros(ComplexF64, dim(site), dim(site)))]]
 
   expected = reference_to_ITensor(
     offsets, block_sparse_matrices, llink, rlink, site; splitblocks

@@ -115,7 +115,6 @@ blocks.
       continue
     end
 
-    matrix = matrix_of_cc[cc]
     W, left_map, right_map = get_cc_matrix(g, ccs, cc; clear_edges=true)
 
     ## Compute the decomposition and then free W
@@ -123,6 +122,9 @@ blocks.
     W = nothing
 
     rank_of_cc[cc] = rank
+
+    matrix = [Dict{Int,Matrix{ValType}}() for _ in 1:rank]
+    matrix_of_cc[cc] = matrix
 
     ## Form the local transformation tensor.
     for_non_zeros_batch(Q, rank) do weights::AbstractVector{C}, m::Int
@@ -133,7 +135,7 @@ blocks.
         lv = left_vertex(g, left_map[prow[i]])
         local_op = op_cache_vec[n][lv.op_id].matrix
 
-        matrix_element = get!(matrix, (lv.link, m)) do
+        matrix_element = get!(matrix[m], lv.link) do
           return zeros(ValType, dim(sites[n]), dim(sites[n]))
         end
 
@@ -148,7 +150,7 @@ blocks.
     ## If we are at the last site, then R will be a 1x1 matrix containing an overall scaling.
     if n == length(sites)
       scaling = only(R)
-      for block in values(matrix)
+      for column in matrix, block in values(column)
         block .*= scaling
       end
 
@@ -208,4 +210,3 @@ blocks.
 
   return nothing
 end
-
