@@ -87,7 +87,7 @@ end
 Remove all stored edge entries incident on the left vertex id `lv_id`.
 
 This clears both the adjacent right-vertex ids and their corresponding edge
-weights, and retained capacity in those per-vertex adjacency lists.
+weights, and releases retained capacity in those per-vertex adjacency lists.
 """
 @inline function clear_edges_from_left!(g::BipartiteGraph, lv_id::Integer)::Nothing
   empty!(g.right_vertex_ids_from_left[lv_id])

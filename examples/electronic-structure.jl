@@ -1,12 +1,12 @@
 # # The electronic structure Hamiltonian
-# 
-# With $N$ spin-orbitals the electronic strucutre Hamiltonian is
+#
+# With ``N`` spatial orbitals, the electronic structure Hamiltonian is
 # ```math
 # \mathcal{H} = \sum_{p \leq q = 1}^N \sum_{\sigma \in \{ \uparrow, \downarrow \}} h_{p q} a^\dagger_{p, \sigma} a_{q, \sigma} + \sum_{p, q, r, s}^N \sum_{\sigma, \tau \in \{ \uparrow, \downarrow \}} V_{p q r s} a^\dagger_{p, \sigma} a^\dagger_{q, \tau} a_{r, \tau} a_{s, \sigma}
 # ```
-# Where ``h_{p q} = (p | q)`` and ``V_{p q r s} = (p s | q r)`` in the chemist's notation.
+# where ``h_{p q} = (p | q)`` and ``V_{p q r s} = (p s | q r)`` in the chemist's notation.
 #
-# Here we construct an artificial Hamiltonian with random ``h`` and ``V``, though they satisfy the standard perumtation symmetries. It turns out that the electronic structure Hamiltonian, even with coefficients from physical systems, is a prime example of when the minimum vertex cover algorithm (`alg = VC`) is superior to the QR decomposition algorithm (`alg = QR`).
+# Here we construct an artificial Hamiltonian with random ``h`` and ``V``, though they satisfy the standard permutation symmetries. It turns out that the electronic structure Hamiltonian, even with coefficients from physical systems, is a prime example of when the minimum vertex cover algorithm (`alg = "VC"`) is superior to the QR decomposition algorithm (`alg = "QR"`).
 
 try
   using MKL
@@ -28,8 +28,8 @@ using TimerOutputs
 
 Return random coefficients for the electronic structure Hamiltonian.
 
-The first returned value are the one electron integrals and the second are the
-two electron integrals in chemist's notation `V[p, s, q, r] = (ps|qr)`.
+The first returned value is the one-electron integral matrix and the second is
+the two-electron integral tensor in chemist's notation `V[p, s, q, r] = (ps|qr)`.
 """
 function get_coefficients(N::Int)::Tuple{Array{Float64,2},Array{Float64,4}}
   Random.seed!(0)
@@ -153,20 +153,20 @@ nothing;
 # ## Results
 # Below are the runtime and sparsities for the QR decomposition algorithm and the vertex cover algorithm. Both algorithms produce MPOs of bond dimension ``2 N^2 + 3 N + 2``, which is optimal for a generic set of coefficients. These timings were taken with `julia -t8 --gcthreads=8,1` on a 2021 MacBook Pro with the M1 Max CPU and 32GB of memory.
 #
-# | $N$ | Minimum Vertex Cover    | QR Decomposition      |
-# |-----|-------------------------|-----------------------|
-# | 10  | 0.02s / 98.23%          | 0.13s / 95.69%        |
-# | 20  | 0.90s / 98.84%          | 1.20s / 97.01%        |
-# | 30  | 1.04s / 99.14%          | 8.37s / 97.54%        |
-# | 40  | 3.30s / 99.32%          | 16.3s / 97.72%        |
-# | 50  | 9.13s / 99.44%          | 56.1s / 97.83%        |
-# | 60  | 21.1s / 99.52%          | 169s / 97.90%         |
-# | 70  | 50.7s / 99.58%          | 516s / 97.95%         |
-# | 80  | 106s / 99.63%           | N/A                   |
-# | 90  | 221s / 99.67%           | N/A                   |
-# | 100 | 744s / 99.70%           | N/A                   |
+# | ``N`` | Minimum Vertex Cover    | QR Decomposition      |
+# |-------|-------------------------|-----------------------|
+# | 10    | 0.02s / 98.23%          | 0.13s / 95.69%        |
+# | 20    | 0.90s / 98.84%          | 1.20s / 97.01%        |
+# | 30    | 1.04s / 99.14%          | 8.37s / 97.54%        |
+# | 40    | 3.30s / 99.32%          | 16.3s / 97.72%        |
+# | 50    | 9.13s / 99.44%          | 56.1s / 97.83%        |
+# | 60    | 21.1s / 99.52%          | 169s / 97.90%         |
+# | 70    | 50.7s / 99.58%          | 516s / 97.95%         |
+# | 80    | 106s / 99.63%           | N/A                   |
+# | 90    | 221s / 99.67%           | N/A                   |
+# | 100   | 744s / 99.70%           | N/A                   |
 #
-# Not only is the vertex cover algorithm produce an MPO much faster than the QR algorithm, but the resulting MPO has almost five times fewer entries (note: if `splitblocks=false` then the sparsities of the MPOs are equal). This story remain mostly unchanged when we construct the Hamiltonian for real systems.
+# Not only does the vertex cover algorithm produce an MPO much faster than the QR algorithm, but the resulting MPO has almost five times fewer entries (note: if `splitblocks=false` then the sparsities of the MPOs are equal). This story remains mostly unchanged when we construct the Hamiltonian for real systems.
 
 # In the table below we present data from constructing two different electronic structure Hamiltonians, the second of which is from [ZhaiLee2023](https://doi.org/10.1021/acs.jpca.3c06142). For the larger system the QR decomposition is able to slightly reduce the bond dimension compared to vertex cover, but it results in a much denser MPO. This increase in density has a significant impact on the subsequent DMRG performance, which takes 70% longer than if the MPO produced by the vertex cover algorithm were used.
 #

@@ -8,7 +8,7 @@ _resume_MPO_kwargs = """
 - `tol=1`: A multiplicative modifier to the default tolerance used in SPQR's sparse QR decomposition,
   see [SPQR user guide Section 2.3](https://fossies.org/linux/SuiteSparse/SPQR/Doc/spqr_user_guide.pdf).
   The value of the default tolerance depends on the input matrix, which means a different
-  tolerance is used for each decomposition. In the cases we have examined, the default 
+  tolerance is used for each decomposition. In the cases we have examined, the default
   tolerance works well for producing accurate MPOs.
 - `absolute_tol=false`: If `true`, override the default adaptive tolerance scheme outlined above,
   and use the value of `tol` as the single tolerance for each decomposition.
@@ -158,7 +158,7 @@ Keyword arguments:
   a basis is inferred from the input and no basis transformation occurs.
 - `check_for_errors=true`: Check the input `OpIDSum` for errors. This can be expensive
   for larger problems.
-- `checkflux=true`: Check that the resulting MPO tensors all have a well defined flux.
+- `checkflux=true`: Check that the resulting MPO tensors all have a well-defined flux.
   This can be expensive for larger problems when `splitblocks=true`.
 - `splitblocks=true`: Split the QN sectors into blocks of size one. This affects
   the sparsity of the resulting MPO, but can also slow down construction.
@@ -260,7 +260,7 @@ end
 
 Count link-space blocks in `mpo` that are structural zeros.
 
-When the MPO tensors are viewed as a matrix-op-operators, this
+When the MPO tensors are viewed as a matrix of operators, this
 returns the total number of entries in the MPO and the total number
 of structural nonzeros. This can be used to directly compare sparsities
 with the `block2` storage format. The returned tuple is

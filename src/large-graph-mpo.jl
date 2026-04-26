@@ -207,7 +207,7 @@ Convert an `OpIDSum` into the initial bipartite graph used by the
 MPO construction algorithm.
 
 Operators within each term are put in reverse order (by decreasing site), then
-the terms are sorted along with the scalars. This sorting puts terms which share
+the terms are sorted along with the scalars. This sorting puts terms that share
 a terminating sequence of operators (which is now at the front of the term) nearby.
 Duplicate terms are then combined, and resulting terms with a weight below
 `os.abs_tol` are dropped. The returned graph is split before the first site:
@@ -285,7 +285,7 @@ function sparse_qr(
   ret = nothing
 
   ## The tolerance is specified in Section 2.3
-  ## https://fossies.org/linux/SuiteSparse/SPQR/Doc/spqr_user_guide.pdf 
+  ## https://fossies.org/linux/SuiteSparse/SPQR/Doc/spqr_user_guide.pdf
   if !absolute_tol
     tol *= SparseArrays.SPQR._default_tol(A)
   end
@@ -607,7 +607,7 @@ otherwise this also builds `next_edges_of_cc` for the graph at site `n + 1`.
     end
 
     ## Construct next_edges for the right_cover
-    let 
+    let
       rvs_of_component = Vector{Int}(undef, rv_size_of_component)
       @inbounds for lv_id in lvs_of_component
         right_vertex_ids = g.right_vertex_ids_from_left[lv_id]

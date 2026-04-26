@@ -1,4 +1,6 @@
-# The Haldane-Shastry Hamiltonian defined on ``N`` spin-half particles is
+# # Haldane-Shastry Hamiltonian and Truncation
+#
+# The Haldane-Shastry Hamiltonian defined on ``N`` spin-1/2 particles is
 
 # ```math
 # H = \frac{J \pi^2}{N^2} \sum_{n = 1}^N \sum_{m = n + 1}^N \frac{\mathbf{S}_m \cdot \mathbf{S}_n}{\sin^2 \left( \pi \frac{n - m}{N} \right)} \ .
@@ -31,7 +33,7 @@ function haldane_shastry_mpo(N::Int, J::Real, tol::Real; use_ITensors_alg::Bool=
   end
 end;
 
-# With ``N = 40`` and using the default arguments, ITensorMPOConstruction creates an MPO of bond dimension 62, whereas ITensorMPS creates an MPO of bond dimension 38. However, this does not necessarily mean that ITensorMPS produces a better MPO. Comparing MPOs directly is tricky, but since the Haldane-Shastry Hamiltonian is exactly solvable, we can compare the energies and variances of the ground states obtained with DMRG for each MPO.
+# With ``N = 40`` and the tolerances used below, ITensorMPOConstruction creates an MPO of bond dimension 62, whereas ITensorMPS creates an MPO of bond dimension 38. However, this does not necessarily mean that ITensorMPS produces a better MPO. Comparing MPOs directly is tricky, but since the Haldane-Shastry Hamiltonian is exactly solvable, we can compare the energies and variances of the ground states obtained with DMRG for each MPO.
 
 using LinearAlgebra;
 if Threads.nthreads() > 1
@@ -102,7 +104,7 @@ function run_dmrg(
   return nothing
 end;
 
-# In the ``S_z = 0`` sector, with the MPO from ITensorMPOConstruction we obtain an error of ``\delta = E_\text{DMRG} - E_\text{gs} = 5 \times 10^{-14}`` and a variance of ``\sigma^2 = \braket{\psi_\text{DMRG} | (H - E_\text{DMRG})^2 | \psi_\text{DMRG}} = 2 \times 10^{-12}``, whereas with the MPO from ITensors the error increases to ``\delta = 10^{-8}`` while the variance remains unchanged. The fact that the error in the energy increased while the variance remained constant suggests that ITensorMPS is performing a slightly lossy compression the Hamiltonian.
+# In the ``S_z = 0`` sector, with the MPO from ITensorMPOConstruction we obtain an error of ``\delta = E_\text{DMRG} - E_\text{gs} = 5 \times 10^{-14}`` and a variance of ``\sigma^2 = \braket{\psi_\text{DMRG} | (H - E_\text{DMRG})^2 | \psi_\text{DMRG}} = 2 \times 10^{-12}``, whereas with the MPO from ITensorMPS the error increases to ``\delta = 10^{-8}`` while the variance remains unchanged. The fact that the error in the energy increased while the variance remained constant suggests that ITensorMPS is performing a slightly lossy compression of the Hamiltonian.
 
 let N = 40, two_Sz = 0, maxdim = 2048
   for (use_ITensors_alg, tol) in ((true, 1e-15), (false, 1.0))
@@ -134,7 +136,7 @@ end
 # The variance of the DMRG state is: 1.578865487843124e-12
 # ````
 
-# ITensorMPOConstruction is designed to construct exact MPOs (up to numerical precision), nevertheless, we can abuse it to perform approximate MPO construction. By setting `tol = 2E10` we obtain an MPO of bond dimension 38, equal to that produced by TensorMPS. However, using this approximate MPO we obtain poor results, with errors of ``\delta = 10^{-3}`` and ``\sigma^2 = 2 \times 10^{-10}``. The fact that such a high tolerance was required to reduce the bond dimension is a sign that this is not a good way of doing things. Setting `absolute_tol = true` to use a uniform cutoff across QR decompositions does not help either.
+# ITensorMPOConstruction is designed to construct exact MPOs (up to numerical precision). Nevertheless, we can abuse it to perform approximate MPO construction. By setting `tol = 2E10`, we obtain an MPO of bond dimension 38, equal to that produced by ITensorMPS. However, using this approximate MPO we obtain poor results, with errors of ``\delta = 10^{-3}`` and ``\sigma^2 = 2 \times 10^{-10}``. The fact that such a high tolerance was required to reduce the bond dimension is a sign that this is not a good way of doing things. Setting `absolute_tol = true` to use a uniform cutoff across QR decompositions does not help either.
 #
 # Starting with the MPO from ITensorMPOConstruction obtained with the standard `tol = 1` and then truncating down to the bond dimension of the MPO from ITensorMPS yields DMRG errors of ``\delta = 4 \times 10^{-9}`` and ``\sigma^2 = 2 \times 10^{-12}``, better than those obtained with the MPO from ITensorMPS.
 
