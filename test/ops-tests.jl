@@ -1,6 +1,11 @@
 using ITensorMPOConstruction
 using ITensorMPOConstruction:
-  are_equal, get_onsite_op, is_fermionic, rewrite_in_operator_basis!, sort_fermion_perm!
+  are_equal,
+  check_os_for_errors,
+  get_onsite_op,
+  is_fermionic,
+  rewrite_in_operator_basis!,
+  sort_fermion_perm!
 using ITensors
 using ITensorMPS
 using Test
@@ -164,6 +169,24 @@ function test_rewrite_in_operator_basis_zero()::Nothing
   return nothing
 end
 
+function test_check_os_for_errors_rejects_linearly_dependent_cache()::Nothing
+  sites = siteinds("Qubit", 1)
+
+  let
+    op_cache_vec = to_OpCacheVec(sites, [["I", "X", "X"]])
+    os = OpIDSum{2,Float64,Int}(0, op_cache_vec)
+    @test_throws ErrorException check_os_for_errors(os)
+  end
+
+  let
+    op_cache_vec = to_OpCacheVec(sites, [["I", "X", "I + X"]])
+    os = OpIDSum{2,Float64,Int}(0, op_cache_vec)
+    @test_throws ErrorException check_os_for_errors(os)
+  end
+
+  return nothing
+end
+
 @testset "Ops" begin
   test_are_equal()
 
@@ -176,4 +199,6 @@ end
   test_rewrite_in_operator_basis()
 
   test_rewrite_in_operator_basis_zero()
+
+  test_check_os_for_errors_rejects_linearly_dependent_cache()
 end

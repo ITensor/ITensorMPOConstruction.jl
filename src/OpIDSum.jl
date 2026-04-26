@@ -549,16 +549,37 @@ width of two to support the reinterpreted fixed-width layout.
   return opID_sum
 end
 
-# TODO: verify that the basis of os is linearly independent.
+function check_op_cache_vec_linearly_independent(op_cache_vec::OpCacheVec)::Nothing
+  for n in eachindex(op_cache_vec)
+    ops_of_site = op_cache_vec[n]
+    length(ops_of_site) <= 1 && continue
+
+    matrix_size = size(ops_of_site[1].matrix)
+    for op_info in ops_of_site
+      size(op_info.matrix) == matrix_size ||
+        error("Operators cached for site $n do not all have the same matrix size.")
+    end
+
+    operator_matrix = hcat((vec(op_info.matrix) for op_info in ops_of_site)...)
+    op_rank = rank(operator_matrix)
+    op_rank == length(ops_of_site) || error(
+      "Operators cached for site $n are not linearly independent. " *
+      "Found $(length(ops_of_site)) operators with rank $op_rank.",
+    )
+  end
+
+  return nothing
+end
 
 """
     check_os_for_errors(os::OpIDSum) -> Nothing
 
 Validate structural assumptions for `os`.
 
-This checks that, within every term, operators are sorted by site, at most one
-operator acts on each site, all terms carry the same total QN flux, and
-every term has even fermion parity.
+This checks that the cached local operators are linearly independent on every
+site and that, within every term, operators are sorted by site, at most one
+operator acts on each site, all terms carry the same total QN flux, and every
+term has even fermion parity.
 """
 @timeit function check_os_for_errors(os::OpIDSum)::Nothing
   flux_of_first_term = nothing
@@ -594,6 +615,10 @@ every term has even fermion parity.
 
     mod(fermion_parity, 2) != 0 && error("Odd parity fermion terms not supported: $ops")
   end
+
+  check_op_cache_vec_linearly_independent(os.op_cache_vec)
+
+  return nothing
 end
 
 """
