@@ -59,9 +59,10 @@ function test_from_OpSum(
   basis_op_cache_vec::Union{Nothing,OpCacheVec}=nothing,
   splitblocks::Bool=false,
   combine_qn_sectors::Bool=false,
+  check_for_errors::Bool=true,
 )::Tuple{MPO,MPO}
   mpo = MPO_new(
-    os, sites; alg, basis_op_cache_vec, splitblocks, combine_qn_sectors, output_level=0
+    os, sites; alg, basis_op_cache_vec, splitblocks, combine_qn_sectors, check_for_errors
   )
 
   mpoFromITensor = MPO(os, sites)
@@ -388,7 +389,11 @@ function test_qft(N::Int64, applyR::Bool, alg::String)
   end
 
   sites = siteinds("Qubit", N)
-  return algMPO, iTensorMPO = test_from_OpSum(os, sites, alg, !applyR)
+  # This is because the basis (I, 00, 01, 10, 11) is not linearly independent, but it doesn't 
+  # matter because in this particular case there is never an identity operator.
+  return algMPO, iTensorMPO = test_from_OpSum(
+    os, sites, alg, !applyR; check_for_errors=false
+  )
 end
 
 @testset "MPOConstruction" begin
