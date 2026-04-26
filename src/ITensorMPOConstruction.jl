@@ -5,6 +5,7 @@ module ITensorMPOConstruction
 #
 using ITensorMPS
 using ITensors
+using Dictionaries
 using LinearAlgebra
 using SparseArrays
 using TimerOutputs

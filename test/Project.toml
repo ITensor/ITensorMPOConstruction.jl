@@ -1,4 +1,5 @@
 [deps]
+Dictionaries = "85a47980-9c8c-11e8-2b9f-f7ca1fa99fb4"
 Graphs = "86223c79-3864-5bf0-83f7-82e725a168b6"
 ITensorMPS = "0d1a4710-d33b-49a5-8f18-73bdf49b47e2"
 ITensors = "9136182c-28ba-11e9-034c-db9fb085ebd5"
@@ -7,6 +8,7 @@ Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
+Dictionaries = "0.4.6"
 Graphs = "1.14.0"
 ITensorMPS = "0.1, 0.2, 0.3"
 ITensors = "0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9"

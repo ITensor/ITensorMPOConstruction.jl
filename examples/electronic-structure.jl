@@ -151,11 +151,13 @@ for alg in ("VC", "QR")
     ) # TODO: remove splitblocks=true after warning
     N > 5 && print_timer()
 
+    percent_sparse = round(100 * sparsity(H); digits=2)
     println(
-      "The maximum bond dimension is $(maxlinkdim(H)), sparsity = $(ITensorMPOConstruction.sparsity(H))",
+      "The maximum bond dimension is $(maxlinkdim(H)), sparsity = $percent_sparse%",
     )
     @assert maxlinkdim(H) == 2 * N^2 + 3 * N + 2
 
+    GC.gc(true)
     println()
   end
 end
@@ -167,16 +169,16 @@ nothing;
 #
 # | ``N`` | Minimum Vertex Cover    | QR Decomposition      |
 # |-------|-------------------------|-----------------------|
-# | 10    | 0.02s / 98.23%          | 0.13s / 95.69%        |
-# | 20    | 0.90s / 98.84%          | 1.20s / 97.01%        |
-# | 30    | 1.04s / 99.14%          | 8.37s / 97.54%        |
-# | 40    | 3.30s / 99.32%          | 16.3s / 97.72%        |
-# | 50    | 9.13s / 99.44%          | 56.1s / 97.83%        |
-# | 60    | 21.1s / 99.52%          | 169s / 97.90%         |
-# | 70    | 50.7s / 99.58%          | 516s / 97.95%         |
-# | 80    | 106s / 99.63%           | N/A                   |
-# | 90    | 221s / 99.67%           | N/A                   |
-# | 100   | 744s / 99.70%           | N/A                   |
+# | 10    | 0.01s / 98.23%          | 0.04s / 95.69%        |
+# | 20    | 0.81s / 98.84%          | 0.54s / 97.01%        |
+# | 30    | 0.94s / 99.14%          | 3.49s / 97.54%        |
+# | 40    | 2.88s / 99.32%          | 14.4s / 97.73%        |
+# | 50    | 7.42s / 99.44%          | 50.8s / 97.83%        |
+# | 60    | 17.2s / 99.52%          | 159s / 97.90%         |
+# | 70    | 40.2s / 99.58%          | 452s / 97.95%         |
+# | 80    | 95.0s / 99.63%          | N/A                   |
+# | 90    | 207s / 99.67%           | N/A                   |
+# | 100   | 739s / 99.70%           | N/A                   |
 #
 # Not only does the vertex cover algorithm produce an MPO much faster than the QR algorithm, but the resulting MPO has almost five times fewer entries (note: if `splitblocks=false` then the sparsities of the MPOs are equal). This story remains mostly unchanged when we construct the Hamiltonian for real systems.
 

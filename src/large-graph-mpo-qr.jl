@@ -81,6 +81,74 @@ function for_non_zeros_batch(
 end
 
 """
+    process_single_left_vertex_cc!(
+      matrix_of_cc, rank_of_cc, next_edges_of_cc, g, ccs, cc, n, sites, op_cache_vec
+    ) -> Nothing
+
+Handle the common connected-component case with exactly one left vertex.
+
+This fills the local MPO tensor contribution for the component, records rank
+`1`, and either applies the terminal scaling on the last site or builds the
+outgoing edges for the next site. For nonterminal sites, the consumed left
+adjacency list is cleared after the outgoing edges are built.
+"""
+function process_single_left_vertex_cc!(
+  matrix_of_cc::Vector{BlockSparseMatrix{ValType}},
+  rank_of_cc::Vector{Int},
+  next_edges_of_cc::Vector{Matrix{Tuple{Vector{Int},Vector{C}}}},
+  g::MPOGraph{N,C,Ti},
+  ccs::BipartiteGraphConnectedComponents,
+  cc::Int,
+  n::Int,
+  sites::Vector{<:Index},
+  op_cache_vec::OpCacheVec,
+)::Nothing where {ValType<:Number,N,C,Ti}
+  lv_id = only(ccs.lvs_of_component[cc])
+  rank = 1
+  rank_of_cc[cc] = rank
+
+  lv = left_vertex(g, lv_id)
+  local_op = op_cache_vec[n][lv.op_id].matrix
+
+  matrix = [Dictionary{Int,Matrix{ValType}}() for _ in 1:rank]
+  matrix_of_cc[cc] = matrix
+
+  matrix_element = get!(matrix[rank], lv.link) do
+    return zeros(ValType, dim(sites[n]), dim(sites[n]))
+  end
+
+  add_to_local_matrix!(matrix_element, one(ValType), local_op, lv.needs_JW_string)
+
+  if n == length(sites)
+    scaling = only(g.edge_weights_from_left[lv_id])
+
+    for column in matrix, block in values(column)
+      block .*= scaling
+    end
+
+    return nothing
+  end
+
+  next_edges = Matrix{Tuple{Vector{Int},Vector{C}}}(
+    undef, rank, length(op_cache_vec[n + 1])
+  )
+  for i in eachindex(next_edges)
+    next_edges[i] = (Int[], C[])
+  end
+
+  build_next_edges_specialization!(
+    next_edges, g, n, g.right_vertex_ids_from_left[lv_id], g.edge_weights_from_left[lv_id]
+  )
+
+  clear_edges_from_left!(g, lv_id)
+
+  next_edges_of_cc[cc] = next_edges
+
+  return nothing
+end
+
+
+"""
     process_qr(
       matrix_of_cc, rank_of_cc, next_edges_of_cc, g, ccs, n, sites, tol, absolute_tol, op_cache_vec
     ) -> Nothing
@@ -115,7 +183,6 @@ blocks.
       continue
     end
 
-    matrix = matrix_of_cc[cc]
     W, left_map, right_map = get_cc_matrix(g, ccs, cc; clear_edges=true)
 
     ## Compute the decomposition and then free W
@@ -123,6 +190,9 @@ blocks.
     W = nothing
 
     rank_of_cc[cc] = rank
+
+    matrix = [Dictionary{Int,Matrix{ValType}}() for _ in 1:rank]
+    matrix_of_cc[cc] = matrix
 
     ## Form the local transformation tensor.
     for_non_zeros_batch(Q, rank) do weights::AbstractVector{C}, m::Int
@@ -133,7 +203,7 @@ blocks.
         lv = left_vertex(g, left_map[prow[i]])
         local_op = op_cache_vec[n][lv.op_id].matrix
 
-        matrix_element = get!(matrix, (lv.link, m)) do
+        matrix_element = get!(matrix[m], lv.link) do
           return zeros(ValType, dim(sites[n]), dim(sites[n]))
         end
 
@@ -148,7 +218,7 @@ blocks.
     ## If we are at the last site, then R will be a 1x1 matrix containing an overall scaling.
     if n == length(sites)
       scaling = only(R)
-      for block in values(matrix)
+      for column in matrix, block in values(column)
         block .*= scaling
       end
 
@@ -208,4 +278,3 @@ blocks.
 
   return nothing
 end
-

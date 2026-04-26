@@ -389,7 +389,7 @@ end
 using TimerOutputs
 for grid_size in ((2, 2), (6, 6))
   let t = 1, U = 4, J = -0.5, mapping = bipartite_mapping(grid_size)
-    @time "Constructing OpIDSum" sites, os = transcorrelated_fermi_hubbard(t, U, J, mapping)
+    @time "Constructing OpIDSum" sites, os = transcorrelated_fermi_hubbard(t, U, J, mapping; conserve_momentum=true)
     reset_timer!()
     @time "Constructing MPO" H = MPO_new(
       os,
@@ -400,10 +400,19 @@ for grid_size in ((2, 2), (6, 6))
       check_for_errors=false,
     )
 
+    prod(grid_size) > 4 && print_timer()
+
+    percent_sparse = round(100 * sparsity(H); digits=3)
     println(
-      "Constructed the MPO of bond dimension $(maxlinkdim(H)) and sparsity $(sparsity(H))"
+      "The maximum bond dimension is $(maxlinkdim(H)), sparsity = $percent_sparse%",
     )
-    grid_size != (2, 2) && print_timer()
+
+    if iszero(J) && length(grid_size) == 1 && mapping == standard_mapping(grid_size)
+      @assert maxlinkdim(H) == 10 * N - 4
+    end
+
+    GC.gc(true)
+    println()
   end
 end
 

@@ -88,21 +88,23 @@ function _fill_splitblocks!(
   blocks::Vector{Block{4}},
   block_values::Vector{C},
   offsets::Vector{Int},
-  block_sparse_matrices::Vector{Dict{Tuple{Int,Int},Matrix{C}}},
+  block_sparse_matrices::Vector{BlockSparseMatrix{C}},
 ) where {C}
   entry = 0
 
   for (offset, matrix) in zip(offsets, block_sparse_matrices)
-    for ((left_link, right_link), block) in matrix
+    for (right_link, column) in enumerate(matrix)
       shifted_right_link = right_link + offset
 
-      @inbounds for i in axes(block, 1), j in axes(block, 2)
-        value = block[i, j]
-        iszero(value) && continue
+      for (left_link, block) in pairs(column)
+        @inbounds for site_prime_link in axes(block, 1), site_link in axes(block, 2)
+          value = block[site_prime_link, site_link]
+          iszero(value) && continue
 
-        entry += 1
-        blocks[entry] = Block((left_link, shifted_right_link, i, j))
-        block_values[entry] = value
+          entry += 1
+          blocks[entry] = Block((left_link, shifted_right_link, site_prime_link, site_link))
+          block_values[entry] = value
+        end
       end
     end
   end
@@ -123,7 +125,7 @@ are shifted to global right-link ids by `right_link + offsets[i]`.
 """
 function _to_ITensor_splitblocks(
   offsets::Vector{Int},
-  block_sparse_matrices::Vector{Dict{Tuple{Int,Int},Matrix{C}}},
+  block_sparse_matrices::Vector{BlockSparseMatrix{C}},
   llink::ITensors.QNIndex,
   rlink::ITensors.QNIndex,
   site::ITensors.QNIndex;
@@ -136,7 +138,7 @@ function _to_ITensor_splitblocks(
 
   num_nonzero_entries = sum(
     count(value -> !iszero(value), block) for matrix in block_sparse_matrices for
-    block in values(matrix)
+    column in matrix for block in values(column)
   )
 
   blocks = Vector{Block{4}}(undef, num_nonzero_entries)
@@ -157,9 +159,9 @@ end
 Assemble a block-sparse ITensor MPO tensor from component-local block matrices.
 
 `block_sparse_matrices[i]` stores the local MPO matrix blocks for component `i`
-as `(left_link, right_link) => local_operator_matrix`. The corresponding
-`offsets[i]` shifts those component-local right-link ids into the global
-outgoing bond space. The returned tensor has indices
+as `right_link => (left_link => local_operator_matrix)`. The corresponding
+`offsets[i]` shifts those component-local right-link ids into the global outgoing
+bond space. The returned tensor has indices
 `(dag(llink), rlink, prime(site), dag(site))`.
 
 When `splitblocks=true`, construction delegates to `_to_ITensor_splitblocks`.
@@ -169,7 +171,7 @@ writes nonzero entries into the appropriate block views.
 """
 function to_ITensor(
   offsets::Vector{Int},
-  block_sparse_matrices::Vector{Dict{Tuple{Int,Int},Matrix{C}}},
+  block_sparse_matrices::Vector{BlockSparseMatrix{C}},
   llink::ITensors.QNIndex,
   rlink::ITensors.QNIndex,
   site::ITensors.QNIndex;
@@ -191,30 +193,33 @@ function to_ITensor(
   num_site_blocks = nblocks(inds[4])
 
   block_ids = Set{Int}()
-  sizehint!(block_ids, sum(length, block_sparse_matrices))
+  sizehint!(block_ids, sum(matrix -> sum(length, matrix), block_sparse_matrices))
 
   for (offset, matrix) in zip(offsets, block_sparse_matrices)
-    for ((left_link, right_link), block) in matrix
+    for (right_link, column) in enumerate(matrix)
       shifted_right_link = right_link + offset
-      left_block = left_blocks[left_link]
       right_block = right_blocks[shifted_right_link]
 
-      @inbounds for i in axes(block, 1), j in axes(block, 2)
-        value = block[i, j]
-        iszero(value) && continue
+      for (left_link, block) in pairs(column)
+        left_block = left_blocks[left_link]
 
-        push!(
-          block_ids,
-          _blockid(
-            left_block,
-            right_block,
-            site_prime_blocks[i],
-            site_blocks[j],
-            num_right_blocks,
-            num_site_prime_blocks,
-            num_site_blocks,
-          ),
-        )
+        @inbounds for site_prime_link in axes(block, 1), site_link in axes(block, 2)
+          value = block[site_prime_link, site_link]
+          iszero(value) && continue
+
+          push!(
+            block_ids,
+            _blockid(
+              left_block,
+              right_block,
+              site_prime_blocks[site_prime_link],
+              site_blocks[site_link],
+              num_right_blocks,
+              num_site_prime_blocks,
+              num_site_blocks,
+            ),
+          )
+        end
       end
     end
   end
@@ -245,29 +250,35 @@ function to_ITensor(
     offset = offsets[i]
     matrix = block_sparse_matrices[i]
 
-    for ((left_link, right_link), block) in matrix
+    for (right_link, column) in enumerate(matrix)
       shifted_right_link = right_link + offset
-      left_block = left_blocks[left_link]
       right_block = right_blocks[shifted_right_link]
-      left_offset = left_offsets[left_link]
       right_offset = right_offsets[shifted_right_link]
 
-      @inbounds for i in axes(block, 1), j in axes(block, 2)
-        value = block[i, j]
-        iszero(value) && continue
+      for (left_link, block) in pairs(column)
+        left_block = left_blocks[left_link]
+        left_offset = left_offsets[left_link]
 
-        block_id = _blockid(
-          left_block,
-          right_block,
-          site_prime_blocks[i],
-          site_blocks[j],
-          num_right_blocks,
-          num_site_prime_blocks,
-          num_site_blocks,
-        )
-        block_views[block_id][
-          left_offset, right_offset, site_prime_offsets[i], site_offsets[j]
-        ] = value
+        @inbounds for site_prime_link in axes(block, 1), site_link in axes(block, 2)
+          value = block[site_prime_link, site_link]
+          iszero(value) && continue
+
+          block_id = _blockid(
+            left_block,
+            right_block,
+            site_prime_blocks[site_prime_link],
+            site_blocks[site_link],
+            num_right_blocks,
+            num_site_prime_blocks,
+            num_site_blocks,
+          )
+          block_views[block_id][
+            left_offset,
+            right_offset,
+            site_prime_offsets[site_prime_link],
+            site_offsets[site_link],
+          ] = value
+        end
       end
     end
   end
@@ -299,8 +310,10 @@ function to_ITensor(
   Threads.@threads for i in eachindex(offsets)
     offset = offsets[i]
     matrix = block_sparse_matrices[i]
-    for ((left_link, right_link), block) in matrix
-      tensor[left_link, right_link + offset, :, :] = block
+    for (right_link, column) in enumerate(matrix)
+      for (left_link, block) in pairs(column)
+        tensor[left_link, right_link + offset, :, :] = block
+      end
     end
   end
 

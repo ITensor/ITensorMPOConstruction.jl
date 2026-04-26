@@ -1,16 +1,15 @@
 """
     BlockSparseMatrix{C}
 
-Dictionary-backed block-sparse matrix representation used for intermediate MPO
+Vector-backed block-sparse matrix representation used for intermediate MPO
 tensor storage.
 
-Keys are `(left_link, right_link)` pairs and values are dense local operator
-matrices for that block. The right link ids are local to the component being
-processed; `at_site!` later returns offsets that place component-local
-right-link ids into the full outgoing MPO bond.
+The outer vector is indexed by component-local `right_link`. Each inner
+`Dictionary` maps `left_link` to the dense local operator matrix for that block.
+`at_site!` later returns offsets that place component-local right-link ids into
+the full outgoing MPO bond.
 """
-BlockSparseMatrix{C} = Dict{Tuple{Int,Int},Matrix{C}}
-# TODO: consider changing to Vector{Dict{Int, Matrix{C}}} from right_link => (left_link => matrix) and use Dictionaries.jl
+BlockSparseMatrix{C} = Vector{Dictionary{Int,Matrix{C}}}
 
 """
     MPOGraph{N,C,Ti}
@@ -330,70 +329,6 @@ function merge_qn_sectors(
   end
 
   return new_order, new_qi
-end
-
-"""
-    process_single_left_vertex_cc!(
-      matrix_of_cc, rank_of_cc, next_edges_of_cc, g, ccs, cc, n, sites, op_cache_vec
-    ) -> Nothing
-
-Handle the common connected-component case with exactly one left vertex.
-
-This fills the local MPO tensor contribution for the component, records rank
-`1`, and either applies the terminal scaling on the last site or builds the
-outgoing edges for the next site. For nonterminal sites, the consumed left
-adjacency list is cleared after the outgoing edges are built.
-"""
-function process_single_left_vertex_cc!(
-  matrix_of_cc::Vector{BlockSparseMatrix{ValType}},
-  rank_of_cc::Vector{Int},
-  next_edges_of_cc::Vector{Matrix{Tuple{Vector{Int},Vector{C}}}},
-  g::MPOGraph{N,C,Ti},
-  ccs::BipartiteGraphConnectedComponents,
-  cc::Int,
-  n::Int,
-  sites::Vector{<:Index},
-  op_cache_vec::OpCacheVec,
-)::Nothing where {ValType<:Number,N,C,Ti}
-  lv_id = only(ccs.lvs_of_component[cc])
-  rank = 1
-  rank_of_cc[cc] = rank
-
-  lv = left_vertex(g, lv_id)
-  local_op = op_cache_vec[n][lv.op_id].matrix
-
-  matrix_element = get!(matrix_of_cc[cc], (lv.link, rank)) do
-    return zeros(ValType, dim(sites[n]), dim(sites[n]))
-  end
-
-  add_to_local_matrix!(matrix_element, one(ValType), local_op, lv.needs_JW_string)
-
-  if n == length(sites)
-    scaling = only(g.edge_weights_from_left[lv_id])
-
-    for block in values(matrix_of_cc[cc])
-      block .*= scaling
-    end
-
-    return nothing
-  end
-
-  next_edges = Matrix{Tuple{Vector{Int},Vector{C}}}(
-    undef, rank, length(op_cache_vec[n + 1])
-  )
-  for i in eachindex(next_edges)
-    next_edges[i] = (Int[], C[])
-  end
-
-  build_next_edges_specialization!(
-    next_edges, g, n, g.right_vertex_ids_from_left[lv_id], g.edge_weights_from_left[lv_id]
-  )
-
-  clear_edges_from_left!(g, lv_id)
-
-  next_edges_of_cc[cc] = next_edges
-
-  return nothing
 end
 
 """
