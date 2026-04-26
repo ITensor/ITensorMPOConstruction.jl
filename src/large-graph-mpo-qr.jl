@@ -123,7 +123,7 @@ blocks.
 
     rank_of_cc[cc] = rank
 
-    matrix = [Dict{Int,Matrix{ValType}}() for _ in 1:rank]
+    matrix = [Dictionary{Int,Matrix{ValType}}() for _ in 1:rank]
     matrix_of_cc[cc] = matrix
 
     ## Form the local transformation tensor.

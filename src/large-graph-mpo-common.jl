@@ -5,11 +5,11 @@ Vector-backed block-sparse matrix representation used for intermediate MPO
 tensor storage.
 
 The outer vector is indexed by component-local `right_link`. Each inner
-dictionary maps `left_link` to the dense local operator matrix for that block.
+`Dictionary` maps `left_link` to the dense local operator matrix for that block.
 `at_site!` later returns offsets that place component-local right-link ids into
 the full outgoing MPO bond.
 """
-BlockSparseMatrix{C} = Vector{Dict{Int,Matrix{C}}}
+BlockSparseMatrix{C} = Vector{Dictionary{Int,Matrix{C}}}
 
 """
     MPOGraph{N,C,Ti}
@@ -362,7 +362,7 @@ function process_single_left_vertex_cc!(
   lv = left_vertex(g, lv_id)
   local_op = op_cache_vec[n][lv.op_id].matrix
 
-  matrix = [Dict{Int,Matrix{ValType}}() for _ in 1:rank]
+  matrix = [Dictionary{Int,Matrix{ValType}}() for _ in 1:rank]
   matrix_of_cc[cc] = matrix
 
   matrix_element = get!(matrix[rank], lv.link) do

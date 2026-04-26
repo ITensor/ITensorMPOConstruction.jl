@@ -96,7 +96,7 @@ function _fill_splitblocks!(
     for (right_link, column) in enumerate(matrix)
       shifted_right_link = right_link + offset
 
-      for (left_link, block) in column
+      for (left_link, block) in pairs(column)
         @inbounds for site_prime_link in axes(block, 1), site_link in axes(block, 2)
           value = block[site_prime_link, site_link]
           iszero(value) && continue
@@ -200,7 +200,7 @@ function to_ITensor(
       shifted_right_link = right_link + offset
       right_block = right_blocks[shifted_right_link]
 
-      for (left_link, block) in column
+      for (left_link, block) in pairs(column)
         left_block = left_blocks[left_link]
 
         @inbounds for site_prime_link in axes(block, 1), site_link in axes(block, 2)
@@ -255,7 +255,7 @@ function to_ITensor(
       right_block = right_blocks[shifted_right_link]
       right_offset = right_offsets[shifted_right_link]
 
-      for (left_link, block) in column
+      for (left_link, block) in pairs(column)
         left_block = left_blocks[left_link]
         left_offset = left_offsets[left_link]
 
@@ -311,7 +311,7 @@ function to_ITensor(
     offset = offsets[i]
     matrix = block_sparse_matrices[i]
     for (right_link, column) in enumerate(matrix)
-      for (left_link, block) in column
+      for (left_link, block) in pairs(column)
         tensor[left_link, right_link + offset, :, :] = block
       end
     end

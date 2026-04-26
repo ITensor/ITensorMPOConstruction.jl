@@ -44,7 +44,7 @@ otherwise this also builds `next_edges_of_cc` for the graph at site `n + 1`.
     rank = length(left_cover) + length(right_cover)
     rank_of_cc[cc] = rank
 
-    matrix = [Dict{Int,Matrix{ValType}}() for _ in 1:rank]
+    matrix = [Dictionary{Int,Matrix{ValType}}() for _ in 1:rank]
     matrix_of_cc[cc] = matrix
 
     ## Construct the tensor from the left cover.
@@ -55,7 +55,7 @@ otherwise this also builds `next_edges_of_cc` for the graph at site `n + 1`.
 
       matrix_element = zeros(ValType, site_dim, site_dim)
       add_to_local_matrix!(matrix_element, one(ValType), local_op, lv.needs_JW_string)
-      matrix[m][lv.link] = matrix_element
+      set!(matrix[m], lv.link, matrix_element)
     end
 
     ## Construct the tensor from the right cover.
