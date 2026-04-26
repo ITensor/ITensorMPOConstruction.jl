@@ -11,7 +11,7 @@ using ITensorMPOConstruction:
 
 using Random
 using Test
-using Graphs # TODO: See if we can remove this dependency, since only used in testing.
+using Graphs
 
 function test_get_connected_components(nl::Int, nr::Int, max_edges_from_left::Int)
   g = BipartiteGraph{Int,Int,Float64}(
