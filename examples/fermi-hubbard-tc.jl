@@ -289,20 +289,24 @@ function transcorrelated_fermi_hubbard(
                 + epsilon(grid_size, p - kp)               ## From (s + k - kp, q + kp    , q, s)
               )
 
-            ops = opCdag(p - k, ↑, mapping),
-            opC(p, ↑, mapping),
-            opCdag(q + kp, ↓, mapping),
-            opCdag(s + k - kp, ↓, mapping),
-            opC(s, ↓, mapping),
-            opC(q, ↓, mapping)
+            ops = (
+              opCdag(p - k, ↑, mapping),
+              opC(p, ↑, mapping),
+              opCdag(q + kp, ↓, mapping),
+              opCdag(s + k - kp, ↓, mapping),
+              opC(s, ↓, mapping),
+              opC(q, ↓, mapping),
+            )
             add!(os, factor, ops)
 
-            ops = opCdag(q + kp, ↑, mapping),
-            opCdag(s + k - kp, ↑, mapping),
-            opC(s, ↑, mapping),
-            opC(q, ↑, mapping),
-            opCdag(p - k, ↓, mapping),
-            opC(p, ↓, mapping)
+            ops = (
+              opCdag(q + kp, ↑, mapping),
+              opCdag(s + k - kp, ↑, mapping),
+              opC(s, ↑, mapping),
+              opC(q, ↑, mapping),
+              opCdag(p - k, ↓, mapping),
+              opC(p, ↓, mapping),
+            )
             add!(os, factor, ops)
           end
         end

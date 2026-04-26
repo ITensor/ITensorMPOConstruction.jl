@@ -39,6 +39,8 @@ function OpInfo(local_op::Op, site::Index)
   )
 end
 
+# TODO: Create a symbolic sum.
+
 """
     OpCacheVec
 
@@ -392,9 +394,10 @@ from `basis_op_cache_vec`.
 For each contiguous block of operators acting on the same site, the product
 matrix is matched against the supplied basis up to an overall scalar factor. The
 term coefficient is updated by that factor, the block is replaced by the matched
-basis operator, and the remaining slots are zeroed. An error is thrown if a
-product cannot be represented by a single basis operator. After rewriting, each
-term is resorted by site and `os.op_cache_vec` is replaced by
+basis operator, and the remaining slots are zeroed. If a product is the zero
+matrix, the whole term is set to zero. An error is thrown if a nonzero product
+cannot be represented by a single basis operator. After rewriting, each
+nonzero term is resorted by site and `os.op_cache_vec` is replaced by
 `basis_op_cache_vec`.
 """
 @timeit function rewrite_in_operator_basis!(
@@ -405,11 +408,13 @@ term is resorted by site and `os.op_cache_vec` is replaced by
   function scale_by_first_nz!(matrix::Matrix)
     for i in eachindex(matrix)
       entry = matrix[i]
-      if entry != 0
+      if !iszero(entry)
         matrix ./= entry
         return entry
       end
     end
+
+    return zero(eltype(matrix))
   end
 
   scaled_basis_ops = Vector{Tuple{ComplexF64,Matrix{ComplexF64}}}[
@@ -423,7 +428,7 @@ term is resorted by site and `os.op_cache_vec` is replaced by
     end
   end
 
-  function convert_to_basis(ops::AbstractVector{OpID{Ti}})::Tuple{ComplexF64,Int}
+  function convert_to_basis(ops::AbstractVector{OpID{Ti}})::Tuple{ComplexF64,Int,Bool}
     @assert !isempty(ops)
     n = ops[1].n
     @assert all(op.n == n for op in ops)
@@ -435,15 +440,17 @@ term is resorted by site and `os.op_cache_vec` is replaced by
     end
 
     scale = scale_by_first_nz!(local_matrix)
+    iszero(scale) && return zero(ComplexF64), 0, true
+
     for (i, (basis_scale, basis_matrix)) in enumerate(scaled_basis_ops[n])
-      basis_matrix == local_matrix && return scale / basis_scale, i
+      basis_matrix == local_matrix && return scale / basis_scale, i, false
     end
 
-    return 0, 0
+    return zero(ComplexF64), 0, false
   end
 
-  single_op_translation = Vector{Tuple{ComplexF64,Int}}[
-    Vector{Tuple{ComplexF64,Int}}() for _ in eachindex(basis_op_cache_vec)
+  single_op_translation = Vector{Tuple{ComplexF64,Int,Bool}}[
+    Vector{Tuple{ComplexF64,Int,Bool}}() for _ in eachindex(basis_op_cache_vec)
   ]
   for n in eachindex(op_cache_vec)
     for id in eachindex(op_cache_vec[n])
@@ -453,14 +460,23 @@ term is resorted by site and `os.op_cache_vec` is replaced by
 
   Threads.@threads for i in eachindex(os)
     scalar, ops = os[i]
+    term_is_zero = false
 
     for_equal_sites(ops) do a, b
+      term_is_zero && return nothing
       ops[a] == zero(ops[a]) && return nothing
 
       if a == b
-        coeff, basis_id = single_op_translation[ops[a].n][ops[a].id]
+        coeff, basis_id, product_is_zero = single_op_translation[ops[a].n][ops[a].id]
       else
-        coeff, basis_id = convert_to_basis(view(ops, a:b))
+        coeff, basis_id, product_is_zero = convert_to_basis(view(ops, a:b))
+      end
+
+      if product_is_zero
+        scalar = zero(scalar)
+        fill!(ops, zero(ops[a]))
+        term_is_zero = true
+        return nothing
       end
 
       if basis_id == 0
@@ -478,7 +494,7 @@ term is resorted by site and `os.op_cache_vec` is replaced by
       end
     end
 
-    sort!(ops, by=op -> op.n)
+    term_is_zero || sort!(ops, by=op -> op.n)
     os.scalars[i] = scalar
   end
 
@@ -533,16 +549,37 @@ width of two to support the reinterpreted fixed-width layout.
   return opID_sum
 end
 
-# TODO: verify that the basis of os is linearly independent.
+function check_op_cache_vec_linearly_independent(op_cache_vec::OpCacheVec)::Nothing
+  for n in eachindex(op_cache_vec)
+    ops_of_site = op_cache_vec[n]
+    length(ops_of_site) <= 1 && continue
+
+    matrix_size = size(ops_of_site[1].matrix)
+    for op_info in ops_of_site
+      size(op_info.matrix) == matrix_size ||
+        error("Operators cached for site $n do not all have the same matrix size.")
+    end
+
+    operator_matrix = hcat((vec(op_info.matrix) for op_info in ops_of_site)...)
+    op_rank = rank(operator_matrix)
+    op_rank == length(ops_of_site) || error(
+      "Operators cached for site $n are not linearly independent. " *
+      "Found $(length(ops_of_site)) operators with rank $op_rank.",
+    )
+  end
+
+  return nothing
+end
 
 """
     check_os_for_errors(os::OpIDSum) -> Nothing
 
 Validate structural assumptions for `os`.
 
-This checks that, within every term, operators are sorted by site, at most one
-operator acts on each site, all terms carry the same total QN flux, and
-every term has even fermion parity.
+This checks that the cached local operators are linearly independent on every
+site and that, within every term, operators are sorted by site, at most one
+operator acts on each site, all terms carry the same total QN flux, and every
+term has even fermion parity.
 """
 @timeit function check_os_for_errors(os::OpIDSum)::Nothing
   flux_of_first_term = nothing
@@ -578,6 +615,10 @@ every term has even fermion parity.
 
     mod(fermion_parity, 2) != 0 && error("Odd parity fermion terms not supported: $ops")
   end
+
+  check_op_cache_vec_linearly_independent(os.op_cache_vec)
+
+  return nothing
 end
 
 """
