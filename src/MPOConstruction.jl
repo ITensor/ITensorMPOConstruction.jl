@@ -157,6 +157,112 @@ struct SymbolicMPO{
   max_user_label::Int
 end
 
+function _check_symbolic_coefficients(sym::SymbolicMPO, coefficients::AbstractVector)::Nothing
+  length(coefficients) >= sym.max_user_label || throw(
+    ArgumentError(
+      "Missing coefficient for symbolic label $(sym.max_user_label). " *
+      "Received $(length(coefficients)) coefficients.",
+    ),
+  )
+  return nothing
+end
+
+function _symbolic_mpo_eltype(sym::SymbolicMPO, coefficients::AbstractVector)::Type
+  val_type = promote_type(Float64, eltype(coefficients))
+  for op_cache in sym.op_cache_vec
+    for op_info in op_cache
+      val_type = promote_type(val_type, eltype(op_info.matrix))
+    end
+  end
+  return val_type
+end
+
+function _evaluate_symbolic_block_sparse_matrix(
+  symbolic_matrix::SymbolicBlockSparseMatrix{Ti},
+  coefficients::AbstractVector,
+  op_cache::Vector{OpInfo},
+  ::Type{C},
+)::BlockSparseMatrix{C} where {Ti,C}
+  matrix = [Dictionary{Int,Matrix{C}}() for _ in eachindex(symbolic_matrix)]
+
+  for right_link in eachindex(symbolic_matrix)
+    for (left_link, terms) in pairs(symbolic_matrix[right_link])
+      block = convert(Matrix{C}, _evaluate_symbolic_local_matrix(terms, coefficients, op_cache))
+      set!(matrix[right_link], left_link, block)
+    end
+  end
+
+  return matrix
+end
+
+function _evaluate_symbolic_block_sparse_matrices(
+  symbolic_matrices::Vector{SymbolicBlockSparseMatrix{Ti}},
+  coefficients::AbstractVector,
+  op_cache::Vector{OpInfo},
+  ::Type{C},
+)::Vector{BlockSparseMatrix{C}} where {Ti,C}
+  matrices = Vector{BlockSparseMatrix{C}}(undef, length(symbolic_matrices))
+  for cc in eachindex(symbolic_matrices)
+    matrices[cc] = _evaluate_symbolic_block_sparse_matrix(
+      symbolic_matrices[cc], coefficients, op_cache, C
+    )
+  end
+  return matrices
+end
+
+"""
+    instantiate_MPO(sym::SymbolicMPO, coefficients; splitblocks=true, checkflux=false) -> MPO
+
+Evaluate a symbolic MPO with a numeric coefficient vector and return a fresh
+numeric `MPO`.
+
+The coefficient vector is indexed by the original positive labels used to build
+`sym`. Each site's symbolic block storage is first evaluated into ordinary
+`BlockSparseMatrix` storage, then converted to ITensors through the same
+assembly path used by numeric MPO construction.
+"""
+function instantiate_MPO(
+  sym::SymbolicMPO, coefficients::AbstractVector; splitblocks::Bool=true, checkflux::Bool=false
+)::MPO
+  _check_symbolic_coefficients(sym, coefficients)
+  C = _symbolic_mpo_eltype(sym, coefficients)
+
+  H = MPO(sym.sites)
+
+  @timeit "to_ITensor" Threads.@threads for n in eachindex(sym.sites)
+    block_sparse_matrices = _evaluate_symbolic_block_sparse_matrices(
+      sym.block_sparse_matrices[n], coefficients, sym.op_cache_vec[n], C
+    )
+    H[n] = to_ITensor(
+      sym.offsets[n],
+      block_sparse_matrices,
+      sym.llinks[n],
+      sym.llinks[n + 1],
+      sym.sites[n],
+      ;
+      splitblocks,
+    )
+  end
+
+  # Remove the dummy link indices from the left and right.
+  L = ITensor(sym.llinks[1])
+  L[end] = 1.0
+
+  R = ITensor(dag(sym.llinks[end]))
+  R[1] = 1.0
+
+  H[1] *= L
+  H[length(sym.sites)] *= R
+
+  if checkflux
+    @timeit "checkflux" Threads.@threads for n in eachindex(sym.sites)
+      ITensors.checkflux(H[n])
+    end
+  end
+
+  return H
+end
+
 function _check_MPO_symbolic_kwargs(kwargs)::Nothing
   if haskey(kwargs, :alg)
     throw(

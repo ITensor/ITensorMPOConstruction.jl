@@ -349,6 +349,60 @@ function transverse_field_ising_symbolic_fixture()
   return os, sites
 end
 
+function transverse_field_ising_numeric_opidsum(sites, coefficients)
+  op_cache_vec = to_OpCacheVec(sites, [["I", "X", "Z"] for _ in eachindex(sites)])
+
+  X(n) = OpID(2, n)
+  Z(n) = OpID(3, n)
+
+  os = OpIDSum{2,eltype(coefficients),Int}(3, op_cache_vec)
+  add!(os, coefficients[1], X(1), X(2))
+  add!(os, coefficients[2], Z(1))
+  add!(os, coefficients[3], Z(2))
+
+  return os
+end
+
+function qn_number_symbolic_fixture()
+  sites = siteinds("Fermion", 2; conserve_qns=true)
+  op_cache_vec = to_OpCacheVec(sites, [["I", "N"] for _ in eachindex(sites)])
+
+  Nop(n) = OpID(2, n)
+
+  os = OpIDSum{2,Int,Int}(3, op_cache_vec)
+  add!(os, 1, Nop(1))
+  add!(os, 2, Nop(2))
+  add!(os, 3, Nop(1), Nop(2))
+
+  return os, sites
+end
+
+function qn_number_numeric_opidsum(sites, coefficients)
+  op_cache_vec = to_OpCacheVec(sites, [["I", "N"] for _ in eachindex(sites)])
+
+  Nop(n) = OpID(2, n)
+
+  os = OpIDSum{2,eltype(coefficients),Int}(3, op_cache_vec)
+  add!(os, coefficients[1], Nop(1))
+  add!(os, coefficients[2], Nop(2))
+  add!(os, coefficients[3], Nop(1), Nop(2))
+
+  return os
+end
+
+function mpo_relative_error(A::MPO, B::MPO)::Float64
+  AmB = add(A, -B; alg="directsum")
+  numerator = real(inner(AmB, AmB))
+  denominator = real(inner(A, A))
+  return iszero(denominator) ? numerator : numerator / denominator
+end
+
+function test_mpos_approx_equal(A::MPO, B::MPO; tol::Real=1e-10)::Nothing
+  relative_error = mpo_relative_error(A, B)
+  @test relative_error < tol
+  return nothing
+end
+
 function symbolic_mpo_terms(sym::SymbolicMPO)::Vector{Tuple{Int,Int}}
   terms = Tuple{Int,Int}[]
   for site_matrices in sym.block_sparse_matrices
@@ -394,6 +448,76 @@ function test_symbolic_mpo_rejects_unsupported_public_inputs()::Nothing
   return nothing
 end
 
+function test_symbolic_mpo_fresh_instantiation_matches_numeric()::Nothing
+  os, sites = transverse_field_ising_symbolic_fixture()
+  sym = MPO_symbolic(os, sites)
+
+  for coefficients in ([1.25, -0.5, 0.75], [-2.0, 0.25, 1.5])
+    symbolic_mpo = instantiate_MPO(sym, coefficients; splitblocks=true)
+    numeric_mpo = MPO_new(
+      transverse_field_ising_numeric_opidsum(sites, coefficients),
+      sites;
+      alg="VC",
+      splitblocks=true,
+      checkflux=false,
+    )
+
+    test_mpos_approx_equal(symbolic_mpo, numeric_mpo)
+  end
+
+  return nothing
+end
+
+function test_symbolic_mpo_duplicate_labels_instantiate_like_numeric()::Nothing
+  sites, op_cache_vec = two_site_qubit_symbolic_fixture()
+
+  X(n) = OpID(2, n)
+
+  symbolic_os = OpIDSum{2,Int,Int}(2, op_cache_vec)
+  add!(symbolic_os, 1, X(1), X(2))
+  add!(symbolic_os, 2, X(1), X(2))
+
+  sym = MPO_symbolic(symbolic_os, sites)
+  coefficients = [2.0, 3.0]
+  symbolic_mpo = instantiate_MPO(sym, coefficients; splitblocks=true)
+
+  numeric_os = OpIDSum{2,Float64,Int}(2, op_cache_vec)
+  add!(numeric_os, coefficients[1], X(1), X(2))
+  add!(numeric_os, coefficients[2], X(1), X(2))
+  numeric_mpo = MPO_new(numeric_os, sites; alg="VC", splitblocks=true, checkflux=false)
+
+  test_mpos_approx_equal(symbolic_mpo, numeric_mpo)
+
+  return nothing
+end
+
+function test_symbolic_mpo_qn_fresh_instantiation()::Nothing
+  os, sites = qn_number_symbolic_fixture()
+  sym = MPO_symbolic(os, sites)
+
+  coefficients = [0.8, -1.1, 0.3]
+  for splitblocks in (false, true)
+    symbolic_mpo = instantiate_MPO(sym, coefficients; splitblocks, checkflux=true)
+    numeric_mpo = MPO_new(
+      qn_number_numeric_opidsum(sites, coefficients),
+      sites;
+      alg="VC",
+      splitblocks,
+      checkflux=true,
+    )
+
+    test_mpos_approx_equal(symbolic_mpo, numeric_mpo)
+  end
+
+  nonzero_mpo = instantiate_MPO(sym, [1.0, 2.0, 3.0]; splitblocks=true)
+  zero_mpo = instantiate_MPO(sym, [0.0, 0.0, 0.0]; splitblocks=true)
+
+  @test linkdims(zero_mpo) == linkdims(nonzero_mpo)
+  @test_throws ArgumentError instantiate_MPO(sym, [1.0, 2.0])
+
+  return nothing
+end
+
 function test_symbolic_mpo_uses_negative_local_op_id_for_jw_terms()::Nothing
   sites = siteinds("Fermion", 2)
   op_cache_vec = to_OpCacheVec(sites, [["I", "C", "Cdag", "N"] for _ in eachindex(sites)])
@@ -431,6 +555,12 @@ end
   test_symbolic_mpo_construction_metadata()
 
   test_symbolic_mpo_rejects_unsupported_public_inputs()
+
+  test_symbolic_mpo_fresh_instantiation_matches_numeric()
+
+  test_symbolic_mpo_duplicate_labels_instantiate_like_numeric()
+
+  test_symbolic_mpo_qn_fresh_instantiation()
 
   test_symbolic_mpo_uses_negative_local_op_id_for_jw_terms()
 end

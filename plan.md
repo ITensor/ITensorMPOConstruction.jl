@@ -296,17 +296,17 @@ instantiate_MPO(sym::SymbolicMPO, coefficients; splitblocks=true, checkflux=fals
 It should:
 
 - validate the coefficient vector length against `sym.max_user_label`,
-- evaluate symbolic block entries into numeric block matrices using
-  `sym.op_cache_vec`,
-- preserve the symbolic structural pattern even when evaluated values are zero,
+- at each site, evaluate `sym.block_sparse_matrices[n]` with `sym.op_cache_vec`
+  into a `Vector{BlockSparseMatrix{C}}`,
+- preserve the symbolic link layout even when evaluated values are zero,
 - call the existing tensor assembly path with the requested `splitblocks` value,
 - contract away the dummy boundary links the same way as the low-level
   `instantiate_MPO(offsets, block_sparse_matrices, sites, llinks; ...)`,
 - optionally run `ITensors.checkflux`.
 
-For QN tensors, structural block discovery must be based on symbolic local
-matrix terms before numeric substitution, so a coefficient vector containing
-zeros does not change the block structure or link layout.
+For QN tensors, structural block discovery uses the existing numeric
+`to_ITensor` path after symbolic block evaluation. A coefficient vector
+containing zeros must not change the stored symbolic MPO link layout.
 
 Tests for this step:
 
