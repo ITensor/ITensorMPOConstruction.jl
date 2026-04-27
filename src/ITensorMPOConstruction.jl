@@ -18,6 +18,7 @@ using ThreadsX
 #
 include("time_if.jl")
 include("OpIDSum.jl")
+include("SymbolicLocalMatrix.jl")
 include("ops.jl")
 include("BipartiteGraph.jl")
 include("connected-components.jl")
