@@ -177,12 +177,16 @@ Tests for this step:
 
 ### 3. Make basis rewrite compatible with internal signed ids
 
-- Reuse `prepare_opID_sum!(os, basis_op_cache_vec)` after the in-place
-  internal-id conversion.
+- Reuse `prepare_opID_sum!(os, basis_op_cache_vec; symbolic_coefficients=true)`
+  after the in-place internal-id conversion. The keyword keeps ordinary numeric
+  `MPO_new` preprocessing on the existing coefficient-scaling path while the
+  symbolic path treats integer coefficients as internal signed ids.
 - Ensure `rewrite_in_operator_basis!` can multiply internal signed ids by basis
   rewrite factors only when the factor is exactly `+1` or `-1`.
-- Reject `im`, `2im`, `0.5`, `2`, and other unsupported factors with a clear
-  `ArgumentError`.
+- Reject `im`, `2im`, `0.5`, `2`, and other unsupported factors with an
+  `ArgumentError`; this may be reported through Julia's threaded task failure
+  wrapper because symbolic rewrites use the same threaded loop as numeric
+  rewrites.
 - Add a sign-only rewrite regression where a same-site product produces `-1`
   and verifies the internal id sign flips while the user label is preserved.
 

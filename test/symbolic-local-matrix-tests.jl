@@ -8,7 +8,8 @@ using ITensorMPOConstruction:
   _normalize_symbolic_local_matrix!,
   _scale_symbolic_weight,
   _weight_value,
-  internalize_symbolic_ids!
+  internalize_symbolic_ids!,
+  prepare_opID_sum!
 using ITensors
 using ITensorMPS
 using Test
@@ -113,8 +114,87 @@ function test_internalize_symbolic_ids()::Nothing
   return nothing
 end
 
+function symbolic_basis_rewrite_cache_vecs(factor)
+  identity_matrix = [1.0 0.0; 0.0 1.0]
+  x_matrix = [0.0 1.0; 1.0 0.0]
+
+  op_cache_vec = [[
+    OpInfo("I", identity_matrix, false, QN()),
+    OpInfo("scaled I", factor * identity_matrix, false, QN()),
+    OpInfo("X", x_matrix, false, QN()),
+  ]]
+  basis_op_cache_vec = [[
+    OpInfo("I", identity_matrix, false, QN()), OpInfo("X", x_matrix, false, QN())
+  ]]
+
+  return op_cache_vec, basis_op_cache_vec
+end
+
+function symbolic_rewrite_opID_sum(factor, user_label::Int=7)
+  op_cache_vec, basis_op_cache_vec = symbolic_basis_rewrite_cache_vecs(factor)
+
+  scaled_identity(n) = OpID(2, n)
+  X(n) = OpID(3, n)
+
+  os = OpIDSum{2,Int,Int}(1, op_cache_vec)
+  add!(os, user_label, scaled_identity(1), X(1))
+  internalize_symbolic_ids!(os)
+
+  return os, basis_op_cache_vec
+end
+
+function test_symbolic_basis_rewrite_sign_factors()::Nothing
+  user_label = 7
+  internal_id = user_label + 1
+
+  os, basis_op_cache_vec = symbolic_rewrite_opID_sum(-1.0, user_label)
+  prepare_opID_sum!(os, basis_op_cache_vec; symbolic_coefficients=true)
+
+  scalar, ops = os[1]
+  nonzero_ops = [op for op in ops if op != zero(op)]
+  @test scalar == -internal_id
+  @test nonzero_ops == [OpID(2, 1)]
+  @test count(op -> op == zero(op), ops) == 1
+  @test os.op_cache_vec === basis_op_cache_vec
+
+  os, basis_op_cache_vec = symbolic_rewrite_opID_sum(1.0, user_label)
+  prepare_opID_sum!(os, basis_op_cache_vec; symbolic_coefficients=true)
+
+  scalar, ops = os[1]
+  nonzero_ops = [op for op in ops if op != zero(op)]
+  @test scalar == internal_id
+  @test nonzero_ops == [OpID(2, 1)]
+  @test count(op -> op == zero(op), ops) == 1
+  @test os.op_cache_vec === basis_op_cache_vec
+
+  return nothing
+end
+
+function test_symbolic_basis_rewrite_rejects_unsupported_factors()::Nothing
+  for factor in (im, 2im, 0.5, 2.0)
+    os, basis_op_cache_vec = symbolic_rewrite_opID_sum(factor)
+    err = nothing
+    try
+      prepare_opID_sum!(os, basis_op_cache_vec; symbolic_coefficients=true)
+    catch e
+      err = e
+    end
+
+    @test !isnothing(err)
+    error_message = sprint(showerror, err)
+    @test occursin("ArgumentError", error_message)
+    @test occursin("Unsupported symbolic rewrite factor", error_message)
+  end
+
+  return nothing
+end
+
 @testset "SymbolicLocalMatrix" begin
   test_symbolic_local_matrix_operations()
 
   test_internalize_symbolic_ids()
+
+  test_symbolic_basis_rewrite_sign_factors()
+
+  test_symbolic_basis_rewrite_rejects_unsupported_factors()
 end

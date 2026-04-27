@@ -384,7 +384,9 @@ function for_equal_sites(f::Function, ops::AbstractVector{<:OpID})::Nothing
 end
 
 """
-    rewrite_in_operator_basis!(os::OpIDSum, basis_op_cache_vec::OpCacheVec)
+    rewrite_in_operator_basis!(
+      os::OpIDSum, basis_op_cache_vec::OpCacheVec; symbolic_coefficients=false
+    ) -> Nothing
 
 Rewrite each same-site operator product in `os` into a single operator drawn
 from `basis_op_cache_vec`.
@@ -397,10 +399,23 @@ matrix, the whole term is set to zero. An error is thrown if a nonzero product
 cannot be represented by a single basis operator. After rewriting, each
 nonzero term is resorted by site and `os.op_cache_vec` is replaced by
 `basis_op_cache_vec`.
+
+When `symbolic_coefficients=true`, the stored coefficients are interpreted as
+internal signed symbolic ids. In that mode, rewrite factors must be exactly
+`+1` or `-1`; unsupported factors throw an `ArgumentError` instead of
+converting the symbolic id into an ordinary numeric coefficient.
 """
 @timeit function rewrite_in_operator_basis!(
-  os::OpIDSum{N,C,Ti}, basis_op_cache_vec::OpCacheVec
-) where {N,C,Ti}
+  os::OpIDSum{N,C,Ti}, basis_op_cache_vec::OpCacheVec; symbolic_coefficients::Bool=false
+)::Nothing where {N,C,Ti}
+  if symbolic_coefficients && !(C <: Integer)
+    throw(
+      ArgumentError(
+        "Symbolic operator-basis rewrites require integer internal coefficient ids.",
+      ),
+    )
+  end
+
   op_cache_vec = os.op_cache_vec
 
   function scale_by_first_nz!(matrix::Matrix)
@@ -456,6 +471,11 @@ nonzero term is resorted by site and `os.op_cache_vec` is replaced by
     end
   end
 
+  function apply_rewrite_factor(scalar, coeff)
+    symbolic_coefficients && return C(_scale_symbolic_weight(scalar, coeff))
+    return scalar * coeff
+  end
+
   Threads.@threads for i in eachindex(os)
     scalar, ops = os[i]
     term_is_zero = false
@@ -484,7 +504,7 @@ nonzero term is resorted by site and `os.op_cache_vec` is replaced by
         )
       end
 
-      scalar *= coeff
+      scalar = apply_rewrite_factor(scalar, coeff)
 
       ops[a] = OpID{Ti}(basis_id, ops[a].n)
       for k in (a + 1):b
@@ -498,7 +518,7 @@ nonzero term is resorted by site and `os.op_cache_vec` is replaced by
 
   os.op_cache_vec = basis_op_cache_vec
 
-  return os
+  return nothing
 end
 
 """
@@ -620,18 +640,25 @@ term has even fermion parity.
 end
 
 """
-    prepare_opID_sum!(os::OpIDSum, basis_op_cache_vec::Union{Nothing,OpCacheVec}) -> Nothing
+    prepare_opID_sum!(
+      os::OpIDSum, basis_op_cache_vec::Union{Nothing,OpCacheVec};
+      symbolic_coefficients=false
+    ) -> Nothing
 
 Apply optional preprocessing to `os` before MPO construction.
 
 Currently this rewrites terms into `basis_op_cache_vec` when a basis cache is
-provided and otherwise leaves `os` unchanged.
+provided and otherwise leaves `os` unchanged. Set `symbolic_coefficients=true`
+when integer coefficients are internal signed symbolic ids rather than numeric
+scalars.
 """
 function prepare_opID_sum!(
-  os::OpIDSum, basis_op_cache_vec::Union{Nothing,OpCacheVec}
+  os::OpIDSum,
+  basis_op_cache_vec::Union{Nothing,OpCacheVec};
+  symbolic_coefficients::Bool=false,
 )::Nothing
   if !isnothing(basis_op_cache_vec)
-    rewrite_in_operator_basis!(os, basis_op_cache_vec)
+    rewrite_in_operator_basis!(os, basis_op_cache_vec; symbolic_coefficients)
   end
 
   return nothing
