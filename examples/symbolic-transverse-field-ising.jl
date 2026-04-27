@@ -10,6 +10,7 @@
 
 using ITensors, ITensorMPS, ITensorMPOConstruction
 using Random
+using Test
 
 function num_tfim_couplings(N::Int)::Int
   return (N * (N - 1)) ÷ 2
@@ -89,7 +90,11 @@ function test_symbolic_tfim_sample(
   return norm(add(symbolic_mpo, -numeric_mpo; alg="directsum"))
 end
 
-let N = 50, h = 1.0, num_samples = 5
+@testset "Symbolic TFIM" begin
+  N = 50
+  h = 1.0
+  num_samples = 5
+  
   sym = all_to_all_tfim_symbolic(N)
   num_couplings = num_tfim_couplings(N)
 
@@ -101,7 +106,7 @@ let N = 50, h = 1.0, num_samples = 5
   for sample in 1:num_samples
     error = test_symbolic_tfim_sample(sym, randn(num_couplings), h)
     println("Sample $sample MPO error: $(round(error; sigdigits=3))")
-    @assert iszero(error)
+    @test iszero(error)
   end
 end
 
