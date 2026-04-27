@@ -342,29 +342,37 @@ already fixes the block layout, so evaluation must use the layout of `H` or
 - check `length(H) == length(sym.sites)`,
 - check site indices are compatible with `sym.sites`,
 - check link dimensions match `sym.llinks`,
-- overwrite each tensor in `H` with the evaluated tensor for that site,
-- preserve the existing `MPO` object identity.
+- temporarily add the dummy boundary links back to the first and last MPO
+  tensors by multiplying by one-entry dummy tensors,
+- for each site, zero the existing entries with `H[n] .= 0` and refill through
+  the same four-index coordinate layout used by the numeric tensor assembly,
+- contract away the dummy boundary links again at the end,
+- preserve the existing `MPO` object identity and link layout.
 
 `instantiate_MPO(H_template, sym, coefficients)` should:
 
 - reject incompatible templates with `ArgumentError`,
-- copy or reuse a compatible template,
+- copy a compatible template's tensors before filling them,
 - call `instantiate_MPO!`,
 - return the instantiated MPO.
 
-It is acceptable for V1 to overwrite tensors rather than doing lower-level
-storage mutation, as long as the public behavior and link structure are stable.
+This path should avoid rebuilding ITensors for compatible templates; the
+expected fast path is to reuse the existing structural storage for the nonzero
+entries after temporarily restoring the boundary-link layout.
 
 Tests for this step:
 
 - Build `H = instantiate_MPO(sym, coeffs1; splitblocks=true)`, then call
   `instantiate_MPO!(H, sym, coeffs2)` and compare `H` against
   `instantiate_MPO(sym, coeffs2; splitblocks=true)`.
+- Assert the `MPO` object identity and link dimensions are unchanged after
+  `instantiate_MPO!`.
 - Assert `instantiate_MPO!(H, sym, coeffs; splitblocks=false)` throws a
   `MethodError` or `ArgumentError`, since this overload must not accept
   `splitblocks`.
 - Call `instantiate_MPO(H, sym, coeffs2)` with a compatible template and compare
   against fresh instantiation using the same layout.
+- Assert template-assisted instantiation does not mutate the template MPO.
 - Build an incompatible template with different sites or link dimensions and
   assert `instantiate_MPO(H_bad, sym, coeffs)` throws an `ArgumentError`.
 

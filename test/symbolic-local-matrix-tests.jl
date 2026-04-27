@@ -394,7 +394,7 @@ function mpo_relative_error(A::MPO, B::MPO)::Float64
   AmB = add(A, -B; alg="directsum")
   numerator = real(inner(AmB, AmB))
   denominator = real(inner(A, A))
-  return iszero(denominator) ? numerator : numerator / denominator
+  return numerator / denominator
 end
 
 function test_mpos_approx_equal(A::MPO, B::MPO; tol::Real=1e-10)::Nothing
@@ -518,6 +518,57 @@ function test_symbolic_mpo_qn_fresh_instantiation()::Nothing
   return nothing
 end
 
+function test_symbolic_mpo_inplace_instantiation()::Nothing
+  os, sites = qn_number_symbolic_fixture()
+  sym = MPO_symbolic(os, sites)
+
+  coefficients1 = [0.8, -1.1, 0.3]
+  coefficients2 = [-0.2, 1.4, 0.6]
+
+  H = instantiate_MPO(sym, coefficients1; splitblocks=true)
+  original_objectid = objectid(H)
+  original_linkdims = linkdims(H)
+
+  result = instantiate_MPO!(H, sym, coefficients2; checkflux=true)
+  expected = instantiate_MPO(sym, coefficients2; splitblocks=true, checkflux=true)
+
+  @test result === H
+  @test objectid(H) == original_objectid
+  @test linkdims(H) == original_linkdims
+  test_mpos_approx_equal(H, expected)
+
+  @test_throws MethodError instantiate_MPO!(H, sym, coefficients2; splitblocks=false)
+
+  return nothing
+end
+
+function test_symbolic_mpo_template_instantiation()::Nothing
+  os, sites = qn_number_symbolic_fixture()
+  sym = MPO_symbolic(os, sites)
+
+  coefficients1 = [0.8, -1.1, 0.3]
+  coefficients2 = [-0.2, 1.4, 0.6]
+
+  H_template = instantiate_MPO(sym, coefficients1; splitblocks=false)
+  H_template_expected = instantiate_MPO(sym, coefficients1; splitblocks=false)
+  H = instantiate_MPO(H_template, sym, coefficients2; checkflux=true)
+  expected = instantiate_MPO(sym, coefficients2; splitblocks=false, checkflux=true)
+
+  @test H !== H_template
+  @test linkdims(H) == linkdims(H_template)
+  test_mpos_approx_equal(H, expected)
+  test_mpos_approx_equal(H_template, H_template_expected)
+
+  @test_throws MethodError instantiate_MPO(H_template, sym, coefficients2; splitblocks=true)
+
+  bad_os, bad_sites = qn_number_symbolic_fixture()
+  bad_sym = MPO_symbolic(bad_os, bad_sites)
+  H_bad = instantiate_MPO(bad_sym, coefficients1; splitblocks=false)
+  @test_throws Exception instantiate_MPO(H_bad, sym, coefficients2)
+
+  return nothing
+end
+
 function test_symbolic_mpo_uses_negative_local_op_id_for_jw_terms()::Nothing
   sites = siteinds("Fermion", 2)
   op_cache_vec = to_OpCacheVec(sites, [["I", "C", "Cdag", "N"] for _ in eachindex(sites)])
@@ -561,6 +612,10 @@ end
   test_symbolic_mpo_duplicate_labels_instantiate_like_numeric()
 
   test_symbolic_mpo_qn_fresh_instantiation()
+
+  test_symbolic_mpo_inplace_instantiation()
+
+  test_symbolic_mpo_template_instantiation()
 
   test_symbolic_mpo_uses_negative_local_op_id_for_jw_terms()
 end

@@ -91,6 +91,24 @@ function resume_MPO_construction!(
   return nothing
 end
 
+function _remove_symbolic_mpo_boundary_links!(H::MPO, llinks::Vector{<:Index})::Nothing
+  @assert ndims(H[1]) == 4
+  @assert ndims(H[end]) == 4
+
+  L = ITensor(llinks[1])
+  L[end] = 1.0
+  H[1] *= L
+
+  R = ITensor(dag(llinks[end]))
+  R[1] = 1.0
+  H[end] *= R
+
+  @assert ndims(H[1]) == 3
+  @assert ndims(H[end]) == 3
+
+  return nothing
+end
+
 """
     instantiate_MPO(offsets, block_sparse_matrices, sites, llinks; splitblocks, checkflux) -> MPO
 
@@ -117,15 +135,7 @@ function instantiate_MPO(
     )
   end
 
-  # Remove the dummy link indices from the left and right.
-  L = ITensor(llinks[1])
-  L[end] = 1.0
-
-  R = ITensor(dag(llinks[end]))
-  R[1] = 1.0
-
-  H[1] *= L
-  H[length(sites)] *= R
+  _remove_symbolic_mpo_boundary_links!(H, llinks)
 
   if checkflux
     @timeit "checkflux" Threads.@threads for n in 1:length(sites)
@@ -158,9 +168,9 @@ struct SymbolicMPO{
 end
 
 function _check_symbolic_coefficients(sym::SymbolicMPO, coefficients::AbstractVector)::Nothing
-  length(coefficients) >= sym.max_user_label || throw(
+  length(coefficients) == sym.max_user_label || throw(
     ArgumentError(
-      "Missing coefficient for symbolic label $(sym.max_user_label). " *
+      "Expected $(sym.max_user_label) coefficients. " *
       "Received $(length(coefficients)) coefficients.",
     ),
   )
@@ -261,6 +271,101 @@ function instantiate_MPO(
   end
 
   return H
+end
+
+function _add_symbolic_mpo_boundary_links!(H::MPO, sym::SymbolicMPO)::Nothing
+  L = ITensor(dag(sym.llinks[1]))
+  L[1] = 1.0
+  H[1] *= L
+
+  R = ITensor(sym.llinks[end])
+  R[1] = 1.0
+  H[end] *= R
+
+  return nothing
+end
+
+function _fill_symbolic_mpo_tensor_with_boundary_links!(
+  tensor::ITensor, sym::SymbolicMPO, coefficients::AbstractVector, n::Int
+)::ITensor
+  llink = dag(sym.llinks[n])
+  rlink = sym.llinks[n + 1]
+  site = sym.sites[n]
+  tensor = ITensors.permute(tensor, llink, rlink, prime(site), dag(site); allow_alias=true)
+  tensor .= 0
+
+  op_cache = sym.op_cache_vec[n]
+
+  for (offset, matrix) in zip(sym.offsets[n], sym.block_sparse_matrices[n])
+    for (right_link, column) in enumerate(matrix)
+      shifted_right_link = right_link + offset
+      for (left_link, terms) in pairs(column)
+        local_matrix = _evaluate_symbolic_local_matrix(terms, coefficients, op_cache)
+        for i in axes(local_matrix, 1)
+          for j in axes(local_matrix, 2)
+            iszero(local_matrix[i, j]) && continue
+            tensor[left_link, shifted_right_link, i, j] = local_matrix[i, j]
+          end
+        end
+      end
+    end
+  end
+
+  return tensor
+end
+
+"""
+    instantiate_MPO!(H::MPO, sym::SymbolicMPO, coefficients; checkflux=false) -> MPO
+
+Evaluate `sym` with `coefficients` into the existing MPO `H`.
+
+The target MPO fixes the tensor block layout, so this overload does not accept
+`splitblocks`. Site indices must match `sym`, and internal link dimensions must
+match the symbolic link dimensions. The dummy boundary links are temporarily
+restored so each tensor can be zeroed and refilled through the same four-index
+layout used by numeric tensor assembly, then contracted away again. The MPO
+object `H` is updated in place and returned.
+"""
+function instantiate_MPO!(
+  H::MPO, sym::SymbolicMPO, coefficients::AbstractVector; checkflux::Bool=false
+)::MPO
+  _check_symbolic_coefficients(sym, coefficients)
+
+  if length(H) != length(sym.sites)
+    throw(ArgumentError(
+      "Template MPO length $(length(H)) is incompatible with SymbolicMPO length $(length(sym.sites)).",
+    ))
+  end
+
+  _add_symbolic_mpo_boundary_links!(H, sym)
+
+  Threads.@threads for n in eachindex(sym.sites)
+    H[n] = _fill_symbolic_mpo_tensor_with_boundary_links!(H[n], sym, coefficients, n)
+  end
+
+  _remove_symbolic_mpo_boundary_links!(H, sym.llinks)
+
+  if checkflux
+    @timeit "checkflux" Threads.@threads for n in eachindex(sym.sites)
+      ITensors.checkflux(H[n])
+    end
+  end
+
+  return H
+end
+
+"""
+    instantiate_MPO(H_template::MPO, sym::SymbolicMPO, coefficients; checkflux=false) -> MPO
+
+Copy a compatible MPO template and evaluate `sym` into the copied layout.
+
+The template fixes the tensor block layout, so this overload does not accept
+`splitblocks`.
+"""
+function instantiate_MPO(
+  H_template::MPO, sym::SymbolicMPO, coefficients::AbstractVector; checkflux::Bool=false
+)::MPO
+  return instantiate_MPO!(deepcopy(H_template), sym, coefficients; checkflux)
 end
 
 function _check_MPO_symbolic_kwargs(kwargs)::Nothing

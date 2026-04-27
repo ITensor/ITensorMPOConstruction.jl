@@ -38,6 +38,6 @@ export OpInfo, OpCacheVec, to_OpCacheVec, OpID, OpIDSum
 
 # MPOConstruction.jl
 export resume_MPO_construction!,
-  MPO_new, SymbolicMPO, MPO_symbolic, instantiate_MPO, sparsity, block2_nnz
+  MPO_new, SymbolicMPO, MPO_symbolic, instantiate_MPO, instantiate_MPO!, sparsity, block2_nnz
 
 end
