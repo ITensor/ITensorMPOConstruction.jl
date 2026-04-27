@@ -34,8 +34,8 @@ H2 = instantiate_MPO(H, sym, coefficients; checkflux=false)
 - Convert each user label `k` to internal symbolic id `k + 1`, reserving
   internal id `1` for the constant one introduced by the vertex-cover algorithm.
 - Carry signs by negating the internal symbolic id. Negative ids can arise from
-  fermionic sorting signs or sign-only basis rewrites; they are not user-facing
-  labels.
+  sign-only basis rewrites and other internal sign handling; they are not
+  user-facing labels.
 - During numeric substitution:
   - internal id `+1` evaluates to `+1.0`,
   - internal id `-1` evaluates to `-1.0`,
@@ -156,22 +156,20 @@ internalize_symbolic_ids!(os::OpIDSum{N,C,Ti}) where {N,C<:Integer,Ti}
 - This helper may mutate the provided `OpIDSum`, matching the existing MPO
   construction behavior where preprocessing, sorting, and duplicate compaction
   are destructive.
-- Map each stored scalar label to a signed internal id in place.
-- Reject scalar label `0`.
+- Map each stored positive scalar label to an internal id in place.
+- Reject scalar labels less than or equal to `0`.
 - Map stored scalar label `k > 0` to internal id `k + 1`.
-- Map stored scalar label `k < 0` to internal id `-(abs(k) + 1)`, treating it
-  as the sign-carrying form of user label `abs(k)`.
 - Keep the same `op_cache_vec`, `abs_tol`, and `modify!`.
 - Add tests proving the in-place conversion maps labels correctly and rejects
-  zero labels.
+  nonpositive labels.
 
 Tests for this step:
 
-- Build a small `OpIDSum{2,Int,Int}` with scalar labels `1`, `2`, and `-3`;
+- Build a small `OpIDSum{2,Int,Int}` with scalar labels `1`, `2`, and `3`;
   after `internalize_symbolic_ids!`, assert that the stored labels are `2`, `3`,
-  and `-4`.
-- Add a term with label `0` and assert `internalize_symbolic_ids!` throws an
-  `ArgumentError`.
+  and `4`.
+- Add terms with labels `0` and `-1` and assert `internalize_symbolic_ids!`
+  throws an `ArgumentError`.
 - Assert the helper is intentionally mutating by checking that the same `os`
   object has updated scalar storage after conversion.
 - Assert `op_cache_vec`, `abs_tol`, and `modify!` are still the original objects
@@ -377,8 +375,8 @@ failure points directly to the layer that broke:
   - unsupported rewrite-factor error.
 - `"internal symbolic ids"`:
   - in-place user-label to internal-id conversion,
-  - zero label rejection,
-  - sign-preserving conversion for labels made negative by preprocessing.
+  - nonpositive label rejection,
+  - negative internal ids from later sign-carrying operations remain supported.
 - `"basis rewrite"`:
   - `+1` rewrite factor preserves id sign,
   - `-1` rewrite factor flips id sign,

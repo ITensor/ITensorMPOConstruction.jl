@@ -7,7 +7,8 @@ using ITensorMPOConstruction:
   _max_user_label,
   _normalize_symbolic_local_matrix!,
   _scale_symbolic_weight,
-  _weight_value
+  _weight_value,
+  internalize_symbolic_ids!
 using ITensors
 using ITensorMPS
 using Test
@@ -24,6 +25,7 @@ function test_symbolic_local_matrix_operations()::Nothing
   @test _internal_symbolic_id(1) == 2
   @test _internal_symbolic_id(3) == 4
   @test_throws ArgumentError _internal_symbolic_id(0)
+  @test_throws ArgumentError _internal_symbolic_id(-1)
 
   @test _scale_symbolic_weight(3, 1) == 3
   @test _scale_symbolic_weight(3, -1) == -3
@@ -74,6 +76,45 @@ function test_symbolic_local_matrix_operations()::Nothing
   return nothing
 end
 
+function test_internalize_symbolic_ids()::Nothing
+  sites = siteinds("Qubit", 2)
+  op_cache_vec = to_OpCacheVec(sites, [["I", "X"], ["I", "Z"]])
+
+  X(n) = OpID(2, n)
+  Z(n) = OpID(2, n)
+
+  modify!(ops) = 1
+  os = OpIDSum{2,Int,Int}(3, op_cache_vec, modify!; abs_tol=0.25)
+  add!(os, 1, X(1))
+  add!(os, 2, Z(2))
+  add!(os, 3, X(1), Z(2))
+
+  original_op_cache_vec = os.op_cache_vec
+  original_abs_tol = os.abs_tol
+  original_modify! = os.modify!
+  original_scalars = os.scalars
+
+  @test internalize_symbolic_ids!(os) === os
+  @test original_scalars === os.scalars
+  @test os.scalars[1:3] == [2, 3, 4]
+  @test os.op_cache_vec === original_op_cache_vec
+  @test os.abs_tol == original_abs_tol
+  @test os.modify! === original_modify!
+
+  zero_label_os = OpIDSum{2,Int,Int}(1, op_cache_vec)
+  add!(zero_label_os, 1, X(1))
+  zero_label_os.scalars[1] = 0
+  @test_throws ArgumentError internalize_symbolic_ids!(zero_label_os)
+
+  negative_label_os = OpIDSum{2,Int,Int}(1, op_cache_vec)
+  add!(negative_label_os, -1, X(1))
+  @test_throws ArgumentError internalize_symbolic_ids!(negative_label_os)
+
+  return nothing
+end
+
 @testset "SymbolicLocalMatrix" begin
   test_symbolic_local_matrix_operations()
+
+  test_internalize_symbolic_ids()
 end

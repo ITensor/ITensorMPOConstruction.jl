@@ -38,8 +38,29 @@ function _check_symbolic_local_op_id(signed_local_op_id::Integer)::Nothing
 end
 
 function _internal_symbolic_id(user_label::Integer)::Int
-  user_label == 0 && throw(ArgumentError("Symbolic coefficient labels must be nonzero."))
-  return user_label > 0 ? user_label + 1 : -(abs(user_label) + 1)
+  user_label > 0 ||
+    throw(ArgumentError("Symbolic coefficient labels must be greater than zero."))
+  return user_label + 1
+end
+
+"""
+    internalize_symbolic_ids!(os::OpIDSum{N,C,Ti}) where {N,C<:Integer,Ti}
+
+Map the integer scalar labels stored in `os` into the internal symbolic id
+space used by symbolic MPO construction.
+
+User label `k > 0` is stored as `k + 1`, reserving internal id `1` for the
+constant one. Labels less than or equal to zero are invalid. The conversion
+mutates `os` in place and does not alter its operator cache, tolerance, or
+modification callback.
+"""
+function internalize_symbolic_ids!(
+  os::OpIDSum{N,C,Ti}
+)::OpIDSum{N,C,Ti} where {N,C<:Integer,Ti}
+  for i in eachindex(os)
+    os.scalars[i] = C(_internal_symbolic_id(os.scalars[i]))
+  end
+  return os
 end
 
 function _max_user_label(signed_weight_id::Integer)::Int
