@@ -9,11 +9,20 @@ The main exported function is `MPO_new`, which takes an `OpSum` and transforms i
 
 ```@docs
 MPO_new
+SymbolicMPO
+MPO_symbolic
 resume_MPO_construction!
 instantiate_MPO
+instantiate_MPO!
 sparsity
 block2_nnz
 ```
+
+## Symbolic MPO construction
+`MPO_symbolic` constructs the vertex-cover MPO structure once from an integer-labeled
+`OpIDSum`. The labels are positive one-based coefficient ids, and
+`instantiate_MPO` or `instantiate_MPO!` substitutes numeric values later without
+rebuilding the graph.
 
 ## A note on truncation
 `MPO_new` is designed to construct _numerically exact_ MPOs; the tolerance parameter should only be used to adjust the definition of "numerically exact", not to perform truncation. If truncation is desired, truncate the resulting MPO with `ITensorMPS.truncate!`. See [Haldane-Shastry and truncation](../examples/haldane-shastry.md) for an example.

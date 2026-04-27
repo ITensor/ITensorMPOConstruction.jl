@@ -17,6 +17,7 @@ examples = [
   "./examples/fermi-hubbard-ks.jl",
   "./examples/haldane-shastry.jl",
   "./examples/electronic-structure.jl",
+  "./examples/symbolic-transverse-field-ising.jl",
   "./examples/fermi-hubbard-tc.jl",
 ]
 
@@ -53,6 +54,7 @@ makedocs(;
       "Real Space Fermi-Hubbard" => "examples/fermi-hubbard-rs.md",
       "Momentum Space Fermi-Hubbard" => "examples/fermi-hubbard-ks.md",
       "Electronic Structure" => "examples/electronic-structure.md",
+      "Symbolic Transverse Field Ising" => "examples/symbolic-transverse-field-ising.md",
       "Haldane-Shastry and Truncation" => "examples/haldane-shastry.md",
       "Challenge Problem" => "examples/fermi-hubbard-tc.md",
     ],

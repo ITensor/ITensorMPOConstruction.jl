@@ -13,6 +13,9 @@ ITensorMPOConstruction.rewrite_in_operator_basis!
 ITensorMPOConstruction.op_sum_to_opID_sum
 ITensorMPOConstruction.check_os_for_errors
 ITensorMPOConstruction.prepare_opID_sum!
+ITensorMPOConstruction.SymbolicLocalMatrix
+ITensorMPOConstruction.SymbolicBlockSparseMatrix
+ITensorMPOConstruction.internalize_symbolic_ids!
 ITensorMPOConstruction.get_onsite_op
 ```
 

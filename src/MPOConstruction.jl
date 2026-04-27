@@ -109,6 +109,8 @@ function _remove_symbolic_mpo_boundary_links!(H::MPO, llinks::Vector{<:Index})::
   return nothing
 end
 
+# TODO: Move splitblocks warning to all instantiate_MPO calls
+
 """
     instantiate_MPO(offsets, block_sparse_matrices, sites, llinks; splitblocks, checkflux) -> MPO
 
