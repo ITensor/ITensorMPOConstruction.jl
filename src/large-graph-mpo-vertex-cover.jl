@@ -1,3 +1,92 @@
+function _vertex_cover_matrix(
+  ::Type{BlockSparseMatrix{ValType}}, rank::Int
+)::BlockSparseMatrix{ValType} where {ValType}
+  return [Dictionary{Int,Matrix{ValType}}() for _ in 1:rank]
+end
+
+function _vertex_cover_matrix(
+  ::Type{SymbolicBlockSparseMatrix{Ti}}, rank::Int
+)::SymbolicBlockSparseMatrix{Ti} where {Ti<:Integer}
+  return [Dictionary{Int,SymbolicLocalMatrix{Ti}}() for _ in 1:rank]
+end
+
+function _signed_symbolic_local_op_id(lv::LeftVertex, ::Type{Ti})::Ti where {Ti<:Integer}
+  signed_local_op_id = lv.needs_JW_string ? -Int(lv.op_id) : Int(lv.op_id)
+  return Ti(signed_local_op_id)
+end
+
+function _add_vertex_cover_term!(
+  matrix::BlockSparseMatrix{ValType},
+  m::Int,
+  lv::LeftVertex,
+  weight::Number,
+  op_cache::Vector{OpInfo},
+  site_dim::Int,
+)::Nothing where {ValType}
+  local_op = op_cache[lv.op_id].matrix
+  matrix_element = get!(matrix[m], lv.link) do
+    zeros(ValType, site_dim, site_dim)
+  end
+  add_to_local_matrix!(matrix_element, weight, local_op, lv.needs_JW_string)
+  return nothing
+end
+
+function _add_vertex_cover_term!(
+  matrix::SymbolicBlockSparseMatrix{Ti},
+  m::Int,
+  lv::LeftVertex,
+  signed_weight_id::Integer,
+  op_cache::Vector{OpInfo},
+  site_dim::Int,
+)::Nothing where {Ti<:Integer}
+  terms = get!(matrix[m], lv.link) do
+    SymbolicLocalMatrix{Ti}()
+  end
+  _append_symbolic_local_matrix_term!(
+    terms, signed_weight_id, _signed_symbolic_local_op_id(lv, Ti)
+  )
+  return nothing
+end
+
+function _add_vertex_cover_unit_term!(
+  matrix::BlockSparseMatrix{ValType},
+  m::Int,
+  lv::LeftVertex,
+  op_cache::Vector{OpInfo},
+  site_dim::Int,
+  ::Type{C},
+)::Nothing where {ValType,C}
+  _add_vertex_cover_term!(matrix, m, lv, one(ValType), op_cache, site_dim)
+  return nothing
+end
+
+function _add_vertex_cover_unit_term!(
+  matrix::SymbolicBlockSparseMatrix{Ti},
+  m::Int,
+  lv::LeftVertex,
+  op_cache::Vector{OpInfo},
+  site_dim::Int,
+  ::Type{C},
+)::Nothing where {Ti<:Integer,C<:Integer}
+  _add_vertex_cover_term!(matrix, m, lv, one(C), op_cache, site_dim)
+  return nothing
+end
+
+function _finalize_vertex_cover_matrix!(matrix::BlockSparseMatrix)::Nothing
+  return nothing
+end
+
+function _finalize_vertex_cover_matrix!(
+  matrix::SymbolicBlockSparseMatrix
+)::Nothing
+  for block in matrix
+    for terms in values(block)
+      _normalize_symbolic_local_matrix!(terms)
+    end
+  end
+  return nothing
+end
+
 """
     process_vertex_cover!(
       matrix_of_cc, rank_of_cc, next_edges_of_cc, g, ccs, n, sites, op_cache_vec
@@ -12,7 +101,7 @@ stored edge weights. On the final site, only the local tensor blocks are needed;
 otherwise this also builds `next_edges_of_cc` for the graph at site `n + 1`.
 """
 @timeit function process_vertex_cover!(
-  matrix_of_cc::Vector{BlockSparseMatrix{ValType}},
+  matrix_of_cc::Vector{MatrixType},
   rank_of_cc::Vector{Int},
   next_edges_of_cc::Vector{Matrix{Tuple{Vector{Int},Vector{C}}}},
   g::MPOGraph{N,C,Ti},
@@ -20,7 +109,7 @@ otherwise this also builds `next_edges_of_cc` for the graph at site `n + 1`.
   n::Int,
   sites::Vector{<:Index},
   op_cache_vec::OpCacheVec,
-)::Nothing where {ValType<:Number,N,C,Ti}
+)::Nothing where {MatrixType,N,C,Ti}
   site_dim = dim(sites[n])
   op_cache = op_cache_vec[n]
 
@@ -44,18 +133,15 @@ otherwise this also builds `next_edges_of_cc` for the graph at site `n + 1`.
     rank = length(left_cover) + length(right_cover)
     rank_of_cc[cc] = rank
 
-    matrix = [Dictionary{Int,Matrix{ValType}}() for _ in 1:rank]
+    matrix = _vertex_cover_matrix(MatrixType, rank)
     matrix_of_cc[cc] = matrix
 
     ## Construct the tensor from the left cover.
     @inbounds for m in eachindex(left_cover)
       lv_id = lvs_of_component[left_cover[m]]
       lv = left_vertex(g, lv_id)
-      local_op = op_cache[lv.op_id].matrix
 
-      matrix_element = zeros(ValType, site_dim, site_dim)
-      add_to_local_matrix!(matrix_element, one(ValType), local_op, lv.needs_JW_string)
-      set!(matrix[m], lv.link, matrix_element)
+      _add_vertex_cover_unit_term!(matrix, m, lv, op_cache, site_dim, C)
     end
 
     ## Construct the tensor from the right cover.
@@ -82,19 +168,16 @@ otherwise this also builds `next_edges_of_cc` for the graph at site `n + 1`.
 
       @inbounds for lv_id in uncovered_left_ids
         lv = left_vertex(g, lv_id)
-        local_op = op_cache[lv.op_id].matrix
 
         for (rv_id, weight) in weighted_edge_iterator(g, lv_id)
           m = right_cover_m[position_of_rvs_in_component[rv_id]]
 
-          matrix_element = get!(matrix[m], lv.link) do
-            zeros(ValType, site_dim, site_dim)
-          end
-
-          add_to_local_matrix!(matrix_element, weight, local_op, lv.needs_JW_string)
+          _add_vertex_cover_term!(matrix, m, lv, weight, op_cache, site_dim)
         end
       end
     end
+
+    _finalize_vertex_cover_matrix!(matrix)
 
     n == length(sites) && continue
 

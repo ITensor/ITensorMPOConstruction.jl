@@ -258,8 +258,13 @@ type instead of using an abstract field.
 - run `prepare_opID_sum!` and optionally `check_os_for_errors`,
 - build the symbolic graph without numerically adding identifier ids,
 - initialize the dummy left link exactly as `MPO_new` does,
-- run a VC-only symbolic construction driver that mirrors the existing
-  vertex-cover path but writes `SymbolicBlockSparseMatrix{Ti}` blocks,
+- call the existing `resume_MPO_construction!` with `alg="VC"` and symbolic
+  block storage, so symbolic construction reuses `at_site!` and
+  `process_vertex_cover!` instead of maintaining parallel symbolic driver
+  functions,
+- use small storage-dispatch helpers inside the vertex-cover path so numeric
+  blocks still accumulate dense matrices while symbolic blocks append
+  `(signed_weight_id, signed_local_op_id)` terms,
 - when adding a local contribution, append
   `(signed_weight_id, signed_local_op_id)` to the symbolic block instead of
   expanding the dense local operator matrix,

@@ -1,6 +1,8 @@
 using ITensorMPOConstruction
 using ITensorMPOConstruction:
   MPOGraph,
+  MPO_symbolic,
+  SymbolicMPO,
   SymbolicLocalMatrix,
   _append_symbolic_local_matrix_term!,
   _evaluate_symbolic_local_matrix,
@@ -332,6 +334,83 @@ function test_symbolic_mpo_graph_cancels_opposite_signed_ids()::Nothing
   return nothing
 end
 
+function transverse_field_ising_symbolic_fixture()
+  sites = siteinds("Qubit", 2)
+  op_cache_vec = to_OpCacheVec(sites, [["I", "X", "Z"] for _ in eachindex(sites)])
+
+  X(n) = OpID(2, n)
+  Z(n) = OpID(3, n)
+
+  os = OpIDSum{2,Int,Int}(3, op_cache_vec)
+  add!(os, 1, X(1), X(2))
+  add!(os, 2, Z(1))
+  add!(os, 3, Z(2))
+
+  return os, sites
+end
+
+function symbolic_mpo_terms(sym::SymbolicMPO)::Vector{Tuple{Int,Int}}
+  terms = Tuple{Int,Int}[]
+  for site_matrices in sym.block_sparse_matrices
+    for matrix_of_component in site_matrices
+      for block in matrix_of_component
+        for block_terms in values(block)
+          append!(terms, block_terms)
+        end
+      end
+    end
+  end
+  return terms
+end
+
+function test_symbolic_mpo_construction_metadata()::Nothing
+  os, sites = transverse_field_ising_symbolic_fixture()
+
+  sym = MPO_symbolic(os, sites)
+
+  @test sym isa SymbolicMPO
+  @test length(sym.offsets) == length(sites)
+  @test length(sym.block_sparse_matrices) == length(sites)
+  @test length(sym.llinks) == length(sites) + 1
+  @test sym.max_user_label == 3
+  @test sym.op_cache_vec === os.op_cache_vec
+  @test !isempty(symbolic_mpo_terms(sym))
+
+  return nothing
+end
+
+function test_symbolic_mpo_rejects_unsupported_public_inputs()::Nothing
+  os, sites = transverse_field_ising_symbolic_fixture()
+  @test_throws ArgumentError MPO_symbolic(os, sites; alg="QR")
+
+  noninteger_os = OpIDSum{2,Float64,Int}(1, os.op_cache_vec)
+  add!(noninteger_os, 1.0, OpID(2, 1), OpID(2, 2))
+  @test_throws ArgumentError MPO_symbolic(noninteger_os, sites)
+
+  op_sum = OpSum()
+  op_sum += "X", 1
+  @test_throws ArgumentError MPO_symbolic(op_sum, sites)
+
+  return nothing
+end
+
+function test_symbolic_mpo_uses_negative_local_op_id_for_jw_terms()::Nothing
+  sites = siteinds("Fermion", 2)
+  op_cache_vec = to_OpCacheVec(sites, [["I", "C", "Cdag", "N"] for _ in eachindex(sites)])
+
+  C(n) = OpID(2, n)
+  Cdag(n) = OpID(3, n)
+
+  os = OpIDSum{2,Int,Int}(1, op_cache_vec)
+  add!(os, 1, Cdag(1), C(2))
+
+  sym = MPO_symbolic(os, sites)
+  terms = symbolic_mpo_terms(sym)
+  @test any(term -> term[2] < 0, terms)
+
+  return nothing
+end
+
 @testset "SymbolicLocalMatrix" begin
   test_symbolic_local_matrix_operations()
 
@@ -348,4 +427,10 @@ end
   test_symbolic_mpo_graph_preserves_duplicate_label_multiplicity()
 
   test_symbolic_mpo_graph_cancels_opposite_signed_ids()
+
+  test_symbolic_mpo_construction_metadata()
+
+  test_symbolic_mpo_rejects_unsupported_public_inputs()
+
+  test_symbolic_mpo_uses_negative_local_op_id_for_jw_terms()
 end

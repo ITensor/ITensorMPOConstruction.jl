@@ -76,6 +76,14 @@ function _max_user_label(terms::SymbolicLocalMatrix)::Int
   return max_user_label
 end
 
+function _max_user_label(os::OpIDSum)::Int
+  max_user_label = 0
+  for i in eachindex(os)
+    max_user_label = max(max_user_label, _max_user_label(os.scalars[i]))
+  end
+  return max_user_label
+end
+
 function _append_symbolic_local_matrix_term!(
   terms::SymbolicLocalMatrix{Ti},
   signed_weight_id::Integer,

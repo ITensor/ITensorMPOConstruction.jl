@@ -349,6 +349,14 @@ function merge_qn_sectors(
   return new_order, new_qi
 end
 
+function _check_qr_block_storage(::Type{SymbolicBlockSparseMatrix{Ti}})::Nothing where {Ti}
+  throw(ArgumentError("QR construction is only supported for numeric block storage."))
+end
+
+function _check_qr_block_storage(::Type)::Nothing
+  return nothing
+end
+
 """
     at_site!(ValType, g, n, sites, tol, absolute_tol, op_cache_vec, alg;
              combine_qn_sectors, output_level=0)
@@ -370,7 +378,7 @@ merges adjacent outgoing link sectors with the same QN after component ranks are
 known.
 """
 @timeit function at_site!(
-  ::Type{ValType},
+  ::Type{MatrixType},
   g::MPOGraph{N,C,Ti},
   n::Int,
   sites::Vector{<:Index},
@@ -380,9 +388,7 @@ known.
   alg::String;
   combine_qn_sectors::Bool,
   output_level::Int=0,
-)::Tuple{
-  MPOGraph{N,C,Ti},Vector{Int},Vector{BlockSparseMatrix{ValType}},Index
-} where {ValType<:Number,N,C,Ti}
+)::Tuple{MPOGraph{N,C,Ti},Vector{Int},Vector{MatrixType},Index} where {MatrixType,N,C,Ti}
   has_qns = hasqns(sites)
 
   workspace = combine_duplicate_adjacent_right_vertices!(g, terms_eq_from(n + 1))
@@ -395,7 +401,7 @@ known.
   rank_of_cc = zeros(Int, nccs)
 
   ## The MPO tensor for each component.
-  matrix_of_cc = [BlockSparseMatrix{ValType}() for _ in 1:nccs]
+  matrix_of_cc = [_vertex_cover_matrix(MatrixType, 0) for _ in 1:nccs]
 
   ## The QN of each component
   qi_of_cc = Vector{Pair{QN,Int}}(undef, nccs)
@@ -416,6 +422,7 @@ known.
   )
 
   if alg == "QR"
+    _check_qr_block_storage(MatrixType)
     process_qr(
       matrix_of_cc,
       rank_of_cc,

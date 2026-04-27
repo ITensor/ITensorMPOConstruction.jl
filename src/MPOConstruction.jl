@@ -45,7 +45,7 @@ $_resume_MPO_kwargs
 function resume_MPO_construction!(
   n_init::Int,
   offsets::Vector{Vector{Int}},
-  block_sparse_matrices::Vector{Vector{BlockSparseMatrix{ValType}}},
+  block_sparse_matrices::Vector{Vector{MatrixType}},
   sites::Vector{<:Index},
   llinks::Vector{<:Index},
   g::MPOGraph,
@@ -57,14 +57,14 @@ function resume_MPO_construction!(
   call_back::Function=(
     cur_site::Int,
     offsets::Vector{Vector{Int}},
-    block_sparse_matrices::Vector{Vector{BlockSparseMatrix{ValType}}},
+    block_sparse_matrices::Vector{Vector{MatrixType}},
     sites::Vector{<:Index},
     llinks::Vector{<:Index},
     cur_graph::MPOGraph,
     op_cache_vec::OpCacheVec,
   ) -> nothing,
   output_level::Int=0,
-)::Nothing where {ValType<:Number}
+)::Nothing where {MatrixType}
   @assert !ITensors.using_auto_fermion() # TODO: This should be fixed.
   @assert tol >= 0
 
@@ -73,7 +73,7 @@ function resume_MPO_construction!(
       "At site $n/$(length(sites)) the graph takes up $(Base.format_bytes(Base.summarysize(g)))",
     )
     @time_if output_level 1 "at_site!" g, offsets[n], block_sparse_matrices[n], llinks[n + 1] = at_site!(
-      ValType,
+      MatrixType,
       g,
       n,
       sites,
@@ -134,6 +134,108 @@ function instantiate_MPO(
   end
 
   return H
+end
+
+"""
+    SymbolicMPO
+
+Intermediate symbolic MPO representation produced by [`MPO_symbolic`](@ref).
+
+The stored `block_sparse_matrices` have the same structural layout as numeric
+MPO construction, but each block entry is a symbolic local matrix term list.
+`max_user_label` records the largest positive coefficient label needed for
+later numeric substitution.
+"""
+struct SymbolicMPO{
+  Ti<:Integer,Sites<:AbstractVector{<:Index},Links<:AbstractVector{<:Index}
+}
+  offsets::Vector{Vector{Int}}
+  block_sparse_matrices::Vector{Vector{SymbolicBlockSparseMatrix{Ti}}}
+  sites::Sites
+  llinks::Links
+  op_cache_vec::OpCacheVec
+  max_user_label::Int
+end
+
+function _check_MPO_symbolic_kwargs(kwargs)::Nothing
+  if haskey(kwargs, :alg)
+    throw(
+      ArgumentError(
+        "Symbolic MPO construction is always vertex-cover based and does not accept an alg keyword.",
+      ),
+    )
+  end
+
+  if !isempty(kwargs)
+    throw(ArgumentError("Unsupported keyword(s) for MPO_symbolic: $(join(keys(kwargs), ", "))."))
+  end
+
+  return nothing
+end
+
+"""
+    MPO_symbolic(os::OpIDSum, sites; basis_op_cache_vec=nothing,
+      check_for_errors=true, combine_qn_sectors=false, output_level=0) -> SymbolicMPO
+
+Run the vertex-cover MPO construction once for an integer-labeled `OpIDSum`,
+storing symbolic local matrix terms that can be numerically instantiated later.
+
+The input `OpIDSum` is preprocessed in place, matching `MPO_new`: positive user
+coefficient labels are remapped to internal symbolic ids, an optional basis
+rewrite is applied, and duplicate symbolic graph entries are preserved.
+"""
+function MPO_symbolic(
+  os::OpIDSum{N,C,Ti},
+  sites::Vector{<:Index};
+  basis_op_cache_vec=nothing,
+  check_for_errors::Bool=true,
+  combine_qn_sectors::Bool=false,
+  output_level::Int=0,
+  kwargs...,
+)::SymbolicMPO where {N,C,Ti}
+  _check_MPO_symbolic_kwargs(kwargs)
+
+  C <: Integer || throw(
+    ArgumentError("MPO_symbolic requires an OpIDSum with integer coefficient labels."),
+  )
+
+  internalize_symbolic_ids!(os)
+  prepare_opID_sum!(os, to_OpCacheVec(sites, basis_op_cache_vec); symbolic_coefficients=true)
+  check_for_errors && check_os_for_errors(os)
+  max_user_label = _max_user_label(os)
+
+  label = "Constructing symbolic MPOGraph from $(length(os)) terms"
+  @time_if output_level 0 label g = MPOGraph(os; symbolic_coefficients=true)
+
+  llinks = Vector{Index}(undef, length(sites) + 1)
+  if hasqns(sites)
+    llinks[1] = Index(QN() => 1; tags="Link,l=0", dir=ITensors.Out)
+  else
+    llinks[1] = Index(1; tags="Link,l=0")
+  end
+
+  offsets = Vector{Vector{Int}}(undef, length(sites))
+  block_sparse_matrices = Vector{Vector{SymbolicBlockSparseMatrix{Ti}}}(undef, length(sites))
+
+  @time_if output_level 0 "Constructing symbolic MPO terms" resume_MPO_construction!(
+    1,
+    offsets,
+    block_sparse_matrices,
+    sites,
+    llinks,
+    g,
+    os.op_cache_vec;
+    alg="VC",
+    combine_qn_sectors,
+    output_level,
+  )
+
+  return SymbolicMPO(offsets, block_sparse_matrices, sites, llinks, os.op_cache_vec, max_user_label)
+end
+
+function MPO_symbolic(os::OpSum, sites::Vector{<:Index}; kwargs...)
+  _check_MPO_symbolic_kwargs(kwargs)
+  throw(ArgumentError("MPO_symbolic supports OpIDSum input only; OpSum input is not supported."))
 end
 
 @doc """
