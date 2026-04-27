@@ -314,6 +314,31 @@ function _fill_symbolic_mpo_tensor_with_boundary_links!(
   return tensor
 end
 
+function _check_symbolic_mpo_template(H::MPO, sym::SymbolicMPO)::Nothing
+  if length(H) != length(sym.sites)
+    throw(
+      ArgumentError(
+        "Template MPO length $(length(H)) is incompatible with SymbolicMPO length $(length(sym.sites)).",
+      ),
+    )
+  end
+
+  for n in eachindex(sym.sites)
+    if !hasinds(H[n], prime(sym.sites[n]), dag(sym.sites[n]))
+      throw(ArgumentError("Template MPO site index at site $n is incompatible with SymbolicMPO."))
+    end
+  end
+
+  for n in 2:(length(sym.llinks) - 1)
+    template_link = linkind(H, n - 1)
+    if isnothing(template_link) || template_link != sym.llinks[n]
+      throw(ArgumentError("Template MPO link index at bond $(n - 1) is incompatible with SymbolicMPO."))
+    end
+  end
+
+  return nothing
+end
+
 """
     instantiate_MPO!(H::MPO, sym::SymbolicMPO, coefficients; checkflux=false) -> MPO
 
@@ -330,12 +355,7 @@ function instantiate_MPO!(
   H::MPO, sym::SymbolicMPO, coefficients::AbstractVector; checkflux::Bool=false
 )::MPO
   _check_symbolic_coefficients(sym, coefficients)
-
-  if length(H) != length(sym.sites)
-    throw(ArgumentError(
-      "Template MPO length $(length(H)) is incompatible with SymbolicMPO length $(length(sym.sites)).",
-    ))
-  end
+  _check_symbolic_mpo_template(H, sym)
 
   _add_symbolic_mpo_boundary_links!(H, sym)
 
