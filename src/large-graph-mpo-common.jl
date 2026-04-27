@@ -200,7 +200,7 @@ function add_to_next_graph!(
 end
 
 """
-    MPOGraph(os::OpIDSum{N,C,Ti}) -> MPOGraph{N,C,Ti}
+    MPOGraph(os::OpIDSum{N,C,Ti}; symbolic_coefficients=false) -> MPOGraph{N,C,Ti}
 
 Convert an `OpIDSum` into the initial bipartite graph used by the
 MPO construction algorithm.
@@ -208,13 +208,21 @@ MPO construction algorithm.
 Operators within each term are put in reverse order (by decreasing site), then
 the terms are sorted along with the scalars. This sorting puts terms that share
 a terminating sequence of operators (which is now at the front of the term) nearby.
-Duplicate terms are then combined, and resulting terms with a weight below
-`os.abs_tol` are dropped. The returned graph is split before the first site:
-left vertices represent the identity incoming link and the operator emitted at
-site 1, while right vertices carry the remaining operator tuples.
+For numeric construction, duplicate terms are then combined and resulting terms
+with a weight below `os.abs_tol` are dropped. When `symbolic_coefficients=true`,
+scalars are interpreted as signed internal symbolic ids, so duplicate operator
+tuples are preserved as separate edge entries instead of being added together.
+The returned graph is split before the first site: left vertices represent the
+identity incoming link and the operator emitted at site 1, while right vertices
+carry the remaining operator tuples.
 """
-@timeit function MPOGraph(os::OpIDSum{N,C,Ti})::MPOGraph{N,C,Ti} where {N,C,Ti}
+@timeit function MPOGraph(
+  os::OpIDSum{N,C,Ti}; symbolic_coefficients::Bool=false
+)::MPOGraph{N,C,Ti} where {N,C,Ti}
   @assert size(os.terms, 1) == N
+  if symbolic_coefficients && !(C <: Integer)
+    throw(ArgumentError("Symbolic MPO graph construction requires integer coefficient ids."))
+  end
 
   ## Reverse the terms in the sum, ignoring trailing identity operators.
   Threads.@threads for i in 1:length(os)
@@ -234,16 +242,26 @@ site 1, while right vertices carry the remaining operator tuples.
     alg=(Threads.nthreads() > 1) ? ThreadsX.QuickSort : Base.QuickSort,
   )
 
-  ## Combine duplicate terms and remove terms which are below the tolerance.
+  ## Combine duplicate numeric terms and remove terms which are below the tolerance.
+  ## Symbolic ids are labels, not numeric weights, so preserve duplicate entries.
   nnz = 0
-  for i in eachindex(os)
-    if i < length(os) && os._data[i] == os._data[i + 1]
-      os.scalars[i + 1] += os.scalars[i]
-      os.scalars[i] = 0
-    elseif abs(os.scalars[i]) > os.abs_tol
+  if symbolic_coefficients
+    for i in eachindex(os)
+      _check_symbolic_weight_id(os.scalars[i])
       nnz += 1
       os.scalars[nnz] = os.scalars[i]
       os._data[nnz] = os._data[i]
+    end
+  else
+    for i in eachindex(os)
+      if i < length(os) && os._data[i] == os._data[i + 1]
+        os.scalars[i + 1] += os.scalars[i]
+        os.scalars[i] = 0
+      elseif abs(os.scalars[i]) > os.abs_tol
+        nnz += 1
+        os.scalars[nnz] = os.scalars[i]
+        os._data[nnz] = os._data[i]
+      end
     end
   end
 

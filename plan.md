@@ -220,16 +220,15 @@ Tests for this step:
 Tests for this step:
 
 - Build an `OpIDSum{2,Int,Int}` with two identical operator tuples labeled `1`
-  and `2`; after symbolic graph/block construction, assert the resulting
-  symbolic local matrix contains both signed ids, not their numeric sum.
+  and `2`; after symbolic graph construction and duplicate-right-vertex
+  compaction, assert the resulting graph preserves both signed ids as separate
+  edge weights, not their numeric sum.
 - Add two identical operator tuples with the same label `1`; instantiate with
-  `coefficients[1] = a` and verify the numeric MPO contribution is `2a`.
+  `coefficients[1] = a` through the symbolic local matrix helper and verify the
+  local contribution is `2a`.
 - Add two identical operator tuples whose labels become opposite signed internal
-  ids after preprocessing; verify the symbolic local matrix cancels or
-  instantiates to zero for that contribution.
-- Run the same duplicate-label test through `MPO_symbolic` and compare the
-  instantiated MPO against numeric `MPO_new` built from the corresponding
-  numeric coefficients.
+  ids after preprocessing; verify the derived symbolic local matrix cancels or
+  evaluates to zero for that contribution.
 
 ### 5. Build `SymbolicMPO`
 
@@ -309,6 +308,9 @@ Tests for this step:
 - Instantiate a small symbolic MPO with two different coefficient vectors and
   compare each result against numeric `MPO_new` built from an equivalent numeric
   `OpIDSum`.
+- Run the duplicate-label symbolic graph regression through `MPO_symbolic` and
+  compare the instantiated MPO against numeric `MPO_new` built from the
+  corresponding numeric coefficients.
 - Instantiate with `splitblocks=false` and `splitblocks=true` for a QN-conserving
   fixture and compare both against numeric `MPO_new`.
 - Instantiate with a coefficient vector containing zeros and assert the link

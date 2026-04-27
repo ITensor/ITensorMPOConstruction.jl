@@ -1,5 +1,6 @@
 using ITensorMPOConstruction
 using ITensorMPOConstruction:
+  MPOGraph,
   SymbolicLocalMatrix,
   _append_symbolic_local_matrix_term!,
   _evaluate_symbolic_local_matrix,
@@ -8,8 +9,12 @@ using ITensorMPOConstruction:
   _normalize_symbolic_local_matrix!,
   _scale_symbolic_weight,
   _weight_value,
+  combine_duplicate_adjacent_right_vertices!,
   internalize_symbolic_ids!,
+  left_size,
+  left_vertex,
   prepare_opID_sum!
+using ITensorMPOConstruction: right_size, terms_eq_from
 using ITensors
 using ITensorMPS
 using Test
@@ -189,6 +194,144 @@ function test_symbolic_basis_rewrite_rejects_unsupported_factors()::Nothing
   return nothing
 end
 
+function two_site_qubit_symbolic_fixture()
+  sites = siteinds("Qubit", 2)
+  op_cache_vec = to_OpCacheVec(sites, [["I", "X"] for _ in eachindex(sites)])
+  return sites, op_cache_vec
+end
+
+function symbolic_terms_from_first_left_vertex(g)::SymbolicLocalMatrix{Int}
+  @test left_size(g) == 1
+  lv = left_vertex(g, 1)
+  signed_local_op_id = lv.needs_JW_string ? -lv.op_id : lv.op_id
+  terms = SymbolicLocalMatrix{Int}()
+  for signed_weight_id in g.edge_weights_from_left[1]
+    _append_symbolic_local_matrix_term!(terms, signed_weight_id, signed_local_op_id)
+  end
+  return _normalize_symbolic_local_matrix!(terms)
+end
+
+function compact_duplicate_symbolic_right_vertices!(g)::Nothing
+  combine_duplicate_adjacent_right_vertices!(g, terms_eq_from(2))
+  @test right_size(g) == 1
+  @test g.right_vertex_ids_from_left == [[1 for _ in g.edge_weights_from_left[1]]]
+  return nothing
+end
+
+function test_numeric_mpo_graph_still_compacts_duplicate_terms()::Nothing
+  sites = siteinds("Qubit", 2)
+  op_cache_vec = to_OpCacheVec(sites, [["I", "X", "Z"] for _ in eachindex(sites)])
+
+  X(n) = OpID(2, n)
+  Z(n) = OpID(3, n)
+
+  os = OpIDSum{2,Float64,Int}(4, op_cache_vec; abs_tol=0.25)
+  add!(os, 1.0, X(1), X(2))
+  add!(os, 2.0, X(1), X(2))
+  add!(os, 0.5, Z(1), Z(2))
+  add!(os, -0.4, Z(1), Z(2))
+
+  g = MPOGraph(os)
+
+  @test left_size(g) == 1
+  @test right_size(g) == 1
+  @test left_vertex(g, 1).op_id == 2
+  @test g.right_vertex_ids_from_left == [[1]]
+  @test g.edge_weights_from_left == [[3.0]]
+
+  return nothing
+end
+
+function test_symbolic_mpo_graph_preserves_duplicate_signed_ids()::Nothing
+  _, op_cache_vec = two_site_qubit_symbolic_fixture()
+
+  X(n) = OpID(2, n)
+
+  os = OpIDSum{2,Int,Int}(2, op_cache_vec)
+  add!(os, 1, X(1), X(2))
+  add!(os, 2, X(1), X(2))
+  internalize_symbolic_ids!(os)
+
+  g = MPOGraph(os; symbolic_coefficients=true)
+  @test length(g.edge_weights_from_left[1]) == 2
+  @test sort(g.edge_weights_from_left[1]) == [2, 3]
+
+  compact_duplicate_symbolic_right_vertices!(g)
+  terms = symbolic_terms_from_first_left_vertex(g)
+  @test terms == [(2, 2), (3, 2)]
+
+  coefficients = [11.0, 17.0]
+  evaluated = _evaluate_symbolic_local_matrix(terms, coefficients, op_cache_vec[1])
+  @test evaluated ≈ sum(coefficients) * op_cache_vec[1][2].matrix
+
+  return nothing
+end
+
+function test_symbolic_mpo_graph_preserves_duplicate_label_multiplicity()::Nothing
+  _, op_cache_vec = two_site_qubit_symbolic_fixture()
+
+  X(n) = OpID(2, n)
+
+  os = OpIDSum{2,Int,Int}(2, op_cache_vec)
+  add!(os, 1, X(1), X(2))
+  add!(os, 1, X(1), X(2))
+  internalize_symbolic_ids!(os)
+
+  g = MPOGraph(os; symbolic_coefficients=true)
+  compact_duplicate_symbolic_right_vertices!(g)
+  terms = symbolic_terms_from_first_left_vertex(g)
+  @test terms == [(2, 2), (2, 2)]
+
+  coefficient = 13.0
+  evaluated = _evaluate_symbolic_local_matrix(terms, [coefficient], op_cache_vec[1])
+  @test evaluated ≈ 2 * coefficient * op_cache_vec[1][2].matrix
+
+  return nothing
+end
+
+function signed_symbolic_rewrite_cache_vecs()
+  identity_matrix = [1.0 0.0; 0.0 1.0]
+  x_matrix = [0.0 1.0; 1.0 0.0]
+
+  op_cache_vec = [
+    [
+      OpInfo("I", identity_matrix, false, QN()),
+      OpInfo("X", x_matrix, false, QN()),
+      OpInfo("-X", -x_matrix, false, QN()),
+    ],
+    [OpInfo("I", identity_matrix, false, QN()), OpInfo("X", x_matrix, false, QN())],
+  ]
+  basis_op_cache_vec = [
+    [OpInfo("I", identity_matrix, false, QN()), OpInfo("X", x_matrix, false, QN())],
+    [OpInfo("I", identity_matrix, false, QN()), OpInfo("X", x_matrix, false, QN())],
+  ]
+
+  return op_cache_vec, basis_op_cache_vec
+end
+
+function test_symbolic_mpo_graph_cancels_opposite_signed_ids()::Nothing
+  op_cache_vec, basis_op_cache_vec = signed_symbolic_rewrite_cache_vecs()
+
+  X(n) = OpID(2, n)
+  negX(n) = OpID(3, n)
+
+  os = OpIDSum{2,Int,Int}(2, op_cache_vec)
+  add!(os, 1, X(1), X(2))
+  add!(os, 1, negX(1), X(2))
+  internalize_symbolic_ids!(os)
+  prepare_opID_sum!(os, basis_op_cache_vec; symbolic_coefficients=true)
+
+  g = MPOGraph(os; symbolic_coefficients=true)
+  compact_duplicate_symbolic_right_vertices!(g)
+  terms = symbolic_terms_from_first_left_vertex(g)
+  @test isempty(terms)
+
+  evaluated = _evaluate_symbolic_local_matrix(terms, [7.0], basis_op_cache_vec[1])
+  @test iszero(evaluated)
+
+  return nothing
+end
+
 @testset "SymbolicLocalMatrix" begin
   test_symbolic_local_matrix_operations()
 
@@ -197,4 +340,12 @@ end
   test_symbolic_basis_rewrite_sign_factors()
 
   test_symbolic_basis_rewrite_rejects_unsupported_factors()
+
+  test_numeric_mpo_graph_still_compacts_duplicate_terms()
+
+  test_symbolic_mpo_graph_preserves_duplicate_signed_ids()
+
+  test_symbolic_mpo_graph_preserves_duplicate_label_multiplicity()
+
+  test_symbolic_mpo_graph_cancels_opposite_signed_ids()
 end
