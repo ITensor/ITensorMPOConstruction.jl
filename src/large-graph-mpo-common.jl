@@ -285,6 +285,24 @@ carry the remaining operator tuples.
   return g
 end
 
+# TODO: Replace add_to_local_matrix! with this
+function apply_jw_string!(a::Matrix)::Nothing
+  if size(a, 1) == 2
+    @inbounds for i in 1:2
+      a[i, 2] *= -1
+    end
+  elseif size(a, 1) == 4
+    @inbounds for i in 1:4
+      a[i, 2] *= -1
+      a[i, 3] *= -1
+    end
+  else
+    error("Unknown fermionic site.")
+  end
+
+  return nothing
+end
+
 """
     add_to_local_matrix!(a, weight, local_op, needs_JW_string) -> Nothing
 

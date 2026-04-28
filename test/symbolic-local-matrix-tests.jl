@@ -26,7 +26,6 @@ function test_symbolic_local_matrix_operations()::Nothing
   @test _weight_value(-1, coefficients) == -1.0
   @test _weight_value(3, coefficients) == coefficients[2]
   @test _weight_value(-3, coefficients) == -coefficients[2]
-  @test_throws ArgumentError _weight_value(4, coefficients)
 
   @test _internal_symbolic_id(1) == 2
   @test _internal_symbolic_id(3) == 4
@@ -60,16 +59,16 @@ function test_symbolic_local_matrix_operations()::Nothing
   qubit_op_cache_vec = to_OpCacheVec(qubit_sites, [["I", "X"]])
   duplicate_terms = SymbolicLocalMatrix{Int}([(3, 2), (3, 2)])
   @test _evaluate_symbolic_local_matrix(
-    duplicate_terms, coefficients, qubit_op_cache_vec[1]
+    Float64, duplicate_terms, coefficients, qubit_op_cache_vec[1]
   ) ≈ 2 * coefficients[2] * qubit_op_cache_vec[1][2].matrix
 
   fermion_sites = siteinds("Fermion", 1)
   fermion_op_cache_vec = to_OpCacheVec(fermion_sites, [["I", "C", "Cdag", "N"]])
   plain_matrix = _evaluate_symbolic_local_matrix(
-    SymbolicLocalMatrix{Int}([(3, 2)]), coefficients, fermion_op_cache_vec[1]
+    Float64, SymbolicLocalMatrix{Int}([(3, 2)]), coefficients, fermion_op_cache_vec[1]
   )
   jw_matrix = _evaluate_symbolic_local_matrix(
-    SymbolicLocalMatrix{Int}([(3, -2)]), coefficients, fermion_op_cache_vec[1]
+    Float64, SymbolicLocalMatrix{Int}([(3, -2)]), coefficients, fermion_op_cache_vec[1]
   )
 
   expected_plain_matrix = coefficients[2] * fermion_op_cache_vec[1][2].matrix
@@ -274,7 +273,7 @@ function test_symbolic_mpo_graph_preserves_duplicate_signed_ids()::Nothing
   @test terms == [(2, 2), (3, 2)]
 
   coefficients = [11.0, 17.0]
-  evaluated = _evaluate_symbolic_local_matrix(terms, coefficients, op_cache_vec[1])
+  evaluated = _evaluate_symbolic_local_matrix(Float64, terms, coefficients, op_cache_vec[1])
   @test evaluated ≈ sum(coefficients) * op_cache_vec[1][2].matrix
 
   return nothing
@@ -296,7 +295,7 @@ function test_symbolic_mpo_graph_preserves_duplicate_label_multiplicity()::Nothi
   @test terms == [(2, 2), (2, 2)]
 
   coefficient = 13.0
-  evaluated = _evaluate_symbolic_local_matrix(terms, [coefficient], op_cache_vec[1])
+  evaluated = _evaluate_symbolic_local_matrix(Float64, terms, [coefficient], op_cache_vec[1])
   @test evaluated ≈ 2 * coefficient * op_cache_vec[1][2].matrix
 
   return nothing
@@ -339,7 +338,7 @@ function test_symbolic_mpo_graph_cancels_opposite_signed_ids()::Nothing
   terms = symbolic_terms_from_first_left_vertex(g)
   @test isempty(terms)
 
-  evaluated = _evaluate_symbolic_local_matrix(terms, [7.0], basis_op_cache_vec[1])
+  evaluated = _evaluate_symbolic_local_matrix(Float64, terms, [7.0], basis_op_cache_vec[1])
   @test iszero(evaluated)
 
   return nothing

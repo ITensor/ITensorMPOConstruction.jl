@@ -199,7 +199,7 @@ function _evaluate_symbolic_block_sparse_matrix(
 
   for right_link in eachindex(symbolic_matrix)
     for (left_link, terms) in pairs(symbolic_matrix[right_link])
-      block = convert(Matrix{C}, _evaluate_symbolic_local_matrix(terms, coefficients, op_cache))
+      block = _evaluate_symbolic_local_matrix(C, terms, coefficients, op_cache)
       set!(matrix[right_link], left_link, block)
     end
   end
@@ -241,11 +241,12 @@ function instantiate_MPO(
 
   H = MPO(sym.sites)
 
-  @timeit "to_ITensor" Threads.@threads for n in eachindex(sym.sites)
-    block_sparse_matrices = _evaluate_symbolic_block_sparse_matrices(
+  @timeit "to_ITensor" for n in eachindex(sym.sites)
+    @timeit "_evaluate_symbolic_block_sparse_matrices" block_sparse_matrices = _evaluate_symbolic_block_sparse_matrices(
       sym.block_sparse_matrices[n], coefficients, sym.op_cache_vec[n], C
     )
-    H[n] = to_ITensor(
+
+    @timeit "to_ITensor" H[n] = to_ITensor(
       sym.offsets[n],
       block_sparse_matrices,
       sym.llinks[n],
@@ -287,22 +288,16 @@ function _add_symbolic_mpo_boundary_links!(H::MPO, sym::SymbolicMPO)::Nothing
   return nothing
 end
 
-function _fill_symbolic_mpo_tensor_with_boundary_links!(
-  tensor::ITensor, sym::SymbolicMPO, coefficients::AbstractVector, n::Int
-)::ITensor
-  llink = dag(sym.llinks[n])
-  rlink = sym.llinks[n + 1]
-  site = sym.sites[n]
-  tensor = ITensors.permute(tensor, llink, rlink, prime(site), dag(site); allow_alias=true)
-  tensor .= 0
-
+@timeit function _fill_symbolic_mpo_tensor_with_boundary_links!(
+  tensor, sym::SymbolicMPO, coefficients::AbstractVector, n::Int
+)::Nothing
   op_cache = sym.op_cache_vec[n]
 
   for (offset, matrix) in zip(sym.offsets[n], sym.block_sparse_matrices[n])
     for (right_link, column) in enumerate(matrix)
       shifted_right_link = right_link + offset
       for (left_link, terms) in pairs(column)
-        local_matrix = _evaluate_symbolic_local_matrix(terms, coefficients, op_cache)
+        local_matrix = _evaluate_symbolic_local_matrix(eltype(tensor), terms, coefficients, op_cache)
         for i in axes(local_matrix, 1)
           for j in axes(local_matrix, 2)
             iszero(local_matrix[i, j]) && continue
@@ -313,7 +308,7 @@ function _fill_symbolic_mpo_tensor_with_boundary_links!(
     end
   end
 
-  return tensor
+  return nothing
 end
 
 function _check_symbolic_mpo_template(H::MPO, sym::SymbolicMPO)::Nothing
@@ -361,8 +356,16 @@ function instantiate_MPO!(
 
   _add_symbolic_mpo_boundary_links!(H, sym)
 
-  Threads.@threads for n in eachindex(sym.sites)
-    H[n] = _fill_symbolic_mpo_tensor_with_boundary_links!(H[n], sym, coefficients, n)
+  for n in eachindex(sym.sites)
+    t = H[n]
+    llink = dag(sym.llinks[n])
+    rlink = sym.llinks[n + 1]
+    site = sym.sites[n]
+    t = ITensors.permute(t, llink, rlink, prime(site), dag(site); allow_alias=true)
+    t .= 0
+
+    _fill_symbolic_mpo_tensor_with_boundary_links!(t.tensor, sym, coefficients, n)
+    H[n] = t
   end
 
   _remove_symbolic_mpo_boundary_links!(H, sym.llinks)

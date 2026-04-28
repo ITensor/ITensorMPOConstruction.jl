@@ -55,12 +55,7 @@ function get_coefficients(N::Int)::Tuple{Array{Float64,2},Array{Float64,4}}
   return h, V
 end
 
-function electronic_structure_OpIDSum(
-  N::Int, h::Array{Float64,2}, V::Array{Float64,4}
-)::Tuple{Vector{<:Index},OpIDSum}
-  ↓ = false
-  ↑ = true
-
+function electronic_structure_sites_and_op_cache(N::Int)
   sites = siteinds("Electron", N; conserve_qns=true)
 
   operatorNames = [
@@ -85,6 +80,17 @@ function electronic_structure_OpIDSum(
   ]
 
   op_cache_vec = to_OpCacheVec(sites, operatorNames)
+  return sites, op_cache_vec
+end
+
+function electronic_structure_OpIDSum(
+  N::Int,
+  h::Array{Float64,2},
+  V::Array{Float64,4},
+  op_cache_vec::OpCacheVec,
+)::OpIDSum
+  ↓ = false
+  ↑ = true
 
   opC(k::Int, spin::Bool) = OpID{UInt8}(2 + spin, k)
   opCdag(k::Int, spin::Bool) = OpID{UInt8}(4 + spin, k)
@@ -129,7 +135,14 @@ function electronic_structure_OpIDSum(
     end
   end
 
-  return sites, os
+  return os
+end
+
+function electronic_structure_OpIDSum(
+  N::Int, h::Array{Float64,2}, V::Array{Float64,4}
+)::Tuple{Vector{<:Index},OpIDSum}
+  sites, op_cache_vec = electronic_structure_sites_and_op_cache(N)
+  return sites, electronic_structure_OpIDSum(N, h, V, op_cache_vec)
 end
 
 for alg in ("VC", "QR")
@@ -162,8 +175,6 @@ for alg in ("VC", "QR")
   end
 end
 
-nothing;
-
 # ## Results
 # Below are the runtime and sparsities for the QR decomposition algorithm and the vertex cover algorithm. Both algorithms produce MPOs of bond dimension ``2 N^2 + 3 N + 2``, which is optimal for a generic set of coefficients. These timings were taken with `julia -t8 --gcthreads=8,1` on a 2021 MacBook Pro with the M1 Max CPU and 32GB of memory.
 #
@@ -192,3 +203,170 @@ nothing;
 # | ``\left[\text{Fe}_2 \text{S} (\text{C H}_3)(\text{SCH}_3)_4 \right]^{3-}`` | 36    | `VC`      | 2702           | 99.26%   |
 #
 # ### Thanks to [Huanchen Zhai](https://scholar.google.com/citations?user=HM_YBL0AAAAJ&hl=en) for providing the discussion and data motivating this section.
+
+# # Symbolic construction
+
+function electronic_structure_fermion_sort_sign(site_ids::Integer...)::Int
+  sign = 1
+  for i in eachindex(site_ids)
+    for j in 1:(i - 1)
+      site_ids[i] < site_ids[j] && (sign = -sign)
+    end
+  end
+  return sign
+end
+
+function electronic_structure_symbolic_OpIDSum(
+  N::Int,
+  op_cache_vec::OpCacheVec,
+)::Tuple{OpIDSum, Vector{Tuple{Int, Int}}, Vector{Tuple{Int, Int, Int, Int, Bool, Bool, Bool, Bool}}}
+  ↓ = false
+  ↑ = true
+
+  opC(k::Int, spin::Bool) = OpID(2 + spin, k)
+  opCdag(k::Int, spin::Bool) = OpID(4 + spin, k)
+
+  os = OpIDSum{4,Int,Int}(2 * N^4 + 2 * N^2, op_cache_vec)
+
+  map_1e = Tuple{Int, Int}[]
+  for p in 1:N
+    for q in 1:N
+      push!(map_1e, (p, q))
+      id = length(map_1e)
+      sign = electronic_structure_fermion_sort_sign(p, q)
+      for spin in (↓, ↑)
+        add!(os, sign * id, opCdag(p, spin), opC(q, spin))
+      end
+    end
+  end
+
+  map_2e = Tuple{Int, Int, Int, Int, Bool, Bool, Bool, Bool}[]
+  for p in 1:N
+    for s_p in (↓, ↑)
+      for q in 1:N, s_q in (↓, ↑)
+        (q, s_q) <= (p, s_p) && continue
+
+        for r in 1:N, s_r in (↓, ↑)
+          for s in 1:N, s_s in (↓, ↑)
+            (s, s_s) <= (r, s_r) && continue
+
+            valid_entry = (s_r == s_q && s_s == s_p) ||
+              (s_s == s_q && s_r == s_p) ||
+              (s_r == s_p && s_s == s_q) ||
+              (s_s == s_p && s_r == s_q)
+
+            !valid_entry && continue
+
+            push!(map_2e, (p, q, r, s, s_p, s_q, s_r, s_s))
+
+            id = length(map_2e) + length(map_1e)
+            sign = electronic_structure_fermion_sort_sign(p, q, r, s)
+            add!(
+              os,
+              sign * id,
+              opCdag(p, s_p),
+              opCdag(q, s_q),
+              opC(r, s_r),
+              opC(s, s_s),
+            )
+          end
+        end
+      end
+    end
+  end
+
+  return os, map_1e, map_2e
+end
+
+function electronic_structure_symbolic_coefficients(
+  h::AbstractMatrix,
+  V::AbstractArray{<:Number,4},
+  map_1e::AbstractVector{<:Tuple{Int,Int}},
+  map_2e::AbstractVector{<:Tuple{Int,Int,Int,Int,Bool,Bool,Bool,Bool}},
+)::Vector{promote_type(eltype(h), eltype(V))}
+  coefficients = Vector{promote_type(eltype(h), eltype(V))}(
+    undef, length(map_1e) + length(map_2e)
+  )
+
+  for (id, (p, q)) in pairs(map_1e)
+    coefficients[id] = electronic_structure_fermion_sort_sign(p, q) * h[p, q]
+  end
+
+  offset = length(map_1e)
+  for (i, (p, q, r, s, s_p, s_q, s_r, s_s)) in pairs(map_2e)
+    coeff = zero(eltype(coefficients))
+    if s_r == s_q && s_s == s_p
+      coeff += V[p, s, q, r]
+    end
+    if s_s == s_q && s_r == s_p
+      coeff -= V[p, r, q, s]
+    end
+    if s_r == s_p && s_s == s_q
+      coeff -= V[q, s, p, r]
+    end
+    if s_s == s_p && s_r == s_q
+      coeff += V[q, r, p, s]
+    end
+
+    coefficients[offset + i] = electronic_structure_fermion_sort_sign(p, q, r, s) * coeff
+  end
+
+  return coefficients
+end
+
+function mpo_relative_difference(A::MPO, B::MPO)::Float64
+  AmB = add(A, -B; alg="directsum")
+  return real(inner(AmB, AmB)) / real(inner(B, B))
+end
+
+let
+  N = 4
+  println("Constructing a symbolic electronic structure MPO for $N sites")
+
+  h, V = get_coefficients(N)
+  sites, op_cache_vec = electronic_structure_sites_and_op_cache(N)
+  numeric_os = electronic_structure_OpIDSum(N, h, V, op_cache_vec)
+  symbolic_os, map_1e, map_2e = electronic_structure_symbolic_OpIDSum(N, op_cache_vec)
+  coefficients = electronic_structure_symbolic_coefficients(h, V, map_1e, map_2e)
+
+  @time "Constructing symbolic MPO" sym = MPO_symbolic(
+    symbolic_os,
+    sites;
+    basis_op_cache_vec=op_cache_vec,
+    check_for_errors=false,
+  )
+  @time "Instantiating symbolic MPO" H_symbolic = instantiate_MPO(
+    sym, coefficients; splitblocks=true, checkflux=false
+  )
+
+  reset_timer!()
+
+  @time "Instantiating symbolic MPO 2" H_symbolic = instantiate_MPO!(
+    H_symbolic, sym, coefficients; checkflux=false
+  )
+
+  print_timer()
+
+  @time "Constructing reference MPO" H_numeric = MPO_new(
+    numeric_os,
+    sites;
+    alg="VC",
+    basis_op_cache_vec=op_cache_vec,
+    splitblocks=true,
+    check_for_errors=false,
+    checkflux=false,
+  )
+
+  relative_difference = mpo_relative_difference(H_symbolic, H_numeric)
+  println("Symbolic instantiation relative difference: $relative_difference")
+  @assert relative_difference < 1e-10
+
+  h2 = 1.1 .* h
+  V2 = 1.1 .* V
+  coefficients2 = electronic_structure_symbolic_coefficients(h2, V2, map_1e, map_2e)
+  H_symbolic2 = instantiate_MPO(sym, coefficients2; splitblocks=true, checkflux=false)
+  @assert mpo_relative_difference(H_symbolic2, H_symbolic) > 0
+  println("Updated symbolic coefficients without rebuilding the symbolic MPO")
+end
+
+nothing;

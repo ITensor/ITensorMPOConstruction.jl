@@ -149,17 +149,10 @@ function _scale_symbolic_weight(signed_weight_id::Integer, factor)::Int
 end
 
 function _weight_value(signed_weight_id::Integer, coefficients::AbstractVector)
-  _check_symbolic_weight_id(signed_weight_id)
   abs_weight_id = abs(signed_weight_id)
   abs_weight_id == 1 && return signed_weight_id > 0 ? 1.0 : -1.0
 
   user_label = abs_weight_id - 1
-  user_label <= length(coefficients) || throw(
-    ArgumentError(
-      "Missing coefficient for symbolic label $user_label. " *
-      "Received $(length(coefficients)) coefficients.",
-    ),
-  )
 
   value = coefficients[user_label]
   return signed_weight_id > 0 ? value : -value
@@ -176,39 +169,24 @@ function _symbolic_local_matrix_eltype(
 end
 
 function _evaluate_symbolic_local_matrix(
-  terms::SymbolicLocalMatrix, coefficients::AbstractVector, op_cache::Vector{OpInfo}
-)::Matrix
-  isempty(op_cache) && throw(
-    ArgumentError("Cannot evaluate a symbolic local matrix with an empty operator cache."),
-  )
+  ::Type{C}, terms::SymbolicLocalMatrix, coefficients::AbstractVector, op_cache::Vector{OpInfo}
+)::Matrix{C} where {C}
+  result = zeros(C, size(op_cache[1].matrix))
 
-  matrix_size = size(op_cache[1].matrix)
-  result = zeros(_symbolic_local_matrix_eltype(coefficients, op_cache), matrix_size)
-
+  needs_jw = 0
   for (signed_weight_id, signed_local_op_id) in terms
-    _check_symbolic_weight_id(signed_weight_id)
-    _check_symbolic_local_op_id(signed_local_op_id)
-
     local_op_id = abs(Int(signed_local_op_id))
-    local_op_id <= length(op_cache) || throw(
-      ArgumentError(
-        "Symbolic local operator id $local_op_id is not available in a cache with " *
-        "$(length(op_cache)) operators.",
-      ),
-    )
-
     local_op = op_cache[local_op_id].matrix
-    size(local_op) == matrix_size || throw(
-      ArgumentError(
-        "Operators in a symbolic local matrix must have matching matrix sizes. " *
-        "Expected $matrix_size, got $(size(local_op)).",
-      ),
-    )
+    weight = _weight_value(signed_weight_id, coefficients)
 
+    needs_jw += signed_local_op_id < 0
     add_to_local_matrix!(
-      result, _weight_value(signed_weight_id, coefficients), local_op, signed_local_op_id < 0
+      result, weight, local_op, false
     )
   end
+
+  @assert needs_jw ∈ (0, length(terms))
+  needs_jw > 0 && apply_jw_string!(result)
 
   return result
 end
