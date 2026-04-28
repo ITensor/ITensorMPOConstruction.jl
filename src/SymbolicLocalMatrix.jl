@@ -168,10 +168,10 @@ function _symbolic_local_matrix_eltype(
   return val_type
 end
 
-function _evaluate_symbolic_local_matrix(
-  ::Type{C}, terms::SymbolicLocalMatrix, coefficients::AbstractVector, op_cache::Vector{OpInfo}
-)::Matrix{C} where {C}
-  result = zeros(C, size(op_cache[1].matrix))
+function _evaluate_symbolic_local_matrix!(
+  result::Matrix{C}, terms::SymbolicLocalMatrix, coefficients::AbstractVector, op_cache::Vector{OpInfo}
+)::Nothing where {C}
+  result .= 0
 
   needs_jw = 0
   for (signed_weight_id, signed_local_op_id) in terms
@@ -188,5 +188,14 @@ function _evaluate_symbolic_local_matrix(
   @assert needs_jw ∈ (0, length(terms))
   needs_jw > 0 && apply_jw_string!(result)
 
+  return nothing
+end
+
+# TODO: Make sure this isn't used anywhere
+function _evaluate_symbolic_local_matrix(
+  ::Type{C}, terms::SymbolicLocalMatrix, coefficients::AbstractVector, op_cache::Vector{OpInfo}
+)::Matrix{C} where {C}
+  result = Matrix{C}(undef, size(op_cache[1].matrix))
+  _evaluate_symbolic_local_matrix!(result, terms, coefficients, op_cache)
   return result
 end

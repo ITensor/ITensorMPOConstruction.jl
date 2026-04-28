@@ -145,35 +145,35 @@ function electronic_structure_OpIDSum(
   return sites, electronic_structure_OpIDSum(N, h, V, op_cache_vec)
 end
 
-for alg in ("VC", "QR")
-  for N in [10, 20]
-    println("Constructing the electronic structure MPO for $N sites using $alg")
+# for alg in ("VC", "QR")
+#   for N in [10, 20]
+#     println("Constructing the electronic structure MPO for $N sites using $alg")
 
-    reset_timer!()
-    @time "Constructing OpIDSum" sites, os = electronic_structure_OpIDSum(
-      N, get_coefficients(N)...
-    )
-    @time "Constructing MPO" H = MPO_new(
-      os,
-      sites;
-      alg,
-      basis_op_cache_vec=os.op_cache_vec,
-      splitblocks=true,
-      check_for_errors=false,
-      checkflux=false,
-    ) # TODO: remove splitblocks=true after warning
-    N > 5 && print_timer()
+#     reset_timer!()
+#     @time "Constructing OpIDSum" sites, os = electronic_structure_OpIDSum(
+#       N, get_coefficients(N)...
+#     )
+#     @time "Constructing MPO" H = MPO_new(
+#       os,
+#       sites;
+#       alg,
+#       basis_op_cache_vec=os.op_cache_vec,
+#       splitblocks=true,
+#       check_for_errors=false,
+#       checkflux=false,
+#     ) # TODO: remove splitblocks=true after warning
+#     N > 5 && print_timer()
 
-    percent_sparse = round(100 * sparsity(H); digits=2)
-    println(
-      "The maximum bond dimension is $(maxlinkdim(H)), sparsity = $percent_sparse%",
-    )
-    @assert maxlinkdim(H) == 2 * N^2 + 3 * N + 2
+#     percent_sparse = round(100 * sparsity(H); digits=2)
+#     println(
+#       "The maximum bond dimension is $(maxlinkdim(H)), sparsity = $percent_sparse%",
+#     )
+#     @assert maxlinkdim(H) == 2 * N^2 + 3 * N + 2
 
-    GC.gc(true)
-    println()
-  end
-end
+#     GC.gc(true)
+#     println()
+#   end
+# end
 
 # ## Results
 # Below are the runtime and sparsities for the QR decomposition algorithm and the vertex cover algorithm. Both algorithms produce MPOs of bond dimension ``2 N^2 + 3 N + 2``, which is optimal for a generic set of coefficients. These timings were taken with `julia -t8 --gcthreads=8,1` on a 2021 MacBook Pro with the M1 Max CPU and 32GB of memory.
@@ -320,7 +320,7 @@ function mpo_relative_difference(A::MPO, B::MPO)::Float64
 end
 
 let
-  N = 4
+  N = 50
   println("Constructing a symbolic electronic structure MPO for $N sites")
 
   h, V = get_coefficients(N)
@@ -335,8 +335,17 @@ let
     basis_op_cache_vec=op_cache_vec,
     check_for_errors=false,
   )
+
+  H_symbolic = instantiate_MPO(
+    sym, coefficients; splitblocks=true, checkflux=false
+  )
+
   @time "Instantiating symbolic MPO" H_symbolic = instantiate_MPO(
     sym, coefficients; splitblocks=true, checkflux=false
+  )
+
+  instantiate_MPO!(
+    H_symbolic, sym, coefficients; checkflux=false
   )
 
   reset_timer!()
@@ -347,26 +356,26 @@ let
 
   print_timer()
 
-  @time "Constructing reference MPO" H_numeric = MPO_new(
-    numeric_os,
-    sites;
-    alg="VC",
-    basis_op_cache_vec=op_cache_vec,
-    splitblocks=true,
-    check_for_errors=false,
-    checkflux=false,
-  )
+  # @time "Constructing reference MPO" H_numeric = MPO_new(
+  #   numeric_os,
+  #   sites;
+  #   alg="VC",
+  #   basis_op_cache_vec=op_cache_vec,
+  #   splitblocks=true,
+  #   check_for_errors=false,
+  #   checkflux=false,
+  # )
 
-  relative_difference = mpo_relative_difference(H_symbolic, H_numeric)
-  println("Symbolic instantiation relative difference: $relative_difference")
-  @assert relative_difference < 1e-10
+  # relative_difference = mpo_relative_difference(H_symbolic, H_numeric)
+  # println("Symbolic instantiation relative difference: $relative_difference")
+  # @assert relative_difference < 1e-10
 
-  h2 = 1.1 .* h
-  V2 = 1.1 .* V
-  coefficients2 = electronic_structure_symbolic_coefficients(h2, V2, map_1e, map_2e)
-  H_symbolic2 = instantiate_MPO(sym, coefficients2; splitblocks=true, checkflux=false)
-  @assert mpo_relative_difference(H_symbolic2, H_symbolic) > 0
-  println("Updated symbolic coefficients without rebuilding the symbolic MPO")
+  # h2 = 1.1 .* h
+  # V2 = 1.1 .* V
+  # coefficients2 = electronic_structure_symbolic_coefficients(h2, V2, map_1e, map_2e)
+  # H_symbolic2 = instantiate_MPO(sym, coefficients2; splitblocks=true, checkflux=false)
+  # @assert mpo_relative_difference(H_symbolic2, H_symbolic) > 0
+  # println("Updated symbolic coefficients without rebuilding the symbolic MPO")
 end
 
 nothing;

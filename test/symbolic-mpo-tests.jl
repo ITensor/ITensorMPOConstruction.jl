@@ -228,6 +228,15 @@ function test_symbolic_mpo_inplace_instantiation()::Nothing
   @test linkdims(H) == original_linkdims
   test_mpos_approx_equal(H, expected)
 
+  coefficients3 = [0.0, 1.4, 0.6]
+  result = instantiate_MPO!(H, sym, coefficients3; checkflux=true)
+  expected = instantiate_MPO(sym, coefficients3; splitblocks=true, checkflux=true)
+
+  @test result === H
+  @test objectid(H) == original_objectid
+  @test linkdims(H) == original_linkdims
+  test_mpos_approx_equal(H, expected)
+
   @test_throws MethodError instantiate_MPO!(H, sym, coefficients2; splitblocks=false)
 
   return nothing

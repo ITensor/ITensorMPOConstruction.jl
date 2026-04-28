@@ -131,7 +131,7 @@ function instantiate_MPO(
 )::MPO where {ValType<:Number}
   H = MPO(sites)
 
-  @timeit "to_ITensor" Threads.@threads for n in 1:length(sites)
+  @timeit "to_ITensor" for n in 1:length(sites)
     H[n] = to_ITensor(
       offsets[n], block_sparse_matrices[n], llinks[n], llinks[n + 1], sites[n]; splitblocks
     )
@@ -288,20 +288,220 @@ function _add_symbolic_mpo_boundary_links!(H::MPO, sym::SymbolicMPO)::Nothing
   return nothing
 end
 
-@timeit function _fill_symbolic_mpo_tensor_with_boundary_links!(
-  tensor, sym::SymbolicMPO, coefficients::AbstractVector, n::Int
-)::Nothing
+function _fill_symbolic_mpo_template_tensor!(
+  tensor::NDTensors.DenseTensor{C,4},
+  sym::SymbolicMPO,
+  coefficients::AbstractVector,
+  n::Int,
+)::Nothing where {C}
+  op_cache = sym.op_cache_vec[n]
+  tensor_data = array(tensor)
+
+  fill!(tensor_data, zero(C))
+  @timeit "evaluate and fill entries" for (offset, matrix) in zip(
+    sym.offsets[n], sym.block_sparse_matrices[n]
+  )
+    for (right_link, column) in enumerate(matrix)
+      shifted_right_link = right_link + offset
+      for (left_link, terms) in pairs(column)
+        local_matrix = _evaluate_symbolic_local_matrix(C, terms, coefficients, op_cache)
+        @inbounds for site_prime_link in axes(local_matrix, 1),
+          site_link in axes(local_matrix, 2)
+
+          value = local_matrix[site_prime_link, site_link]
+          iszero(value) && continue
+          tensor_data[left_link, shifted_right_link, site_prime_link, site_link] = value
+        end
+      end
+    end
+  end
+
+  return nothing
+end
+
+@inline function _block_key(block::Block{4})::NTuple{4,Int}
+  return (Int(block[1]), Int(block[2]), Int(block[3]), Int(block[4]))
+end
+
+@inline function _block_storage_index(
+  block_offset::Int, entry_offsets::NTuple{4,Int}, block_dims::NTuple{4,Int}
+)::Int
+  storage_index = block_offset + entry_offsets[1]
+  stride = block_dims[1]
+  for dim in 2:4
+    storage_index += (entry_offsets[dim] - 1) * stride
+    stride *= block_dims[dim]
+  end
+  return storage_index
+end
+
+function _try_fill_symbolic_mpo_splitblocks_sequential!(
+  tensor::NDTensors.BlockSparseTensor{C,4},
+  sym::SymbolicMPO,
+  coefficients::AbstractVector,
+  n::Int,
+  left_blocks::Vector{Int},
+  right_blocks::Vector{Int},
+  site_prime_blocks::Vector{Int},
+  site_blocks::Vector{Int},
+  tensor_data,
+)::Bool where {C}
+  length(tensor_data) == NDTensors.nnzblocks(tensor) || return false
+
+  op_cache = sym.op_cache_vec[n]
+  block_iterator = ITensors.eachnzblock(tensor)
+  block_state = iterate(block_iterator)
+  current_block_key = isnothing(block_state) ? nothing : _block_key(block_state[1])
+  storage_index = 1
+
+  fill!(tensor_data, zero(C))
+
+  local_matrix = zeros(C, size(op_cache[1].matrix))
+  @timeit "sequential splitblock refill" for (offset, matrix) in zip(
+    sym.offsets[n], sym.block_sparse_matrices[n]
+  )
+    for (right_link, column) in enumerate(matrix)
+      shifted_right_link = right_link + offset
+      right_block = right_blocks[shifted_right_link]
+      for (left_link, terms) in pairs(column)
+        left_block = left_blocks[left_link]
+        _evaluate_symbolic_local_matrix!(local_matrix, terms, coefficients, op_cache)
+
+        @inbounds for site_prime_link in axes(local_matrix, 1),
+          site_link in axes(local_matrix, 2)
+
+          expected_block_key = (
+            left_block,
+            right_block,
+            site_prime_blocks[site_prime_link],
+            site_blocks[site_link],
+          )
+          value = local_matrix[site_prime_link, site_link]
+
+          if !isnothing(current_block_key) && expected_block_key == current_block_key
+            tensor_data[storage_index] = value
+            storage_index += 1
+            block_state = iterate(block_iterator, block_state[2])
+            current_block_key = isnothing(block_state) ? nothing : _block_key(block_state[1])
+          elseif !iszero(value)
+            return false
+          end
+        end
+      end
+    end
+  end
+
+  return isnothing(current_block_key)
+end
+
+function _fill_symbolic_mpo_template_tensor!(
+  tensor::NDTensors.BlockSparseTensor{C,4},
+  sym::SymbolicMPO,
+  coefficients::AbstractVector,
+  n::Int,
+)::Nothing where {C}
+  tensor_inds = inds(tensor)
+
+  left_blocks, left_offsets = _qn_position_map(tensor_inds[1])
+  right_blocks, right_offsets = _qn_position_map(tensor_inds[2])
+  site_prime_blocks, site_prime_offsets = _qn_position_map(tensor_inds[3])
+  site_blocks, site_offsets = _qn_position_map(tensor_inds[4])
+
+  tensor_data = NDTensors.data(tensor)
+  if _try_fill_symbolic_mpo_splitblocks_sequential!(
+    tensor,
+    sym,
+    coefficients,
+    n,
+    left_blocks,
+    right_blocks,
+    site_prime_blocks,
+    site_blocks,
+    tensor_data,
+  )
+    return nothing
+  end
+
+  block_offsets = sizehint!(Dict{NTuple{4,Int},Int}(), NDTensors.nnzblocks(tensor))
+
+  
+  fill!(tensor_data, zero(C))
+
+  @timeit "index template blocks" begin
+    for block in ITensors.eachnzblock(tensor)
+      block_offsets[_block_key(block)] = NDTensors.offset(NDTensors.blockoffsets(tensor), block)
+    end
+  end
+
+  @timeit "evaluate and fill entries" _fill_symbolic_mpo_tensor_entries!(
+    tensor,
+    sym,
+    coefficients,
+    n,
+    left_blocks,
+    right_blocks,
+    site_prime_blocks,
+    site_blocks,
+    left_offsets,
+    right_offsets,
+    site_prime_offsets,
+    site_offsets,
+    tensor_inds,
+    tensor_data,
+    block_offsets,
+  )
+
+  return nothing
+end
+
+function _fill_symbolic_mpo_tensor_entries!(
+  tensor::NDTensors.BlockSparseTensor{C,4},
+  sym::SymbolicMPO,
+  coefficients::AbstractVector,
+  n::Int,
+  left_blocks::Vector{Int},
+  right_blocks::Vector{Int},
+  site_prime_blocks::Vector{Int},
+  site_blocks::Vector{Int},
+  left_offsets::Vector{Int},
+  right_offsets::Vector{Int},
+  site_prime_offsets::Vector{Int},
+  site_offsets::Vector{Int},
+  tensor_inds,
+  tensor_data,
+  block_offsets::Dict{NTuple{4,Int},Int},
+)::Nothing where {C}
   op_cache = sym.op_cache_vec[n]
 
   for (offset, matrix) in zip(sym.offsets[n], sym.block_sparse_matrices[n])
     for (right_link, column) in enumerate(matrix)
       shifted_right_link = right_link + offset
+      right_block = right_blocks[shifted_right_link]
+      right_offset = right_offsets[shifted_right_link]
       for (left_link, terms) in pairs(column)
-        local_matrix = _evaluate_symbolic_local_matrix(eltype(tensor), terms, coefficients, op_cache)
-        for i in axes(local_matrix, 1)
-          for j in axes(local_matrix, 2)
-            iszero(local_matrix[i, j]) && continue
-            tensor[left_link, shifted_right_link, i, j] = local_matrix[i, j]
+        left_block = left_blocks[left_link]
+        left_offset = left_offsets[left_link]
+        local_matrix = _evaluate_symbolic_local_matrix(C, terms, coefficients, op_cache)
+
+        @inbounds for site_prime_link in axes(local_matrix, 1),
+          site_link in axes(local_matrix, 2)
+
+          value = local_matrix[site_prime_link, site_link]
+          iszero(value) && continue
+
+          site_prime_block = site_prime_blocks[site_prime_link]
+          site_block = site_blocks[site_link]
+          block_id = (left_block, right_block, site_prime_block, site_block)
+
+          block_offset = get(block_offsets, block_id, nothing)
+          if isnothing(block_offset)
+            tensor[left_link, shifted_right_link, site_prime_link, site_link] = value
+          else
+            site_prime_offset = site_prime_offsets[site_prime_link]
+            site_offset = site_offsets[site_link]
+            entry_offsets = (left_offset, right_offset, site_prime_offset, site_offset)
+            block_dims = ntuple(i -> blockdim(tensor_inds[i], block_id[i]), Val(4))
+            tensor_data[_block_storage_index(block_offset, entry_offsets, block_dims)] = value
           end
         end
       end
@@ -356,19 +556,22 @@ function instantiate_MPO!(
 
   _add_symbolic_mpo_boundary_links!(H, sym)
 
-  for n in eachindex(sym.sites)
+  @timeit "refill template tensors" for n in eachindex(sym.sites)
     t = H[n]
     llink = dag(sym.llinks[n])
     rlink = sym.llinks[n + 1]
     site = sym.sites[n]
-    t = ITensors.permute(t, llink, rlink, prime(site), dag(site); allow_alias=true)
-    t .= 0
+    t = ITensors.permute(
+      t, llink, rlink, prime(site), dag(site); allow_alias=true
+    )
 
-    _fill_symbolic_mpo_tensor_with_boundary_links!(t.tensor, sym, coefficients, n)
+    _fill_symbolic_mpo_template_tensor!(t.tensor, sym, coefficients, n)
     H[n] = t
   end
 
-  _remove_symbolic_mpo_boundary_links!(H, sym.llinks)
+  _remove_symbolic_mpo_boundary_links!(
+    H, sym.llinks
+  )
 
   if checkflux
     @timeit "checkflux" Threads.@threads for n in eachindex(sym.sites)
