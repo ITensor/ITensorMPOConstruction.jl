@@ -121,7 +121,6 @@ otherwise this also builds `next_edges_of_cc` for the graph at site `n + 1`.
     end
   end
 
-  # TODO: Consider nested multithreading
   Threads.@threads for cc in 1:num_connected_components(ccs)
     lvs_of_component::Vector{Int} = ccs.lvs_of_component[cc]
     position_of_rvs_in_component = ccs.position_of_rvs_in_component
@@ -145,7 +144,6 @@ otherwise this also builds `next_edges_of_cc` for the graph at site `n + 1`.
     end
 
     ## Construct the tensor from the right cover.
-    # TODO: Merge this loop with the one above, using `in_left_cover`
     let
       in_left_cover = falses(length(lvs_of_component))
       @inbounds for local_id in left_cover
