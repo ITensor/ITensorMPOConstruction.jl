@@ -93,7 +93,7 @@ outgoing edges for the next site. For nonterminal sites, the consumed left
 adjacency list is cleared after the outgoing edges are built.
 """
 function process_single_left_vertex_cc!(
-  matrix_of_cc::Vector{BlockSparseMatrix{ValType}},
+  matrix_of_cc::Vector{BlockSparseMatrix{Matrix{ValType}}},
   rank_of_cc::Vector{Int},
   next_edges_of_cc::Vector{Matrix{Tuple{Vector{Int},Vector{C}}}},
   g::MPOGraph{N,C,Ti},
@@ -162,7 +162,7 @@ On the final site, the scalar `R` factor is applied directly to the local
 blocks.
 """
 @timeit function process_qr(
-  matrix_of_cc::Vector{BlockSparseMatrix{ValType}},
+  matrix_of_cc::Vector{BlockSparseMatrix{Matrix{ValType}}},
   rank_of_cc::Vector{Int},
   next_edges_of_cc::Vector{Matrix{Tuple{Vector{Int},Vector{C}}}},
   g::MPOGraph{N,C,Ti},

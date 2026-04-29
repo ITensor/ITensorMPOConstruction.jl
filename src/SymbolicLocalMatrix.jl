@@ -12,15 +12,6 @@ should be applied while evaluating the cached operator matrix.
 """
 const SymbolicLocalMatrix{Ti<:Integer} = Vector{Tuple{Int,Ti}}
 
-"""
-    SymbolicBlockSparseMatrix{Ti}
-
-Block-sparse symbolic storage mirroring `BlockSparseMatrix`, but with each
-block entry represented as a [`SymbolicLocalMatrix`](@ref).
-"""
-const SymbolicBlockSparseMatrix{Ti<:Integer} =
-  Vector{Dictionary{Int,SymbolicLocalMatrix{Ti}}}
-
 function _check_symbolic_weight_id(signed_weight_id::Integer)::Nothing
   signed_weight_id == 0 && throw(
     ArgumentError(

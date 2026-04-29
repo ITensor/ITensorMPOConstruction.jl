@@ -123,7 +123,7 @@ Afterward, the dummy left and right boundary links are contracted away. If
 """
 function instantiate_MPO(
   offsets::Vector{Vector{Int}},
-  block_sparse_matrices::Vector{Vector{BlockSparseMatrix{ValType}}},
+  block_sparse_matrices::Vector{Vector{BlockSparseMatrix{Matrix{ValType}}}},
   sites::Vector{<:Index},
   llinks::Vector{<:Index};
   splitblocks::Bool,
@@ -162,7 +162,7 @@ struct SymbolicMPO{
   Ti<:Integer,Sites<:AbstractVector{<:Index},Links<:AbstractVector{<:Index}
 }
   offsets::Vector{Vector{Int}}
-  block_sparse_matrices::Vector{Vector{SymbolicBlockSparseMatrix{Ti}}}
+  block_sparse_matrices::Vector{Vector{BlockSparseMatrix{SymbolicLocalMatrix{Ti}}}}
   sites::Sites
   llinks::Links
   op_cache_vec::OpCacheVec
@@ -190,11 +190,11 @@ function _symbolic_mpo_eltype(sym::SymbolicMPO, coefficients::AbstractVector)::T
 end
 
 function _evaluate_symbolic_block_sparse_matrix(
-  symbolic_matrix::SymbolicBlockSparseMatrix{Ti},
+  symbolic_matrix::BlockSparseMatrix{SymbolicLocalMatrix{Ti}},
   coefficients::AbstractVector,
   op_cache::Vector{OpInfo},
   ::Type{C},
-)::BlockSparseMatrix{C} where {Ti,C}
+)::BlockSparseMatrix{Matrix{C}} where {Ti,C}
   matrix = [Dictionary{Int,Matrix{C}}() for _ in eachindex(symbolic_matrix)]
 
   for right_link in eachindex(symbolic_matrix)
@@ -208,12 +208,12 @@ function _evaluate_symbolic_block_sparse_matrix(
 end
 
 function _evaluate_symbolic_block_sparse_matrices(
-  symbolic_matrices::Vector{SymbolicBlockSparseMatrix{Ti}},
+  symbolic_matrices::Vector{BlockSparseMatrix{SymbolicLocalMatrix{Ti}}},
   coefficients::AbstractVector,
   op_cache::Vector{OpInfo},
   ::Type{C},
-)::Vector{BlockSparseMatrix{C}} where {Ti,C}
-  matrices = Vector{BlockSparseMatrix{C}}(undef, length(symbolic_matrices))
+)::Vector{BlockSparseMatrix{Matrix{C}}} where {Ti,C}
+  matrices = Vector{BlockSparseMatrix{Matrix{C}}}(undef, length(symbolic_matrices))
   for cc in eachindex(symbolic_matrices)
     matrices[cc] = _evaluate_symbolic_block_sparse_matrix(
       symbolic_matrices[cc], coefficients, op_cache, C
@@ -654,7 +654,9 @@ function MPO_symbolic(
   end
 
   offsets = Vector{Vector{Int}}(undef, length(sites))
-  block_sparse_matrices = Vector{Vector{SymbolicBlockSparseMatrix{Ti}}}(undef, length(sites))
+  block_sparse_matrices = Vector{Vector{BlockSparseMatrix{SymbolicLocalMatrix{Ti}}}}(
+    undef, length(sites)
+  )
 
   @time_if output_level 0 "Constructing symbolic MPO terms" resume_MPO_construction!(
     1,
@@ -734,7 +736,9 @@ function MPO_new(
   end
 
   offsets = Vector{Vector{Int}}(undef, length(sites))
-  block_sparse_matrices = Vector{Vector{BlockSparseMatrix{ValType}}}(undef, length(sites))
+  block_sparse_matrices = Vector{Vector{BlockSparseMatrix{Matrix{ValType}}}}(
+    undef, length(sites)
+  )
 
   @time_if output_level 0 "Constructing MPO terms" resume_MPO_construction!(
     1,

@@ -431,7 +431,9 @@ using Serialization
 function call_back(
   n::Int,
   offsets::Vector{Vector{Int}},
-  block_sparse_matrices::Vector{Vector{ITensorMPOConstruction.BlockSparseMatrix{ValType}}},
+  block_sparse_matrices::Vector{
+    Vector{ITensorMPOConstruction.BlockSparseMatrix{Matrix{ValType}}}
+  },
   sites::Vector{<:Index},
   llinks::Vector{<:Index},
   g::ITensorMPOConstruction.MPOGraph,

@@ -1,12 +1,12 @@
 function _vertex_cover_matrix(
-  ::Type{BlockSparseMatrix{ValType}}, rank::Int
-)::BlockSparseMatrix{ValType} where {ValType}
+  ::Type{BlockSparseMatrix{Matrix{ValType}}}, rank::Int
+)::BlockSparseMatrix{Matrix{ValType}} where {ValType}
   return [Dictionary{Int,Matrix{ValType}}() for _ in 1:rank]
 end
 
 function _vertex_cover_matrix(
-  ::Type{SymbolicBlockSparseMatrix{Ti}}, rank::Int
-)::SymbolicBlockSparseMatrix{Ti} where {Ti<:Integer}
+  ::Type{BlockSparseMatrix{SymbolicLocalMatrix{Ti}}}, rank::Int
+)::BlockSparseMatrix{SymbolicLocalMatrix{Ti}} where {Ti<:Integer}
   return [Dictionary{Int,SymbolicLocalMatrix{Ti}}() for _ in 1:rank]
 end
 
@@ -16,7 +16,7 @@ function _signed_symbolic_local_op_id(lv::LeftVertex, ::Type{Ti})::Ti where {Ti<
 end
 
 function _add_vertex_cover_term!(
-  matrix::BlockSparseMatrix{ValType},
+  matrix::BlockSparseMatrix{Matrix{ValType}},
   m::Int,
   lv::LeftVertex,
   weight::Number,
@@ -32,7 +32,7 @@ function _add_vertex_cover_term!(
 end
 
 function _add_vertex_cover_term!(
-  matrix::SymbolicBlockSparseMatrix{Ti},
+  matrix::BlockSparseMatrix{SymbolicLocalMatrix{Ti}},
   m::Int,
   lv::LeftVertex,
   signed_weight_id::Integer,
@@ -49,7 +49,7 @@ function _add_vertex_cover_term!(
 end
 
 function _add_vertex_cover_unit_term!(
-  matrix::BlockSparseMatrix{ValType},
+  matrix::BlockSparseMatrix{Matrix{ValType}},
   m::Int,
   lv::LeftVertex,
   op_cache::Vector{OpInfo},
@@ -61,7 +61,7 @@ function _add_vertex_cover_unit_term!(
 end
 
 function _add_vertex_cover_unit_term!(
-  matrix::SymbolicBlockSparseMatrix{Ti},
+  matrix::BlockSparseMatrix{SymbolicLocalMatrix{Ti}},
   m::Int,
   lv::LeftVertex,
   op_cache::Vector{OpInfo},
@@ -77,8 +77,8 @@ function _finalize_vertex_cover_matrix!(matrix::BlockSparseMatrix)::Nothing
 end
 
 function _finalize_vertex_cover_matrix!(
-  matrix::SymbolicBlockSparseMatrix
-)::Nothing
+  matrix::BlockSparseMatrix{SymbolicLocalMatrix{Ti}}
+)::Nothing where {Ti}
   for block in matrix
     for terms in values(block)
       _normalize_symbolic_local_matrix!(terms)

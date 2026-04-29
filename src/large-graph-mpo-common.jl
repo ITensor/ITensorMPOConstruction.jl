@@ -1,15 +1,17 @@
 """
-    BlockSparseMatrix{C}
+    BlockSparseMatrix{MatrixType}
 
 Vector-backed block-sparse matrix representation used for intermediate MPO
 tensor storage.
 
 The outer vector is indexed by component-local `right_link`. Each inner
-`Dictionary` maps `left_link` to the dense local operator matrix for that block.
+`Dictionary` maps `left_link` to one local block value. Numeric construction
+uses dense local operator matrices as `BlockSparseMatrix{Matrix{C}}`, while the
+symbolic path stores term lists as `BlockSparseMatrix{SymbolicLocalMatrix{Ti}}`.
 `at_site!` later returns offsets that place component-local right-link ids into
 the full outgoing MPO bond.
 """
-BlockSparseMatrix{C} = Vector{Dictionary{Int,Matrix{C}}}
+BlockSparseMatrix{MatrixType} = Vector{Dictionary{Int,MatrixType}}
 
 """
     MPOGraph{N,C,Ti}
@@ -367,7 +369,9 @@ function merge_qn_sectors(
   return new_order, new_qi
 end
 
-function _check_qr_block_storage(::Type{SymbolicBlockSparseMatrix{Ti}})::Nothing where {Ti}
+function _check_qr_block_storage(
+  ::Type{BlockSparseMatrix{SymbolicLocalMatrix{Ti}}}
+)::Nothing where {Ti}
   throw(ArgumentError("QR construction is only supported for numeric block storage."))
 end
 
@@ -376,9 +380,9 @@ function _check_qr_block_storage(::Type)::Nothing
 end
 
 """
-    at_site!(ValType, g, n, sites, tol, absolute_tol, op_cache_vec, alg;
+    at_site!(MatrixType, g, n, sites, tol, absolute_tol, op_cache_vec, alg;
              combine_qn_sectors, output_level=0)
-        -> Tuple{MPOGraph,Vector{Int},Vector{BlockSparseMatrix{ValType}},Index}
+        -> Tuple{MPOGraph,Vector{Int},Vector{MatrixType},Index}
 
 Process one site of the MPO construction algorithm.
 

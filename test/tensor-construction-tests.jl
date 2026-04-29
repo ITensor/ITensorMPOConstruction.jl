@@ -5,7 +5,7 @@ using Test
 
 function reference_to_ITensor(
   offsets::Vector{Int},
-  block_sparse_matrices::Vector{ITensorMPOConstruction.BlockSparseMatrix{C}},
+  block_sparse_matrices::Vector{ITensorMPOConstruction.BlockSparseMatrix{Matrix{C}}},
   llink::ITensors.QNIndex,
   rlink::ITensors.QNIndex,
   site::ITensors.QNIndex;
