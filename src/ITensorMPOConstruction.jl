@@ -18,6 +18,7 @@ using ThreadsX
 #
 include("time_if.jl")
 include("OpIDSum.jl")
+include("SymbolicWeight.jl")
 include("SymbolicLocalMatrix.jl")
 include("ops.jl")
 include("BipartiteGraph.jl")
@@ -35,6 +36,8 @@ include("MPOConstruction.jl")
 
 # OpIDSum.jl
 export OpInfo, OpCacheVec, to_OpCacheVec, OpID, OpIDSum
+
+export SimpleWeight
 
 # MPOConstruction.jl
 export resume_MPO_construction!,

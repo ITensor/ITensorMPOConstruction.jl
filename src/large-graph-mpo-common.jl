@@ -7,11 +7,15 @@ tensor storage.
 The outer vector is indexed by component-local `right_link`. Each inner
 `Dictionary` maps `left_link` to one local block value. Numeric construction
 uses dense local operator matrices as `BlockSparseMatrix{Matrix{C}}`, while the
-symbolic path stores term lists as `BlockSparseMatrix{SymbolicLocalMatrix{Ti}}`.
+symbolic path stores term lists as `BlockSparseMatrix{SymbolicLocalMatrix}`.
 `at_site!` later returns offsets that place component-local right-link ids into
 the full outgoing MPO bond.
 """
 BlockSparseMatrix{MatrixType} = Vector{Dictionary{Int,MatrixType}}
+
+function BlockSparseMatrix(::Type{MatrixType}, ncols::Int)::BlockSparseMatrix{MatrixType} where {MatrixType}
+  return [Dictionary{Int,MatrixType}() for _ in 1:ncols]
+end
 
 """
     MPOGraph{N,C,Ti}
@@ -219,13 +223,9 @@ identity incoming link and the operator emitted at site 1, while right vertices
 carry the remaining operator tuples.
 """
 @timeit function MPOGraph(
-  os::OpIDSum{N,C,Ti}; symbolic_coefficients::Bool=false
+  os::OpIDSum{N,C,Ti}
 )::MPOGraph{N,C,Ti} where {N,C,Ti}
   @assert size(os.terms, 1) == N
-  if symbolic_coefficients && !(C <: Integer)
-    throw(ArgumentError("Symbolic MPO graph construction requires integer coefficient ids."))
-  end
-
   ## Reverse the terms in the sum, ignoring trailing identity operators.
   Threads.@threads for i in 1:length(os)
     for j in N:-1:1
@@ -247,9 +247,8 @@ carry the remaining operator tuples.
   ## Combine duplicate numeric terms and remove terms which are below the tolerance.
   ## Symbolic ids are labels, not numeric weights, so preserve duplicate entries.
   nnz = 0
-  if symbolic_coefficients
+  if C <: AbstractWeight
     for i in eachindex(os)
-      _check_symbolic_weight_id(os.scalars[i])
       nnz += 1
       os.scalars[nnz] = os.scalars[i]
       os._data[nnz] = os._data[i]
@@ -410,7 +409,7 @@ known.
   alg::String;
   combine_qn_sectors::Bool,
   output_level::Int=0,
-)::Tuple{MPOGraph{N,C,Ti},Vector{Int},Vector{MatrixType},Index} where {MatrixType,N,C,Ti}
+)::Tuple{MPOGraph{N,C,Ti},Vector{Int},Vector{BlockSparseMatrix{MatrixType}},Index} where {MatrixType,N,C,Ti}
   has_qns = hasqns(sites)
 
   workspace = combine_duplicate_adjacent_right_vertices!(g, terms_eq_from(n + 1))
@@ -423,7 +422,7 @@ known.
   rank_of_cc = zeros(Int, nccs)
 
   ## The MPO tensor for each component.
-  matrix_of_cc = [_vertex_cover_matrix(MatrixType, 0) for _ in 1:nccs]
+  matrix_of_cc = [BlockSparseMatrix{MatrixType}() for _ in 1:nccs]
 
   ## The QN of each component
   qi_of_cc = Vector{Pair{QN,Int}}(undef, nccs)

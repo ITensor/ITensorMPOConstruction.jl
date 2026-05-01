@@ -206,16 +206,6 @@ end
 
 # # Symbolic construction
 
-function electronic_structure_fermion_sort_sign(site_ids::Integer...)::Int
-  sign = 1
-  for i in eachindex(site_ids)
-    for j in 1:(i - 1)
-      site_ids[i] < site_ids[j] && (sign = -sign)
-    end
-  end
-  return sign
-end
-
 function electronic_structure_symbolic_OpIDSum(
   N::Int,
   op_cache_vec::OpCacheVec,
@@ -226,16 +216,15 @@ function electronic_structure_symbolic_OpIDSum(
   opC(k::Int, spin::Bool) = OpID(2 + spin, k)
   opCdag(k::Int, spin::Bool) = OpID(4 + spin, k)
 
-  os = OpIDSum{4,Int,Int}(2 * N^4 + 2 * N^2, op_cache_vec)
+  os = OpIDSum{4,SimpleWeight,Int}(2 * N^4 + 2 * N^2, op_cache_vec)
 
   map_1e = Tuple{Int, Int}[]
   for p in 1:N
     for q in 1:N
       push!(map_1e, (p, q))
       id = length(map_1e)
-      sign = electronic_structure_fermion_sort_sign(p, q)
       for spin in (↓, ↑)
-        add!(os, sign * id, opCdag(p, spin), opC(q, spin))
+        add!(os, SimpleWeight(id), opCdag(p, spin), opC(q, spin))
       end
     end
   end
@@ -260,10 +249,9 @@ function electronic_structure_symbolic_OpIDSum(
             push!(map_2e, (p, q, r, s, s_p, s_q, s_r, s_s))
 
             id = length(map_2e) + length(map_1e)
-            sign = electronic_structure_fermion_sort_sign(p, q, r, s)
             add!(
               os,
-              sign * id,
+              SimpleWeight(id),
               opCdag(p, s_p),
               opCdag(q, s_q),
               opC(r, s_r),
@@ -289,7 +277,7 @@ function electronic_structure_symbolic_coefficients(
   )
 
   for (id, (p, q)) in pairs(map_1e)
-    coefficients[id] = electronic_structure_fermion_sort_sign(p, q) * h[p, q]
+    coefficients[id] = h[p, q]
   end
 
   offset = length(map_1e)
@@ -308,7 +296,7 @@ function electronic_structure_symbolic_coefficients(
       coeff += V[q, r, p, s]
     end
 
-    coefficients[offset + i] = electronic_structure_fermion_sort_sign(p, q, r, s) * coeff
+    coefficients[offset + i] = coeff
   end
 
   return coefficients
@@ -320,7 +308,7 @@ function mpo_relative_difference(A::MPO, B::MPO)::Float64
 end
 
 let
-  N = 50
+  N = 6
   println("Constructing a symbolic electronic structure MPO for $N sites")
 
   h, V = get_coefficients(N)
@@ -356,26 +344,19 @@ let
 
   print_timer()
 
-  # @time "Constructing reference MPO" H_numeric = MPO_new(
-  #   numeric_os,
-  #   sites;
-  #   alg="VC",
-  #   basis_op_cache_vec=op_cache_vec,
-  #   splitblocks=true,
-  #   check_for_errors=false,
-  #   checkflux=false,
-  # )
+  @time "Constructing reference MPO" H_numeric = MPO_new(
+    numeric_os,
+    sites;
+    alg="VC",
+    basis_op_cache_vec=op_cache_vec,
+    splitblocks=true,
+    check_for_errors=false,
+    checkflux=false,
+  )
 
-  # relative_difference = mpo_relative_difference(H_symbolic, H_numeric)
-  # println("Symbolic instantiation relative difference: $relative_difference")
-  # @assert relative_difference < 1e-10
-
-  # h2 = 1.1 .* h
-  # V2 = 1.1 .* V
-  # coefficients2 = electronic_structure_symbolic_coefficients(h2, V2, map_1e, map_2e)
-  # H_symbolic2 = instantiate_MPO(sym, coefficients2; splitblocks=true, checkflux=false)
-  # @assert mpo_relative_difference(H_symbolic2, H_symbolic) > 0
-  # println("Updated symbolic coefficients without rebuilding the symbolic MPO")
+  relative_difference = mpo_relative_difference(H_symbolic, H_numeric)
+  println("Symbolic instantiation relative difference: $relative_difference")
+  @assert relative_difference < 1e-10
 end
 
 nothing;

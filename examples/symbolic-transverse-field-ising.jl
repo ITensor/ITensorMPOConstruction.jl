@@ -24,19 +24,18 @@ function all_to_all_tfim_symbolic(N::Int)::SymbolicMPO
   Z(n::Int) = OpID(3, n)
 
   num_couplings = num_tfim_couplings(N)
-  field_label = num_couplings + 1
-  os = OpIDSum{2,Int,Int}(num_couplings + N, op_cache_vec)
+  os = OpIDSum{2,SimpleWeight,Int}(num_couplings + N, op_cache_vec)
 
   label = 1
   for i in 1:N
     for j in (i + 1):N
-      add!(os, label, Z(i), Z(j))
+      add!(os, SimpleWeight(label), Z(i), Z(j))
       label += 1
     end
   end
 
   for i in 1:N
-    add!(os, field_label, X(i))
+    add!(os, SimpleWeight(label), X(i))
   end
 
   return MPO_symbolic(os, sites)

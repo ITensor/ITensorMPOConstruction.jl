@@ -45,7 +45,7 @@ $_resume_MPO_kwargs
 function resume_MPO_construction!(
   n_init::Int,
   offsets::Vector{Vector{Int}},
-  block_sparse_matrices::Vector{Vector{MatrixType}},
+  block_sparse_matrices::Vector{Vector{BlockSparseMatrix{MatrixType}}},
   sites::Vector{<:Index},
   llinks::Vector{<:Index},
   g::MPOGraph,
@@ -57,7 +57,7 @@ function resume_MPO_construction!(
   call_back::Function=(
     cur_site::Int,
     offsets::Vector{Vector{Int}},
-    block_sparse_matrices::Vector{Vector{MatrixType}},
+    block_sparse_matrices::Vector{Vector{BlockSparseMatrix{MatrixType}}},
     sites::Vector{<:Index},
     llinks::Vector{<:Index},
     cur_graph::MPOGraph,
@@ -159,24 +159,13 @@ MPO construction, but each block entry is a symbolic local matrix term list.
 later numeric substitution.
 """
 struct SymbolicMPO{
-  Ti<:Integer,Sites<:AbstractVector{<:Index},Links<:AbstractVector{<:Index}
+  W<:AbstractWeight,Ti<:Integer,Sites<:AbstractVector{<:Index},Links<:AbstractVector{<:Index}
 }
   offsets::Vector{Vector{Int}}
-  block_sparse_matrices::Vector{Vector{BlockSparseMatrix{SymbolicLocalMatrix{Ti}}}}
+  block_sparse_matrices::Vector{Vector{BlockSparseMatrix{SymbolicLocalMatrix{W, Ti}}}}
   sites::Sites
   llinks::Links
   op_cache_vec::OpCacheVec
-  max_user_label::Int
-end
-
-function _check_symbolic_coefficients(sym::SymbolicMPO, coefficients::AbstractVector)::Nothing
-  length(coefficients) == sym.max_user_label || throw(
-    ArgumentError(
-      "Expected $(sym.max_user_label) coefficients. " *
-      "Received $(length(coefficients)) coefficients.",
-    ),
-  )
-  return nothing
 end
 
 function _symbolic_mpo_eltype(sym::SymbolicMPO, coefficients::AbstractVector)::Type
@@ -190,16 +179,16 @@ function _symbolic_mpo_eltype(sym::SymbolicMPO, coefficients::AbstractVector)::T
 end
 
 function _evaluate_symbolic_block_sparse_matrix(
-  symbolic_matrix::BlockSparseMatrix{SymbolicLocalMatrix{Ti}},
+  symbolic_matrix::BlockSparseMatrix{SymbolicLocalMatrix{W, Ti}},
   coefficients::AbstractVector,
   op_cache::Vector{OpInfo},
-  ::Type{C},
-)::BlockSparseMatrix{Matrix{C}} where {Ti,C}
-  matrix = [Dictionary{Int,Matrix{C}}() for _ in eachindex(symbolic_matrix)]
+  ::Type{ValType},
+)::BlockSparseMatrix{Matrix{ValType}} where {W,Ti,ValType}
+  matrix = BlockSparseMatrix(Matrix{ValType}, length(symbolic_matrix))
 
   for right_link in eachindex(symbolic_matrix)
     for (left_link, terms) in pairs(symbolic_matrix[right_link])
-      block = _evaluate_symbolic_local_matrix(C, terms, coefficients, op_cache)
+      block = _evaluate_symbolic_local_matrix(ValType, terms, coefficients, op_cache)
       set!(matrix[right_link], left_link, block)
     end
   end
@@ -208,15 +197,15 @@ function _evaluate_symbolic_block_sparse_matrix(
 end
 
 function _evaluate_symbolic_block_sparse_matrices(
-  symbolic_matrices::Vector{BlockSparseMatrix{SymbolicLocalMatrix{Ti}}},
+  symbolic_matrices::Vector{BlockSparseMatrix{SymbolicLocalMatrix{W, Ti}}},
   coefficients::AbstractVector,
   op_cache::Vector{OpInfo},
-  ::Type{C},
-)::Vector{BlockSparseMatrix{Matrix{C}}} where {Ti,C}
-  matrices = Vector{BlockSparseMatrix{Matrix{C}}}(undef, length(symbolic_matrices))
+  ::Type{ValType},
+)::Vector{BlockSparseMatrix{Matrix{ValType}}} where {W, Ti,ValType}
+  matrices = Vector{BlockSparseMatrix{Matrix{ValType}}}(undef, length(symbolic_matrices))
   for cc in eachindex(symbolic_matrices)
     matrices[cc] = _evaluate_symbolic_block_sparse_matrix(
-      symbolic_matrices[cc], coefficients, op_cache, C
+      symbolic_matrices[cc], coefficients, op_cache, ValType
     )
   end
   return matrices
@@ -236,7 +225,6 @@ assembly path used by numeric MPO construction.
 function instantiate_MPO(
   sym::SymbolicMPO, coefficients::AbstractVector; splitblocks::Bool=true, checkflux::Bool=false
 )::MPO
-  _check_symbolic_coefficients(sym, coefficients)
   C = _symbolic_mpo_eltype(sym, coefficients)
 
   H = MPO(sym.sites)
@@ -257,15 +245,7 @@ function instantiate_MPO(
     )
   end
 
-  # Remove the dummy link indices from the left and right.
-  L = ITensor(sym.llinks[1])
-  L[end] = 1.0
-
-  R = ITensor(dag(sym.llinks[end]))
-  R[1] = 1.0
-
-  H[1] *= L
-  H[length(sym.sites)] *= R
+  _remove_symbolic_mpo_boundary_links!(H, sym.llinks)
 
   if checkflux
     @timeit "checkflux" Threads.@threads for n in eachindex(sym.sites)
@@ -551,7 +531,6 @@ object `H` is updated in place and returned.
 function instantiate_MPO!(
   H::MPO, sym::SymbolicMPO, coefficients::AbstractVector; checkflux::Bool=false
 )::MPO
-  _check_symbolic_coefficients(sym, coefficients)
   _check_symbolic_mpo_template(H, sym)
 
   _add_symbolic_mpo_boundary_links!(H, sym)
@@ -596,22 +575,6 @@ function instantiate_MPO(
   return instantiate_MPO!(deepcopy(H_template), sym, coefficients; checkflux)
 end
 
-function _check_MPO_symbolic_kwargs(kwargs)::Nothing
-  if haskey(kwargs, :alg)
-    throw(
-      ArgumentError(
-        "Symbolic MPO construction is always vertex-cover based and does not accept an alg keyword.",
-      ),
-    )
-  end
-
-  if !isempty(kwargs)
-    throw(ArgumentError("Unsupported keyword(s) for MPO_symbolic: $(join(keys(kwargs), ", "))."))
-  end
-
-  return nothing
-end
-
 """
     MPO_symbolic(os::OpIDSum, sites; basis_op_cache_vec=nothing,
       check_for_errors=true, combine_qn_sectors=false, output_level=0) -> SymbolicMPO
@@ -624,27 +587,19 @@ coefficient labels are remapped to internal symbolic ids, an optional basis
 rewrite is applied, and duplicate symbolic graph entries are preserved.
 """
 function MPO_symbolic(
-  os::OpIDSum{N,C,Ti},
+  os::OpIDSum{N,W,Ti},
   sites::Vector{<:Index};
   basis_op_cache_vec=nothing,
   check_for_errors::Bool=true,
   combine_qn_sectors::Bool=false,
   output_level::Int=0,
   kwargs...,
-)::SymbolicMPO where {N,C,Ti}
-  _check_MPO_symbolic_kwargs(kwargs)
-
-  C <: Integer || throw(
-    ArgumentError("MPO_symbolic requires an OpIDSum with integer coefficient labels."),
-  )
-
-  internalize_symbolic_ids!(os)
-  prepare_opID_sum!(os, to_OpCacheVec(sites, basis_op_cache_vec); symbolic_coefficients=true)
+)::SymbolicMPO where {N,W<:AbstractWeight,Ti}
+  prepare_opID_sum!(os, to_OpCacheVec(sites, basis_op_cache_vec))
   check_for_errors && check_os_for_errors(os)
-  max_user_label = _max_user_label(os)
 
   label = "Constructing symbolic MPOGraph from $(length(os)) terms"
-  @time_if output_level 0 label g = MPOGraph(os; symbolic_coefficients=true)
+  @time_if output_level 0 label g = MPOGraph(os)
 
   llinks = Vector{Index}(undef, length(sites) + 1)
   if hasqns(sites)
@@ -654,7 +609,7 @@ function MPO_symbolic(
   end
 
   offsets = Vector{Vector{Int}}(undef, length(sites))
-  block_sparse_matrices = Vector{Vector{BlockSparseMatrix{SymbolicLocalMatrix{Ti}}}}(
+  block_sparse_matrices = Vector{Vector{BlockSparseMatrix{SymbolicLocalMatrix{W, Ti}}}}(
     undef, length(sites)
   )
 
@@ -671,12 +626,7 @@ function MPO_symbolic(
     output_level,
   )
 
-  return SymbolicMPO(offsets, block_sparse_matrices, sites, llinks, os.op_cache_vec, max_user_label)
-end
-
-function MPO_symbolic(os::OpSum, sites::Vector{<:Index}; kwargs...)
-  _check_MPO_symbolic_kwargs(kwargs)
-  throw(ArgumentError("MPO_symbolic supports OpIDSum input only; OpSum input is not supported."))
+  return SymbolicMPO(offsets, block_sparse_matrices, sites, llinks, os.op_cache_vec)
 end
 
 @doc """

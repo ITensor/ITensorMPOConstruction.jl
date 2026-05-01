@@ -190,7 +190,7 @@ mutable struct OpIDSum{N,C,Ti}
   op_cache_vec::OpCacheVec
   abs_tol::Float64
   modify!::FunctionWrappers.FunctionWrapper{
-    C,
+    Float64,
     Tuple{
       SubArray{
         OpID{Ti},
@@ -227,7 +227,7 @@ function OpIDSum{N,C,Ti}(
   data = Vector{NTuple{N,OpID{Ti}}}(undef, max_terms)
   terms = reinterpret(reshape, OpID{Ti}, data)
   wrapped_modify! = FunctionWrappers.FunctionWrapper{
-    C,
+    Float64,
     Tuple{
       SubArray{
         OpID{Ti},
@@ -263,7 +263,7 @@ Terms with `abs(scalar) <= abs_tol` are ignored when added.
 function OpIDSum{N,C,Ti}(
   max_terms::Int, op_cache_vec::OpCacheVec; abs_tol::Real=0
 )::OpIDSum{N,C,Ti} where {N,C,Ti}
-  return OpIDSum{N,C,Ti}(max_terms, op_cache_vec, ops -> 1; abs_tol)
+  return OpIDSum{N,C,Ti}(max_terms, op_cache_vec, ops -> 1.0; abs_tol)
 end
 
 """
@@ -306,7 +306,7 @@ term-modification callback associated with `os` is applied. Terms below
 merge duplicate terms or check capacity; callers must construct `os` with enough
 room for all accepted terms.
 """
-function ITensorMPS.add!(os::OpIDSum, scalar::Number, ops)::Nothing
+function ITensorMPS.add!(os::OpIDSum, scalar, ops)::Nothing
   abs(scalar) <= os.abs_tol && return nothing
 
   num_terms = Threads.atomic_add!(os.num_terms, 1) + 1
@@ -338,7 +338,7 @@ end
 
 Vararg convenience method for `add!`.
 """
-function ITensorMPS.add!(os::OpIDSum, scalar::Number, ops::OpID...)::Nothing
+function ITensorMPS.add!(os::OpIDSum, scalar, ops::OpID...)::Nothing
   return add!(os, scalar, ops)
 end
 
@@ -406,16 +406,8 @@ internal signed symbolic ids. In that mode, rewrite factors must be exactly
 converting the symbolic id into an ordinary numeric coefficient.
 """
 @timeit function rewrite_in_operator_basis!(
-  os::OpIDSum{N,C,Ti}, basis_op_cache_vec::OpCacheVec; symbolic_coefficients::Bool=false
+  os::OpIDSum{N,C,Ti}, basis_op_cache_vec::OpCacheVec
 )::Nothing where {N,C,Ti}
-  if symbolic_coefficients && !(C <: Integer)
-    throw(
-      ArgumentError(
-        "Symbolic operator-basis rewrites require integer internal coefficient ids.",
-      ),
-    )
-  end
-
   op_cache_vec = os.op_cache_vec
 
   function scale_by_first_nz!(matrix::Matrix)
@@ -471,11 +463,6 @@ converting the symbolic id into an ordinary numeric coefficient.
     end
   end
 
-  function apply_rewrite_factor(scalar, coeff)
-    symbolic_coefficients && return C(_scale_symbolic_weight(scalar, coeff))
-    return scalar * coeff
-  end
-
   Threads.@threads for i in eachindex(os)
     scalar, ops = os[i]
     term_is_zero = false
@@ -504,7 +491,7 @@ converting the symbolic id into an ordinary numeric coefficient.
         )
       end
 
-      scalar = apply_rewrite_factor(scalar, coeff)
+      scalar *= coeff
 
       ops[a] = OpID{Ti}(basis_id, ops[a].n)
       for k in (a + 1):b
@@ -654,11 +641,10 @@ scalars.
 """
 function prepare_opID_sum!(
   os::OpIDSum,
-  basis_op_cache_vec::Union{Nothing,OpCacheVec};
-  symbolic_coefficients::Bool=false,
+  basis_op_cache_vec::Union{Nothing,OpCacheVec}
 )::Nothing
   if !isnothing(basis_op_cache_vec)
-    rewrite_in_operator_basis!(os, basis_op_cache_vec; symbolic_coefficients)
+    rewrite_in_operator_basis!(os, basis_op_cache_vec)
   end
 
   return nothing

@@ -1,19 +1,15 @@
 using ITensorMPOConstruction
 using ITensorMPOConstruction:
   MPOGraph,
+  SimpleWeight,
   SymbolicLocalMatrix,
   _append_symbolic_local_matrix_term!,
   _evaluate_symbolic_local_matrix,
-  _internal_symbolic_id,
-  _max_user_label,
-  _normalize_symbolic_local_matrix!,
-  _scale_symbolic_weight,
-  _weight_value,
   combine_duplicate_adjacent_right_vertices!,
-  internalize_symbolic_ids!,
   left_size,
   left_vertex,
-  prepare_opID_sum!
+  prepare_opID_sum!,
+  substitute_weight
 using ITensorMPOConstruction: right_size, terms_eq_from
 using ITensors
 using ITensorMPS
@@ -22,42 +18,26 @@ using Test
 function test_symbolic_local_matrix_operations()::Nothing
   coefficients = [10.0, 20.0]
 
-  @test _weight_value(1, coefficients) == 1.0
-  @test _weight_value(-1, coefficients) == -1.0
-  @test _weight_value(3, coefficients) == coefficients[2]
-  @test _weight_value(-3, coefficients) == -coefficients[2]
+  @test substitute_weight(one(SimpleWeight), coefficients) == 1.0
+  @test substitute_weight(SimpleWeight(1), coefficients) == coefficients[1]
+  @test substitute_weight(SimpleWeight(-1), coefficients) == -coefficients[1]
+  @test substitute_weight(SimpleWeight(2), coefficients) == coefficients[2]
 
-  @test _internal_symbolic_id(1) == 2
-  @test _internal_symbolic_id(3) == 4
-  @test_throws ArgumentError _internal_symbolic_id(0)
-  @test_throws ArgumentError _internal_symbolic_id(-1)
+  @test SimpleWeight(3) * 1 == SimpleWeight(3)
+  @test SimpleWeight(3) * -1 == SimpleWeight(-3)
+  @test SimpleWeight(-3) * -1 == SimpleWeight(3)
+  @test_throws ErrorException SimpleWeight(3) * 2
+  @test_throws ErrorException SimpleWeight(3) * im
 
-  @test _scale_symbolic_weight(3, 1) == 3
-  @test _scale_symbolic_weight(3, -1) == -3
-  @test _scale_symbolic_weight(-3, -1) == 3
-  @test_throws ArgumentError _scale_symbolic_weight(3, 2)
-  @test_throws ArgumentError _scale_symbolic_weight(3, im)
-
-  terms = SymbolicLocalMatrix{Int}()
-  _append_symbolic_local_matrix_term!(terms, 3, -2)
-  @test terms == [(3, -2)]
-  @test _max_user_label(SymbolicLocalMatrix{Int}([(1, 1), (-3, 2), (5, -2)])) == 4
-
-  terms = SymbolicLocalMatrix{Int}([(3, 2), (-3, 2)])
-  _normalize_symbolic_local_matrix!(terms)
-  @test isempty(terms)
-
-  terms = SymbolicLocalMatrix{Int}([(3, 2), (3, 2)])
-  _normalize_symbolic_local_matrix!(terms)
-  @test terms == [(3, 2), (3, 2)]
-
-  terms = SymbolicLocalMatrix{Int}([(5, 3), (4, 2), (3, 2)])
-  _normalize_symbolic_local_matrix!(terms)
-  @test terms == [(3, 2), (4, 2), (5, 3)]
+  terms = SymbolicLocalMatrix{SimpleWeight,Int}()
+  _append_symbolic_local_matrix_term!(terms, SimpleWeight(1), -2)
+  @test terms == [(SimpleWeight(1), -2)]
 
   qubit_sites = siteinds("Qubit", 1)
   qubit_op_cache_vec = to_OpCacheVec(qubit_sites, [["I", "X"]])
-  duplicate_terms = SymbolicLocalMatrix{Int}([(3, 2), (3, 2)])
+  duplicate_terms = SymbolicLocalMatrix{SimpleWeight,Int}([
+    (SimpleWeight(2), 2), (SimpleWeight(2), 2)
+  ])
   @test _evaluate_symbolic_local_matrix(
     Float64, duplicate_terms, coefficients, qubit_op_cache_vec[1]
   ) ≈ 2 * coefficients[2] * qubit_op_cache_vec[1][2].matrix
@@ -65,10 +45,16 @@ function test_symbolic_local_matrix_operations()::Nothing
   fermion_sites = siteinds("Fermion", 1)
   fermion_op_cache_vec = to_OpCacheVec(fermion_sites, [["I", "C", "Cdag", "N"]])
   plain_matrix = _evaluate_symbolic_local_matrix(
-    Float64, SymbolicLocalMatrix{Int}([(3, 2)]), coefficients, fermion_op_cache_vec[1]
+    Float64,
+    SymbolicLocalMatrix{SimpleWeight,Int}([(SimpleWeight(2), 2)]),
+    coefficients,
+    fermion_op_cache_vec[1],
   )
   jw_matrix = _evaluate_symbolic_local_matrix(
-    Float64, SymbolicLocalMatrix{Int}([(3, -2)]), coefficients, fermion_op_cache_vec[1]
+    Float64,
+    SymbolicLocalMatrix{SimpleWeight,Int}([(SimpleWeight(2), -2)]),
+    coefficients,
+    fermion_op_cache_vec[1],
   )
 
   expected_plain_matrix = coefficients[2] * fermion_op_cache_vec[1][2].matrix
@@ -77,56 +63,6 @@ function test_symbolic_local_matrix_operations()::Nothing
 
   @test plain_matrix ≈ expected_plain_matrix
   @test jw_matrix ≈ expected_jw_matrix
-
-  return nothing
-end
-
-function test_internalize_symbolic_ids()::Nothing
-  sites = siteinds("Qubit", 2)
-  op_cache_vec = to_OpCacheVec(sites, [["I", "X"], ["I", "Z"]])
-
-  X(n) = OpID(2, n)
-  Z(n) = OpID(2, n)
-
-  modify!(ops) = 1
-  os = OpIDSum{2,Int,Int}(3, op_cache_vec, modify!; abs_tol=0.25)
-  add!(os, 1, X(1))
-  add!(os, 2, Z(2))
-  add!(os, 3, X(1), Z(2))
-
-  original_op_cache_vec = os.op_cache_vec
-  original_abs_tol = os.abs_tol
-  original_modify! = os.modify!
-  original_scalars = os.scalars
-
-  @test internalize_symbolic_ids!(os) === os
-  @test original_scalars === os.scalars
-  @test os.scalars[1:3] == [2, 3, 4]
-  @test os.op_cache_vec === original_op_cache_vec
-  @test os.abs_tol == original_abs_tol
-  @test os.modify! === original_modify!
-
-  zero_label_os = OpIDSum{2,Int,Int}(1, op_cache_vec)
-  add!(zero_label_os, 1, X(1))
-  zero_label_os.scalars[1] = 0
-  @test_throws ArgumentError internalize_symbolic_ids!(zero_label_os)
-
-  negative_label_os = OpIDSum{2,Int,Int}(1, op_cache_vec)
-  add!(negative_label_os, -1, X(1))
-  @test_throws ArgumentError internalize_symbolic_ids!(negative_label_os)
-
-  return nothing
-end
-
-function test_negative_internal_symbolic_ids_remain_supported()::Nothing
-  coefficients = [7.0]
-
-  @test _weight_value(-2, coefficients) == -coefficients[1]
-
-  terms = SymbolicLocalMatrix{Int}()
-  _append_symbolic_local_matrix_term!(terms, -2, 2)
-  @test terms == [(-2, 2)]
-  @test _max_user_label(terms) == 1
 
   return nothing
 end
@@ -153,33 +89,31 @@ function symbolic_rewrite_opID_sum(factor, user_label::Int=7)
   scaled_identity(n) = OpID(2, n)
   X(n) = OpID(3, n)
 
-  os = OpIDSum{2,Int,Int}(1, op_cache_vec)
-  add!(os, user_label, scaled_identity(1), X(1))
-  internalize_symbolic_ids!(os)
+  os = OpIDSum{2,SimpleWeight,Int}(1, op_cache_vec)
+  add!(os, SimpleWeight(user_label), scaled_identity(1), X(1))
 
   return os, basis_op_cache_vec
 end
 
 function test_symbolic_basis_rewrite_sign_factors()::Nothing
   user_label = 7
-  internal_id = user_label + 1
 
   os, basis_op_cache_vec = symbolic_rewrite_opID_sum(-1.0, user_label)
-  prepare_opID_sum!(os, basis_op_cache_vec; symbolic_coefficients=true)
+  prepare_opID_sum!(os, basis_op_cache_vec)
 
   scalar, ops = os[1]
   nonzero_ops = [op for op in ops if op != zero(op)]
-  @test scalar == -internal_id
+  @test scalar == SimpleWeight(-user_label)
   @test nonzero_ops == [OpID(2, 1)]
   @test count(op -> op == zero(op), ops) == 1
   @test os.op_cache_vec === basis_op_cache_vec
 
   os, basis_op_cache_vec = symbolic_rewrite_opID_sum(1.0, user_label)
-  prepare_opID_sum!(os, basis_op_cache_vec; symbolic_coefficients=true)
+  prepare_opID_sum!(os, basis_op_cache_vec)
 
   scalar, ops = os[1]
   nonzero_ops = [op for op in ops if op != zero(op)]
-  @test scalar == internal_id
+  @test scalar == SimpleWeight(user_label)
   @test nonzero_ops == [OpID(2, 1)]
   @test count(op -> op == zero(op), ops) == 1
   @test os.op_cache_vec === basis_op_cache_vec
@@ -192,15 +126,14 @@ function test_symbolic_basis_rewrite_rejects_unsupported_factors()::Nothing
     os, basis_op_cache_vec = symbolic_rewrite_opID_sum(factor)
     err = nothing
     try
-      prepare_opID_sum!(os, basis_op_cache_vec; symbolic_coefficients=true)
+      prepare_opID_sum!(os, basis_op_cache_vec)
     catch e
       err = e
     end
 
     @test !isnothing(err)
     error_message = sprint(showerror, err)
-    @test occursin("ArgumentError", error_message)
-    @test occursin("Unsupported symbolic rewrite factor", error_message)
+    @test occursin("SimpleWeight can only be multiplied", error_message)
   end
 
   return nothing
@@ -212,15 +145,15 @@ function two_site_qubit_symbolic_fixture()
   return sites, op_cache_vec
 end
 
-function symbolic_terms_from_first_left_vertex(g)::SymbolicLocalMatrix{Int}
+function symbolic_terms_from_first_left_vertex(g)::SymbolicLocalMatrix{SimpleWeight,Int}
   @test left_size(g) == 1
   lv = left_vertex(g, 1)
   signed_local_op_id = lv.needs_JW_string ? -lv.op_id : lv.op_id
-  terms = SymbolicLocalMatrix{Int}()
+  terms = SymbolicLocalMatrix{SimpleWeight,Int}()
   for signed_weight_id in g.edge_weights_from_left[1]
-    _append_symbolic_local_matrix_term!(terms, signed_weight_id, signed_local_op_id)
+    _append_symbolic_local_matrix_term!(terms, signed_weight_id, Int(signed_local_op_id))
   end
-  return _normalize_symbolic_local_matrix!(terms)
+  return terms
 end
 
 function compact_duplicate_symbolic_right_vertices!(g)::Nothing
@@ -259,18 +192,17 @@ function test_symbolic_mpo_graph_preserves_duplicate_signed_ids()::Nothing
 
   X(n) = OpID(2, n)
 
-  os = OpIDSum{2,Int,Int}(2, op_cache_vec)
-  add!(os, 1, X(1), X(2))
-  add!(os, 2, X(1), X(2))
-  internalize_symbolic_ids!(os)
+  os = OpIDSum{2,SimpleWeight,Int}(2, op_cache_vec)
+  add!(os, SimpleWeight(1), X(1), X(2))
+  add!(os, SimpleWeight(2), X(1), X(2))
 
-  g = MPOGraph(os; symbolic_coefficients=true)
+  g = MPOGraph(os)
   @test length(g.edge_weights_from_left[1]) == 2
-  @test sort(g.edge_weights_from_left[1]) == [2, 3]
+  @test sort(getfield.(g.edge_weights_from_left[1], :id)) == [1, 2]
 
   compact_duplicate_symbolic_right_vertices!(g)
   terms = symbolic_terms_from_first_left_vertex(g)
-  @test terms == [(2, 2), (3, 2)]
+  @test terms == [(SimpleWeight(1), 2), (SimpleWeight(2), 2)]
 
   coefficients = [11.0, 17.0]
   evaluated = _evaluate_symbolic_local_matrix(Float64, terms, coefficients, op_cache_vec[1])
@@ -284,15 +216,14 @@ function test_symbolic_mpo_graph_preserves_duplicate_label_multiplicity()::Nothi
 
   X(n) = OpID(2, n)
 
-  os = OpIDSum{2,Int,Int}(2, op_cache_vec)
-  add!(os, 1, X(1), X(2))
-  add!(os, 1, X(1), X(2))
-  internalize_symbolic_ids!(os)
+  os = OpIDSum{2,SimpleWeight,Int}(2, op_cache_vec)
+  add!(os, SimpleWeight(1), X(1), X(2))
+  add!(os, SimpleWeight(1), X(1), X(2))
 
-  g = MPOGraph(os; symbolic_coefficients=true)
+  g = MPOGraph(os)
   compact_duplicate_symbolic_right_vertices!(g)
   terms = symbolic_terms_from_first_left_vertex(g)
-  @test terms == [(2, 2), (2, 2)]
+  @test terms == [(SimpleWeight(1), 2), (SimpleWeight(1), 2)]
 
   coefficient = 13.0
   evaluated = _evaluate_symbolic_local_matrix(Float64, terms, [coefficient], op_cache_vec[1])
@@ -327,16 +258,15 @@ function test_symbolic_mpo_graph_cancels_opposite_signed_ids()::Nothing
   X(n) = OpID(2, n)
   negX(n) = OpID(3, n)
 
-  os = OpIDSum{2,Int,Int}(2, op_cache_vec)
-  add!(os, 1, X(1), X(2))
-  add!(os, 1, negX(1), X(2))
-  internalize_symbolic_ids!(os)
-  prepare_opID_sum!(os, basis_op_cache_vec; symbolic_coefficients=true)
+  os = OpIDSum{2,SimpleWeight,Int}(2, op_cache_vec)
+  add!(os, SimpleWeight(1), X(1), X(2))
+  add!(os, SimpleWeight(1), negX(1), X(2))
+  prepare_opID_sum!(os, basis_op_cache_vec)
 
-  g = MPOGraph(os; symbolic_coefficients=true)
+  g = MPOGraph(os)
   compact_duplicate_symbolic_right_vertices!(g)
   terms = symbolic_terms_from_first_left_vertex(g)
-  @test isempty(terms)
+  @test terms == [(SimpleWeight(1), 2), (SimpleWeight(-1), 2)]
 
   evaluated = _evaluate_symbolic_local_matrix(Float64, terms, [7.0], basis_op_cache_vec[1])
   @test iszero(evaluated)
@@ -347,11 +277,6 @@ end
 @testset "SymbolicLocalMatrix" begin
   @testset "symbolic local matrix terms" begin
     test_symbolic_local_matrix_operations()
-  end
-
-  @testset "internal symbolic ids" begin
-    test_internalize_symbolic_ids()
-    test_negative_internal_symbolic_ids_remain_supported()
   end
 
   @testset "basis rewrite" begin

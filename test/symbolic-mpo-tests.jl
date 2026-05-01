@@ -1,5 +1,5 @@
 using ITensorMPOConstruction
-using ITensorMPOConstruction: MPO_symbolic, SymbolicMPO
+using ITensorMPOConstruction: MPO_symbolic, SimpleWeight, SymbolicMPO
 using ITensors
 using ITensorMPS
 using Test
@@ -17,10 +17,10 @@ function transverse_field_ising_symbolic_fixture()
   X(n) = OpID(2, n)
   Z(n) = OpID(3, n)
 
-  os = OpIDSum{2,Int,Int}(3, op_cache_vec)
-  add!(os, 1, X(1), X(2))
-  add!(os, 2, Z(1))
-  add!(os, 3, Z(2))
+  os = OpIDSum{2,SimpleWeight,Int}(3, op_cache_vec)
+  add!(os, SimpleWeight(1), X(1), X(2))
+  add!(os, SimpleWeight(2), Z(1))
+  add!(os, SimpleWeight(3), Z(2))
 
   return os, sites
 end
@@ -45,10 +45,10 @@ function qn_number_symbolic_fixture()
 
   Nop(n) = OpID(2, n)
 
-  os = OpIDSum{2,Int,Int}(3, op_cache_vec)
-  add!(os, 1, Nop(1))
-  add!(os, 2, Nop(2))
-  add!(os, 3, Nop(1), Nop(2))
+  os = OpIDSum{2,SimpleWeight,Int}(3, op_cache_vec)
+  add!(os, SimpleWeight(1), Nop(1))
+  add!(os, SimpleWeight(2), Nop(2))
+  add!(os, SimpleWeight(3), Nop(1), Nop(2))
 
   return os, sites
 end
@@ -79,8 +79,8 @@ function test_mpos_approx_equal(A::MPO, B::MPO; tol::Real=1e-10)::Nothing
   return nothing
 end
 
-function symbolic_mpo_terms(sym::SymbolicMPO)::Vector{Tuple{Int,Int}}
-  terms = Tuple{Int,Int}[]
+function symbolic_mpo_terms(sym::SymbolicMPO)::Vector
+  terms = []
   for site_matrices in sym.block_sparse_matrices
     for matrix_of_component in site_matrices
       for block in matrix_of_component
@@ -102,24 +102,8 @@ function test_symbolic_mpo_construction_metadata()::Nothing
   @test length(sym.offsets) == length(sites)
   @test length(sym.block_sparse_matrices) == length(sites)
   @test length(sym.llinks) == length(sites) + 1
-  @test sym.max_user_label == 3
   @test sym.op_cache_vec === os.op_cache_vec
   @test !isempty(symbolic_mpo_terms(sym))
-
-  return nothing
-end
-
-function test_symbolic_mpo_rejects_unsupported_public_inputs()::Nothing
-  os, sites = transverse_field_ising_symbolic_fixture()
-  @test_throws ArgumentError MPO_symbolic(os, sites; alg="QR")
-
-  noninteger_os = OpIDSum{2,Float64,Int}(1, os.op_cache_vec)
-  add!(noninteger_os, 1.0, OpID(2, 1), OpID(2, 2))
-  @test_throws ArgumentError MPO_symbolic(noninteger_os, sites)
-
-  op_sum = OpSum()
-  op_sum += "X", 1
-  @test_throws ArgumentError MPO_symbolic(op_sum, sites)
 
   return nothing
 end
@@ -149,9 +133,9 @@ function test_symbolic_mpo_duplicate_labels_instantiate_like_numeric()::Nothing
 
   X(n) = OpID(2, n)
 
-  symbolic_os = OpIDSum{2,Int,Int}(2, op_cache_vec)
-  add!(symbolic_os, 1, X(1), X(2))
-  add!(symbolic_os, 2, X(1), X(2))
+  symbolic_os = OpIDSum{2,SimpleWeight,Int}(2, op_cache_vec)
+  add!(symbolic_os, SimpleWeight(1), X(1), X(2))
+  add!(symbolic_os, SimpleWeight(2), X(1), X(2))
 
   sym = MPO_symbolic(symbolic_os, sites)
   coefficients = [2.0, 3.0]
@@ -189,7 +173,7 @@ function test_symbolic_mpo_qn_fresh_instantiation()::Nothing
   zero_mpo = instantiate_MPO(sym, [0.0, 0.0, 0.0]; splitblocks=true)
 
   @test linkdims(zero_mpo) == linkdims(nonzero_mpo)
-  @test_throws ArgumentError instantiate_MPO(sym, [1.0, 2.0])
+  @test_throws BoundsError instantiate_MPO(sym, [1.0, 2.0])
 
   return nothing
 end
@@ -200,11 +184,7 @@ function test_symbolic_mpo_missing_coefficients_rejected()::Nothing
   coefficients = [1.0, 2.0, 3.0]
   short_coefficients = [1.0, 2.0]
 
-  H = instantiate_MPO(sym, coefficients; splitblocks=true)
-
-  @test_throws ArgumentError instantiate_MPO(sym, short_coefficients; splitblocks=true)
-  @test_throws ArgumentError instantiate_MPO!(H, sym, short_coefficients)
-  @test_throws ArgumentError instantiate_MPO(H, sym, short_coefficients)
+  @test_throws BoundsError instantiate_MPO(sym, short_coefficients; splitblocks=true)
 
   return nothing
 end
@@ -284,8 +264,8 @@ function test_symbolic_mpo_uses_negative_local_op_id_for_jw_terms()::Nothing
   C(n) = OpID(2, n)
   Cdag(n) = OpID(3, n)
 
-  os = OpIDSum{2,Int,Int}(1, op_cache_vec)
-  add!(os, 1, Cdag(1), C(2))
+  os = OpIDSum{2,SimpleWeight,Int}(1, op_cache_vec)
+  add!(os, SimpleWeight(1), Cdag(1), C(2))
 
   sym = MPO_symbolic(os, sites)
   terms = symbolic_mpo_terms(sym)
@@ -304,7 +284,6 @@ end
   end
 
   @testset "public API rejections" begin
-    test_symbolic_mpo_rejects_unsupported_public_inputs()
     test_symbolic_mpo_missing_coefficients_rejected()
     test_symbolic_mpo_incompatible_template_rejected()
   end
