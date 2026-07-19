@@ -10,7 +10,7 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 [compat]
 Dictionaries = "0.4.6"
 Graphs = "1.14.0"
-ITensorMPS = "0.1, 0.2, 0.3"
+ITensorMPS = "0.1, 0.2, 0.3, 0.4"
 ITensors = "0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9"
 LinearAlgebra = "1.9, 1.10"
 Random = "1"
