@@ -187,6 +187,28 @@ function test_check_os_for_errors_rejects_linearly_dependent_cache()::Nothing
   return nothing
 end
 
+function test_check_os_for_errors_fermion_parity()::Nothing
+  sites = siteinds("Fermion", 3)
+  op_cache_vec =
+    to_OpCacheVec(sites, [["I", "C", "Cdag", "N"] for _ in eachindex(sites)])
+
+  C(n) = OpID(2, n)
+  Cdag(n) = OpID(3, n)
+  N(n) = OpID(4, n)
+
+  odd_os = OpIDSum{3,Float64,Int}(2, op_cache_vec)
+  add!(odd_os, 1.0, C(1))
+  add!(odd_os, 1.0, Cdag(1), C(2), C(3))
+  @test isnothing(check_os_for_errors(odd_os))
+
+  mixed_os = OpIDSum{2,Float64,Int}(2, op_cache_vec)
+  add!(mixed_os, 1.0, C(1))
+  add!(mixed_os, 1.0, N(2))
+  @test_throws "Inconsistent fermion parity found!" check_os_for_errors(mixed_os)
+
+  return nothing
+end
+
 @testset "Ops" begin
   test_are_equal()
 
@@ -201,4 +223,6 @@ end
   test_rewrite_in_operator_basis_zero()
 
   test_check_os_for_errors_rejects_linearly_dependent_cache()
+
+  test_check_os_for_errors_fermion_parity()
 end

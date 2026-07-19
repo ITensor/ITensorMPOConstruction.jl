@@ -348,6 +348,36 @@ function test_Fermi_Hubbard(
   return nothing
 end
 
+function test_odd_fermion_parity(alg::String, conserve_qns::Bool)::Nothing
+  sites = siteinds("Fermion", 5; conserve_qns)
+
+  os = OpSum{Float64}()
+  os .+= 0.7, "Cdag", 1
+  os .+= -1.2, "Cdag", 3
+  os .+= 0.4, "Cdag", 5
+  os .+= 0.9, "Cdag", 1, "Cdag", 3, "C", 5
+
+  mpo = MPO_new(os, sites; alg, splitblocks=true)
+
+  I(n) = op("I", sites[n])
+  F(n) = op("F", sites[n])
+  C(n) = op("C", sites[n])
+  Cdag(n) = op("Cdag", sites[n])
+
+  exact = 0.7 * Cdag(1) * I(2) * I(3) * I(4) * I(5)
+  exact += -1.2 * F(1) * F(2) * Cdag(3) * I(4) * I(5)
+  exact += 0.4 * F(1) * F(2) * F(3) * F(4) * Cdag(5)
+  exact += 0.9 * Cdag(1) * I(2) * op("Cdag * F", sites[3]) * F(4) * C(5)
+
+  @test norm(prod(mpo) - exact) < 1e-12
+  if conserve_qns
+    @test flux(mpo) == flux(Cdag(1))
+    @test !iszero(flux(mpo))
+  end
+
+  return nothing
+end
+
 ITensors.op(::OpName"00", ::SiteType"Qubit") = [1 0; 0 0]
 
 ITensors.op(::OpName"01", ::SiteType"Qubit") = [0 1; 0 0]
@@ -408,6 +438,11 @@ end
     @testset "$alg: random operator" test_random_operator(8, 4, alg)
 
     @testset "$alg: non zero flux" test_non_zero_flux(alg)
+
+    @testset "$alg: odd fermion parity" begin
+      test_odd_fermion_parity(alg, false)
+      test_odd_fermion_parity(alg, true)
+    end
 
     @testset "$alg: qft" begin
       test_qft(6, false, alg)

@@ -578,22 +578,25 @@ Validate structural assumptions for `os`.
 
 This checks that the cached local operators are linearly independent on every
 site and that, within every term, operators are sorted by site, at most one
-operator acts on each site, all terms carry the same total QN flux, and every
-term has even fermion parity.
+operator acts on each site, and all terms carry the same total QN flux and
+fermion parity. The common fermion parity may be even or odd.
 """
 @timeit function check_os_for_errors(os::OpIDSum)::Nothing
   flux_of_first_term = nothing
+  parity_of_first_term = nothing
   for i in eachindex(os)
     _, ops = os[i]
 
     flux = QN()
-    fermion_parity = 0
+    fermion_parity = false
     for j in eachindex(ops)
       opj = ops[j]
       opj == zero(opj) && continue
 
       flux += os.op_cache_vec[opj.n][opj.id].qn_flux
-      fermion_parity += os.op_cache_vec[opj.n][opj.id].is_fermionic
+      fermion_parity = xor(
+        fermion_parity, os.op_cache_vec[opj.n][opj.id].is_fermionic
+      )
 
       if j < length(ops)
         ops[j + 1] == zero(ops[j + 1]) && continue
@@ -613,7 +616,19 @@ term has even fermion parity.
       )
     end
 
-    mod(fermion_parity, 2) != 0 && error("Odd parity fermion terms not supported: $ops")
+    if isnothing(parity_of_first_term)
+      parity_of_first_term = fermion_parity
+    else
+      if fermion_parity != parity_of_first_term
+        first_parity_name = parity_of_first_term ? "odd" : "even"
+        current_parity_name = fermion_parity ? "odd" : "even"
+        error(
+          "Inconsistent fermion parity found!\n" *
+          "  Term 1 has $first_parity_name fermion parity\n" *
+          "  Term $i has $current_parity_name fermion parity",
+        )
+      end
+    end
   end
 
   check_op_cache_vec_linearly_independent(os.op_cache_vec)
