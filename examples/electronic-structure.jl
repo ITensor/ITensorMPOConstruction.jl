@@ -145,10 +145,9 @@ for alg in ("VC", "QR")
       sites;
       alg,
       basis_op_cache_vec=os.op_cache_vec,
-      splitblocks=true,
       check_for_errors=false,
       checkflux=false,
-    ) # TODO: remove splitblocks=true after warning
+    )
     N > 5 && print_timer()
 
     percent_sparse = round(100 * sparsity(H); digits=2)

@@ -166,19 +166,10 @@ function MPO_new(
   basis_op_cache_vec=nothing,
   check_for_errors::Bool=true,
   checkflux::Bool=true,
-  splitblocks::Union{Bool,Nothing}=nothing,
+  splitblocks::Bool=true,
   output_level::Int=0,
   kwargs...,
 )::MPO
-  if isnothing(splitblocks) # TODO: Remove warning some time after v0.2.1 release
-    splitblocks = true
-    hasqns(sites) && Base.depwarn(
-      "`splitblocks` not specified. The default is `true`, which is a change from prior behavior.",
-      :MPO_new;
-      force=true,
-    )
-  end
-
   prepare_opID_sum!(os, to_OpCacheVec(sites, basis_op_cache_vec))
   check_for_errors && check_os_for_errors(os)
 

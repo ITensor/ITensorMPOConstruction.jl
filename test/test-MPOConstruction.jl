@@ -254,7 +254,7 @@ function test_non_zero_flux(alg::String)::Nothing
   os = OpSum()
   os .+= 1.0, "S-", 1, "S-", 4
   os .+= 1.0, "S-", 2, "S-", 3
-  O = MPO_new(os, sites; alg, splitblocks=true) # TODO: remove splitblocks = true after warning.
+  O = MPO_new(os, sites; alg)
 
   @test flux(O) == QN(("Number", 2))
 
@@ -265,7 +265,7 @@ function test_non_zero_flux(alg::String)::Nothing
     os = OpSum()
     os .+= 1.0, "S-", 1
     os .+= 1.0, "S-", 2, "S-", 3
-    @test_throws "Inconsistent flux found!" MPO_new(os, sites; alg, splitblocks=true) # TODO: remove splitblocks = true after warning.
+    @test_throws "Inconsistent flux found!" MPO_new(os, sites; alg)
   end
 
   return nothing
@@ -357,7 +357,7 @@ function test_odd_fermion_parity(alg::String, conserve_qns::Bool)::Nothing
   os .+= 0.4, "Cdag", 5
   os .+= 0.9, "Cdag", 1, "Cdag", 3, "C", 5
 
-  mpo = MPO_new(os, sites; alg, splitblocks=true)
+  mpo = MPO_new(os, sites; alg)
 
   I(n) = op("I", sites[n])
   F(n) = op("F", sites[n])

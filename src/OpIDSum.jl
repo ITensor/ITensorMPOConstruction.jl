@@ -39,8 +39,6 @@ function OpInfo(local_op::Op, site::Index)
   )
 end
 
-# TODO: Create a symbolic sum.
-
 """
     OpCacheVec
 
